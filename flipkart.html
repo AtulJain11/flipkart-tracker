@@ -93,9 +93,9 @@ input.fsearch::placeholder{color:var(--text3)}
 .card-hdr{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .card-title{font-size:13px;font-weight:700}.card-sub{font-size:11px;color:var(--text3)}
 table{width:100%;border-collapse:collapse}
-th{padding:9px 14px;text-align:left;font-size:10px;color:var(--text3);text-transform:uppercase;
+th{padding:8px 10px;text-align:left;font-size:10px;color:var(--text3);text-transform:uppercase;
    letter-spacing:.5px;font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap}
-td{padding:9px 14px;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border);vertical-align:middle}
+td{padding:8px 10px;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border);vertical-align:middle}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:rgba(255,255,255,.02)}
 td a{color:var(--text2);text-decoration:none}
@@ -608,7 +608,7 @@ function renderOverview() {
   const sorted=[...ranked].sort((a,b)=>a.rank_v-b.rank_v).slice(0,20);
   document.getElementById('ov-table').innerHTML = sorted.map((p,i)=>`<tr>
     <td class="mono" style="color:var(--text3)">${i+1}</td>
-    <td><a href="${p.url}" target="_blank">${shortT(p.title)}</a></td>
+    <td style="max-width:340px"><a href="${p.url}" target="_blank" style="white-space:normal;word-break:break-word">${p.title}</a></td>
     <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:'Courier New',monospace">${p.size||'—'}</span></td>
     <td><span style="color:${brandColor(p.brand)};font-weight:700;font-size:11px">${brandShort(p.brand)}</span></td>
     <td>${rb(p.rank_v)}</td>
@@ -662,7 +662,7 @@ function renderRankings() {
       const tv=rankTrend(p.pid,'rank_v',7), ts=rankTrend(p.pid,'rank_sub',7);
       const hl = S.rk.selPid===p.pid ? 'background:rgba(79,142,247,.08);' : '';
       return `<tr id="tr-${p.pid}" style="${hl}">
-        <td><a href="${p.url}" target="_blank">${shortT(p.title)}</a><br><span class="pid">${p.pid}</span></td>
+        <td style="max-width:320px"><a href="${p.url}" target="_blank" style="white-space:normal;word-break:break-word">${p.title}</a><br><span class="pid">${p.pid}</span></td>
         <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:'Courier New',monospace">${p.size||'—'}</span></td>
         <td><span style="color:${brandColor(p.brand)};font-weight:700;font-size:11px">${brandShort(p.brand)}</span></td>
         <td>${(()=>{const nm=p.rank_v_name||(D.latest.products.find(x=>x.pid===p.pid)||{}).rank_v_name||"";return nm&&nm!=="nan"?nm:"—";})()}</td>
@@ -784,7 +784,7 @@ function renderSP() {
       const dStr=d==null?'—':d<0?`<span class="diff-neg">${d}</span>`:d>0?`<span class="diff-pos">+${d}</span>`:'<span style="color:var(--text3)">0</span>';
       const sc=p.sp_status==='OK'?'sp-ok':p.sp_status==='MISMATCH'?'sp-miss':'sp-nv';
       return `<tr>
-        <td><a href="${p.url}" target="_blank">${shortT(p.title)}</a></td>
+        <td style="max-width:340px"><a href="${p.url}" target="_blank" style="white-space:normal;word-break:break-word">${p.title}</a></td>
         <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:'Courier New',monospace">${p.size||'—'}</span></td>
         <td><span style="color:${brandColor(p.brand)};font-weight:700;font-size:11px">${brandShort(p.brand)}</span></td>
         <td>${fmtR(p.mrp)}</td><td>${fmtR(p.expected_sp)}</td><td style="font-weight:700">${fmtR(p.sp)}</td>
@@ -856,7 +856,7 @@ function renderRatings() {
       const rev7=(()=>{if(rh7.length<2)return null;const cur=rh7[rh7.length-1];const prev=rh7[Math.max(0,rh7.length-7)];const d=(cur.count||0)-(prev.count||0);return d;})();
       const rev7Str=rev7==null?'—':rev7>0?`<span style="color:var(--green);font-family:'Courier New',monospace;font-size:11px">+${rev7.toLocaleString('en-IN')}</span>`:rev7<0?`<span style="color:var(--red);font-family:'Courier New',monospace;font-size:11px">${rev7.toLocaleString('en-IN')}</span>`:'<span style="color:var(--text3)">—</span>';
       return `<tr>
-        <td><a href="${p.url}" target="_blank">${shortT(p.title)}</a></td>
+        <td style="max-width:340px"><a href="${p.url}" target="_blank" style="white-space:normal;word-break:break-word">${p.title}</a></td>
         <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:'Courier New',monospace">${p.size||'—'}</span></td>
         <td><span style="color:${brandColor(p.brand)};font-weight:700;font-size:11px">${brandShort(p.brand)}</span></td>
         <td><div style="display:flex;align-items:center;gap:4px"><span class="star">★</span><span class="rv" style="color:${rc}">${p.rating}</span></div></td>
@@ -870,7 +870,7 @@ function renderRatings() {
 
 function showAN(id,html){const e=document.getElementById(id);if(!e)return;if(!html){e.style.display='none';return;}document.getElementById(id+'-c').innerHTML=html;e.style.display='block';}
 function getPD(date){if(!D||!date)return null;const i=D.days.indexOf(date);return i>0?D.days[i-1]:null;}
-function getRkC(date,pd,brand){const out=[];D.latest.products.filter(p=>!brand||brand==='ALL'||p.brand===brand).forEach(p=>{const h=D.rank_history[p.pid]||[];const cur=h.filter(e=>e.date<=date);const prev=pd?h.filter(e=>e.date<=pd):[];const cv=cur.length?cur[cur.length-1]:null;const pv=prev.length?prev[prev.length-1]:null;const dv=pv&&pv.rank_v!=null&&cv.rank_v!=null?cv.rank_v-pv.rank_v:null;const ds=pv&&pv.rank_sub!=null&&cv.rank_sub!=null?cv.rank_sub-pv.rank_sub:null;if(cv)out.push({pid:p.pid,t:short(p.title,42),br:bClass(p.brand),bc:bColor(p.brand),cv:cv.rank_v,pv:pv?pv.rank_v:null,cs:cv.rank_sub,ps:pv?pv.rank_sub:null,dv:dv,ds:ds});});return out;}
+function getRkC(date,pd,brand){const out=[];D.latest.products.filter(p=>!brand||brand==='ALL'||p.brand===brand).forEach(p=>{const h=D.rank_history[p.pid]||[];const cur=h.filter(e=>e.date<=date);const prev=pd?h.filter(e=>e.date<=pd):[];const cv=cur.length?cur[cur.length-1]:null;const pv=prev.length?prev[prev.length-1]:null;const dv=pv&&pv.rank_v!=null&&cv.rank_v!=null?cv.rank_v-pv.rank_v:null;const ds=pv&&pv.rank_sub!=null&&cv.rank_sub!=null?cv.rank_sub-pv.rank_sub:null;if(cv)out.push({pid:p.pid,t:short(p.title,50),br:bClass(p.brand),bc:bColor(p.brand),cv:cv.rank_v,pv:pv?pv.rank_v:null,cs:cv.rank_sub,ps:pv?pv.rank_sub:null,dv:dv,ds:ds});});return out;}
 function card(html,span){const s=span?`grid-column:span ${span}`:'';return`<div class="an-card" style="${s}">${html}</div>`;}
 function hdr(col,icon,txt){return`<div class="an-hdr" style="color:${col}">${icon} ${txt}</div>`;}
 function rrow(r,sub){const dv=r.dv;const ds=r.ds;const dStr=(dv==null||isNaN(dv))?'':dv<0?`<span style="color:var(--green)">▲${Math.abs(dv)}</span>`:dv>0?`<span style="color:var(--red)">▼${dv}</span>`:'';const prev=r.pv!=null&&!isNaN(r.pv)?`<span style="color:var(--text3)">#${r.pv}→</span>`:'';const subStr=sub&&r.cs!=null?`<span style="color:rgba(79,142,247,.7);font-size:10px;margin-left:5px">sub#${r.cs}${(ds==null||isNaN(ds))?'':ds<0?`<span style="color:var(--green)">▲${Math.abs(ds)}</span>`:`<span style="color:var(--red)">▼${ds}</span>`}</span>`:'';if(!r.t||r.t==='nan'||!r.br||r.br==='nan')return'';return`<div class="an-row"><div class="an-name"><span style="color:${r.bc};font-weight:700;font-size:10px;margin-right:3px">${r.br}</span>${r.t}</div><div class="an-val">${prev}<span style="color:var(--yellow);font-weight:700">#${r.cv}</span> ${dStr}${subStr}</div></div>`;}
@@ -881,7 +881,7 @@ function buildAnalysis(date){
   const pd=getPD(date);const rkc=getRkC(date,pd,brand);
   const gains=rkc.filter(r=>r.dv!=null&&!isNaN(r.dv)&&r.dv<0&&r.cv!=null&&r.cv<100).sort((a,b)=>a.dv-b.dv).slice(0,6);
   const drops=rkc.filter(r=>r.dv!=null&&!isNaN(r.dv)&&r.dv>0&&r.cv!=null&&r.cv<100).sort((a,b)=>b.dv-a.dv).slice(0,6);
-  const rtC=[];D.latest.products.filter(p=>!brand||brand==='ALL'||p.brand===brand).forEach(p=>{const h=D.rating_history[p.pid]||[];const cur=h.filter(e=>e.date<=date);const prev=pd?h.filter(e=>e.date<=pd):[];const cv=cur.length?cur[cur.length-1].rating:null;const pv=prev.length?prev[prev.length-1].rating:null;if(cv!=null&&pv!=null&&cv!==pv)rtC.push({t:short(p.title,34),br:bClass(p.brand),bc:bColor(p.brand),prev:pv,cur:cv,d:+(cv-pv).toFixed(1)});});
+  const rtC=[];D.latest.products.filter(p=>!brand||brand==='ALL'||p.brand===brand).forEach(p=>{const h=D.rating_history[p.pid]||[];const cur=h.filter(e=>e.date<=date);const prev=pd?h.filter(e=>e.date<=pd):[];const cv=cur.length?cur[cur.length-1].rating:null;const pv=prev.length?prev[prev.length-1].rating:null;if(cv!=null&&pv!=null&&cv!==pv)rtC.push({t:short(p.title,42),br:bClass(p.brand),bc:bColor(p.brand),prev:pv,cur:cv,d:+(cv-pv).toFixed(1)});});
   const lowRevAll=D.latest.products.filter(p=>p.pid&&p.title&&p.title!=='nan'&&p.brand&&p.brand!=='nan'&&(!brand||brand==='ALL'||p.brand===brand)).map(p=>{const h=(D.rating_history[p.pid]||[]).filter(e=>e.date<=date);return{...p,cnt:h.length?h[h.length-1].count:(p.rating_count||0)};}).filter(p=>(p.cnt||0)<50).sort((a,b)=>a.cnt-b.cnt);
   const zeroes=lowRevAll.filter(p=>!p.cnt&&p.title&&p.title!=='nan');
   const lowRev=lowRevAll.filter(p=>p.cnt>0).slice(0,8);
@@ -899,8 +899,8 @@ function buildAnalysis(date){
   </div>`;
   // Combined alerts card: zeroes + low reviews in 2-col mini layout
   const alertRows=[
-    ...zeroes.map(p=>`<div class="an-row"><div class="an-name"><span style="color:${bColor(p.brand)};font-size:10px;font-weight:700">${bClass(p.brand)}</span> ${short(p.title,30)}</div><span class="an-val" style="color:var(--red);font-weight:700">0★</span></div>`),
-    ...lowRev.map(p=>`<div class="an-row"><div class="an-name"><span style="color:${bColor(p.brand)};font-size:10px;font-weight:700">${bClass(p.brand)}</span> ${short(p.title,30)}</div><span class="an-val" style="color:var(--purple);font-weight:700">${p.cnt}</span></div>`)
+    ...zeroes.map(p=>`<div class="an-row"><div class="an-name"><span style="color:${bColor(p.brand)};font-size:10px;font-weight:700">${bClass(p.brand)}</span> ${short(p.title,38)}</div><span class="an-val" style="color:var(--red);font-weight:700">0★</span></div>`),
+    ...lowRev.map(p=>`<div class="an-row"><div class="an-name"><span style="color:${bColor(p.brand)};font-size:10px;font-weight:700">${bClass(p.brand)}</span> ${short(p.title,38)}</div><span class="an-val" style="color:var(--purple);font-weight:700">${p.cnt}</span></div>`)
   ];
   const alertCard=alertRows.length?card(`${hdr('var(--purple)','⚠️',`Reviews Alert (${alertRows.length})`)}${zeroes.length?`<div style="color:var(--red);font-size:10px;margin-bottom:4px">🚨 ${zeroes.length} zero reviews</div>`:''}${alertRows.join('')}`):'';
   const ratingCard=rtC.length?card(`${hdr('var(--yellow)','★','Rating Δ ('+rtC.length+')')}<div>${rtC.map(r=>`<div class="an-row"><div class="an-name"><span style="color:${r.bc};font-size:10px;font-weight:700">${r.br}</span> ${r.t}</div><div class="an-val" style="color:${r.d<0?'var(--red)':'var(--green)'};font-weight:700">${r.d>0?'▲':'▼'}${Math.abs(r.d)}</div></div>`).join('')}</div>`):'';
@@ -971,18 +971,18 @@ function buildSPAnalysis(date){
   spCards.push(card(sumH));
   if(miss.length){
     var mH=hdr('var(--red)','\u26a0\ufe0f','Mismatches ('+miss.length+')')+'<div class="an-scroll" style="max-height:200px"><table style="width:100%;border-collapse:collapse;font-size:12px"><tr style="color:var(--text3);border-bottom:1px solid rgba(255,255,255,.06)"><th style="text-align:left;padding:4px 0">Product</th><th style="text-align:right;padding:4px">Exp</th><th style="text-align:right;padding:4px">Live</th><th style="text-align:right;padding:4px">Diff</th></tr>';
-    mH+=miss.map(function(p){return '<tr style="border-bottom:1px solid rgba(255,255,255,.05)"><td style="padding:4px 0"><span style="color:'+bColor(p.brand)+';font-weight:700;font-size:10px">'+bClass(p.brand)+'</span> <span style="color:var(--text2)">'+short(p.title,32)+'</span></td><td style="text-align:right;color:var(--text3)">'+fmtR(p.expected_sp)+'</td><td style="text-align:right;font-weight:700;color:var(--red)">'+fmtR(p.sp)+'</td><td style="text-align:right;color:var(--red);font-family:monospace">'+p.sd+'</td></tr>';}).join('');
+    mH+=miss.map(function(p){return '<tr style="border-bottom:1px solid rgba(255,255,255,.05)"><td style="padding:4px 0"><span style="color:'+bColor(p.brand)+';font-weight:700;font-size:10px">'+bClass(p.brand)+'</span> <span style="color:var(--text2)">'+short(p.title,48)+'</span></td><td style="text-align:right;color:var(--text3)">'+fmtR(p.expected_sp)+'</td><td style="text-align:right;font-weight:700;color:var(--red)">'+fmtR(p.sp)+'</td><td style="text-align:right;color:var(--red);font-family:monospace">'+p.sd+'</td></tr>';}).join('');
     mH+='</table></div>';
     spCards.push(card(mH));
   }
   var newProds=newM.map(function(pid){var p=D.latest.products.find(function(x){return x.pid===pid;});var item=spD.items?spD.items.find(function(x){return x.pid===pid;}):null;return p?Object.assign({},p,{sd:item?item.sp_diff:null}):null;}).filter(Boolean);
   if(newProds.length){
-    var nH=hdr('var(--orange)','\u{1F195}','New Mismatches ('+newProds.length+')')+newProds.map(function(p){return '<div class="an-row"><div class="an-name"><span style="color:'+bColor(p.brand)+';font-size:10px;font-weight:700">'+bClass(p.brand)+'</span> '+short(p.title,36)+'</div><span class="an-val" style="color:var(--red);font-weight:700">'+p.sd+'</span></div>';}).join('');
+    var nH=hdr('var(--orange)','\u{1F195}','New Mismatches ('+newProds.length+')')+newProds.map(function(p){return '<div class="an-row"><div class="an-name"><span style="color:'+bColor(p.brand)+';font-size:10px;font-weight:700">'+bClass(p.brand)+'</span> '+short(p.title,44)+'</div><span class="an-val" style="color:var(--red);font-weight:700">'+p.sd+'</span></div>';}).join('');
     spCards.push(card(nH));
   }
   var resProds=res.map(function(pid){return D.latest.products.find(function(x){return x.pid===pid;});}).filter(Boolean);
   if(resProds.length){
-    var rH=hdr('var(--green)','\u2705','Resolved ('+resProds.length+')')+resProds.map(function(p){return '<div class="an-row an-name"><span style="color:'+bColor(p.brand)+';font-size:10px;font-weight:700;margin-right:3px">'+bClass(p.brand)+'</span>'+short(p.title,38)+'</div>';}).join('');
+    var rH=hdr('var(--green)','\u2705','Resolved ('+resProds.length+')')+resProds.map(function(p){return '<div class="an-row an-name"><span style="color:'+bColor(p.brand)+';font-size:10px;font-weight:700;margin-right:3px">'+bClass(p.brand)+'</span>'+short(p.title,46)+'</div>';}).join('');
     spCards.push(card(rH));
   }
   var spCols=Math.max(1,Math.min(4,spCards.length));
@@ -1000,8 +1000,8 @@ function buildRatingAnalysis(date){
     var prev=pd?h.filter(function(e){return e.date<=pd;}):[];
     var cv=cur.length?cur[cur.length-1]:null;
     var pv=prev.length?prev[prev.length-1]:null;
-    if(cv&&pv&&cv.rating!==pv.rating)rtD.push({t:short(p.title,42),br:bClass(p.brand),bc:bColor(p.brand),prev:pv.rating,cur:cv.rating,d:+(cv.rating-pv.rating).toFixed(1)});
-    if(cv&&pv&&cv.count!==pv.count)revD.push({t:short(p.title,42),br:bClass(p.brand),bc:bColor(p.brand),prev:pv.count||0,cur:cv.count||0,d:(cv.count||0)-(pv.count||0)});
+    if(cv&&pv&&cv.rating!==pv.rating)rtD.push({t:short(p.title,50),br:bClass(p.brand),bc:bColor(p.brand),prev:pv.rating,cur:cv.rating,d:+(cv.rating-pv.rating).toFixed(1)});
+    if(cv&&pv&&cv.count!==pv.count)revD.push({t:short(p.title,50),br:bClass(p.brand),bc:bColor(p.brand),prev:pv.count||0,cur:cv.count||0,d:(cv.count||0)-(pv.count||0)});
   });
   var allRev=D.latest.products.filter(function(p){return p.pid&&p.title&&p.title!=='nan'&&p.brand&&p.brand!=='nan'&&(!brand||brand==='ALL'||p.brand===brand);}).map(function(p){
     var h=(D.rating_history[p.pid]||[]).filter(function(e){return e.date<=date;});
@@ -1017,15 +1017,15 @@ function buildRatingAnalysis(date){
     if(rh.length<2)return null;
     var cur=rh[rh.length-1];var prev=rh[Math.max(0,rh.length-7)];
     var d=(cur.count||0)-(prev.count||0);
-    return d>0?{t:short(p.title,38),br:bClass(p.brand),bc:bColor(p.brand),d:d,total:cur.count||0}:null;
+    return d>0?{t:short(p.title,46),br:bClass(p.brand),bc:bColor(p.brand),d:d,total:cur.count||0}:null;
   }).filter(Boolean).sort(function(a,b){return b.d-a.d;}).slice(0,10);
   var rtCards=[];
   if(drops.length)rtCards.push(card(hdr('var(--red)','\u2b07\ufe0f','Rating Drops ('+drops.length+')')+drops.map(function(r){return '<div class="an-row"><div class="an-name"><span style="color:'+r.bc+';font-size:10px;font-weight:700">'+r.br+'</span> '+r.t+'</div><div class="an-val" style="color:var(--red)"><span style="color:var(--text3)">'+r.prev+'-></span><b>'+r.cur+'</b> \u25bc'+Math.abs(r.d)+'</div></div>';}).join('')));
   if(gains.length)rtCards.push(card(hdr('var(--green)','\u2b06\ufe0f','Rating Gains ('+gains.length+')')+gains.map(function(r){return '<div class="an-row"><div class="an-name"><span style="color:'+r.bc+';font-size:10px;font-weight:700">'+r.br+'</span> '+r.t+'</div><div class="an-val" style="color:var(--green)"><span style="color:var(--text3)">'+r.prev+'-></span><b>'+r.cur+'</b> \u25b2'+r.d+'</div></div>';}).join('')));
   if(zeroes.length||lowRev.length){
     var zlH=hdr('var(--purple)','\u26a0\ufe0f','Reviews ('+zeroes.length+' zero, '+lowRev.length+' low)');
-    if(zeroes.length)zlH+=zeroes.map(function(p){return '<div class="an-row"><div class="an-name"><span style="color:'+bColor(p.brand)+';font-size:10px;font-weight:700">'+bClass(p.brand)+'</span> '+short(p.title,32)+'</div><span class="an-val" style="color:var(--red);font-weight:700">0 \u2605'+(p.rating||'\u2014')+'</span></div>';}).join('');
-    if(lowRev.length)zlH+='<div style="border-top:1px solid rgba(255,255,255,.06);margin-top:5px;padding-top:5px">'+lowRev.map(function(p){return '<div class="an-row"><div class="an-name"><span style="color:'+bColor(p.brand)+';font-size:10px;font-weight:700">'+bClass(p.brand)+'</span> '+short(p.title,32)+'</div><span class="an-val" style="color:var(--purple);font-weight:700">'+p.cnt+'</span></div>';}).join('')+'</div>';
+    if(zeroes.length)zlH+=zeroes.map(function(p){return '<div class="an-row"><div class="an-name"><span style="color:'+bColor(p.brand)+';font-size:10px;font-weight:700">'+bClass(p.brand)+'</span> '+short(p.title,48)+'</div><span class="an-val" style="color:var(--red);font-weight:700">0 \u2605'+(p.rating||'\u2014')+'</span></div>';}).join('');
+    if(lowRev.length)zlH+='<div style="border-top:1px solid rgba(255,255,255,.06);margin-top:5px;padding-top:5px">'+lowRev.map(function(p){return '<div class="an-row"><div class="an-name"><span style="color:'+bColor(p.brand)+';font-size:10px;font-weight:700">'+bClass(p.brand)+'</span> '+short(p.title,48)+'</div><span class="an-val" style="color:var(--purple);font-weight:700">'+p.cnt+'</span></div>';}).join('')+'</div>';
     rtCards.push(card(zlH));
   }
   if(topGain.length)rtCards.push(card(hdr('var(--cyan)','\u{1F4C8}','Daily Rev Gains ('+topGain.length+')')+topGain.map(function(r){return '<div class="an-row"><span class="an-name"><span style="color:'+r.bc+';font-size:10px;font-weight:700;margin-right:2px">'+r.br+'</span>'+short(r.t,20)+'</span><span class="an-val" style="color:var(--green);font-weight:700">+'+r.d.toLocaleString('en-IN')+'</span></div>';}).join('')));

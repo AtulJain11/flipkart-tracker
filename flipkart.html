@@ -930,7 +930,6 @@ function buildRatingAnalysis(date){
   html+=rtCards.join('');
   if(rev7Html)html+=`<div style="grid-column:1/-1">${card(rev7Html)}</div>`;
   html+='</div>';
-  html+='</div>';
   showAN('rt-an',(drops.length||gains.length||zeroes.length||lowRev.length||rev7Gains.length)?html:null);
 }
 

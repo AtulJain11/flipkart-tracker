@@ -335,17 +335,26 @@ function trendStr(val) {
 async function loadData() {
   try {
     const res = await fetch('fk_data.json?'+Date.now());
+    if(!res.ok) throw new Error('HTTP '+res.status);
     D = await res.json();
     document.getElementById('nav-meta').textContent = 'Updated '+D.generated;
     document.getElementById('loading').style.display='none';
-    // Default to latest date
     const latest = D.days[D.days.length-1];
     S.ov.date=latest; S.rk.date=latest; S.sp.date=latest; S.rt.date=latest;
     buildDateBars();
-    renderAll();
+    try { renderAll(); } catch(re) {
+      console.error('renderAll failed:', re);
+      showErrBanner('Render error: '+re.message);
+    }
   } catch(e) {
-    document.getElementById('loading').querySelector('p').textContent='fk_data.json not found — run fk_data_processor.py first';
+    document.getElementById('loading').style.display='none';
+    showErrBanner('Load failed: '+e.message+' — run fk_data_processor.py');
   }
+}
+function showErrBanner(msg){
+  const b=document.createElement('div');
+  b.style='position:fixed;top:0;left:0;right:0;background:#f05252;color:#fff;padding:10px 16px;font-size:13px;z-index:9999;font-family:Calibri,sans-serif';
+  b.textContent=msg;document.body.appendChild(b);
 }
 
 // ── DATE BARS ───────────────────────────────────────────────────────
@@ -470,7 +479,19 @@ function showPage(name, btn) {
   btn.classList.add('active');
 }
 
-function renderAll(){renderOverview();renderRankings();renderSP();renderRatings();setTimeout(()=>{buildAnalysis(D.latest.date);buildRankAnalysis(D.latest.date);buildSPAnalysis(D.latest.date);buildRatingAnalysis(D.latest.date);},100);}
+function safeRun(fn,name){try{fn();}catch(e){console.error(name+' failed:',e);}}
+function renderAll(){
+  safeRun(renderOverview,'renderOverview');
+  safeRun(renderRankings,'renderRankings');
+  safeRun(renderSP,'renderSP');
+  safeRun(renderRatings,'renderRatings');
+  setTimeout(()=>{
+    safeRun(()=>buildAnalysis(D.latest.date),'buildAnalysis');
+    safeRun(()=>buildRankAnalysis(D.latest.date),'buildRankAnalysis');
+    safeRun(()=>buildSPAnalysis(D.latest.date),'buildSPAnalysis');
+    safeRun(()=>buildRatingAnalysis(D.latest.date),'buildRatingAnalysis');
+  },100);
+}
 
 // ══ OVERVIEW ════════════════════════════════════════════════════════
 function renderOverview() {

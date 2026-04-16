@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS — Flipkart Intelligence</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#0a0b0e;--bg2:#111318;--bg3:#181b22;
+  --border:#1e2230;--border2:#2a2f40;
+  --text:#e8eaf0;--text2:#8892a4;--text3:#4a5168;
+  --accent:#4f8ef7;--green:#3ecf8e;--red:#f05252;
+  --orange:#f5a524;--yellow:#f5c842;--purple:#a78bfa;
+  --ba:#4f8ef7;--cap:#3ecf8e;--ss:#f5a524;--r:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Calibri',sans-serif;min-height:100vh}
+.mono{font-family:'Courier New',monospace}
+
+/* NAV */
+nav{display:flex;align-items:center;padding:0 24px;height:52px;background:var(--bg2);
+    border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;gap:0}
+.nav-logo{display:flex;align-items:center;gap:10px;margin-right:28px;text-decoration:none}
+.nav-logo-icon{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--purple));
+  display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#fff}
+.nav-logo-text{font-weight:800;font-size:15px;color:var(--text);letter-spacing:.5px}
+.nav-tab{height:52px;padding:0 16px;border:none;background:none;color:var(--text2);
+  font-family:'Calibri',sans-serif;font-size:13px;font-weight:600;cursor:pointer;
+  border-bottom:2px solid transparent;transition:all .2s;display:flex;align-items:center;gap:5px}
+.nav-tab:hover{color:var(--text)}.nav-tab.active{color:var(--text);border-bottom-color:var(--accent)}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.nav-meta{font-size:11px;color:var(--text3);font-family:'Courier New',monospace}
+.btn-sm{padding:5px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--bg3);
+  color:var(--text2);font-size:12px;font-family:'Calibri',sans-serif;font-weight:600;cursor:pointer;transition:all .2s}
+.btn-sm:hover{border-color:var(--accent);color:var(--accent)}
+
+/* PAGE */
+.page{display:none;padding:20px 24px;max-width:1600px;margin:0 auto}
+.page.active{display:block}
+
+/* FILTER BAR */
+.filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.filter-label{font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.6px}
+.fbtn{padding:4px 11px;border-radius:16px;border:1px solid var(--border2);background:none;
+  color:var(--text2);font-size:12px;font-family:'Calibri',sans-serif;font-weight:600;cursor:pointer;transition:all .15s}
+.fbtn:hover{border-color:var(--text2);color:var(--text)}
+.fbtn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.fbtn.ba.active{background:var(--ba);border-color:var(--ba)}
+.fbtn.cap.active{background:var(--cap);border-color:var(--cap)}
+.fbtn.ss.active{background:var(--ss);border-color:var(--ss)}
+.fsep{width:1px;height:18px;background:var(--border);margin:0 2px}
+select.fsel{padding:4px 10px;border-radius:16px;border:1px solid var(--border2);background:var(--bg2);
+  color:var(--text2);font-size:12px;font-family:'Calibri',sans-serif;font-weight:600;cursor:pointer;outline:none}
+input.fsearch{padding:4px 12px;border-radius:16px;border:1px solid var(--border2);background:var(--bg2);
+  color:var(--text);font-size:12px;font-family:'Courier New',monospace;outline:none;width:170px}
+input.fsearch::placeholder{color:var(--text3)}
+
+/* DATE SELECTOR */
+.date-bar{display:flex;align-items:center;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+.date-btn{padding:4px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);
+  color:var(--text2);font-size:11px;font-family:'Courier New',monospace;cursor:pointer;transition:all .15s;white-space:nowrap}
+.date-btn:hover{border-color:var(--accent);color:var(--accent)}
+.date-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.date-label{font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.6px}
+
+/* STATS */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:18px}
+.stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px}
+.stat-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-weight:600;margin-bottom:5px}
+.stat-value{font-size:22px;font-weight:800;color:var(--text)}
+.stat-sub{font-size:10px;color:var(--text3);margin-top:3px}
+.sv-green{color:var(--green)}.sv-red{color:var(--red)}.sv-orange{color:var(--orange)}
+
+/* BRAND PILLS */
+.brand-pills{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+.brand-pill{padding:9px 16px;border-radius:28px;border:1px solid var(--border2);background:var(--bg2);
+  font-size:12px;font-weight:700;display:flex;align-items:center;gap:7px}
+.brand-pill .dot{width:7px;height:7px;border-radius:50%}
+.brand-pill.ba .dot{background:var(--ba)}.brand-pill.cap .dot{background:var(--cap)}.brand-pill.ss .dot{background:var(--ss)}
+
+/* CARD / TABLE */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:14px}
+.card-hdr{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.card-title{font-size:13px;font-weight:700}.card-sub{font-size:11px;color:var(--text3)}
+table{width:100%;border-collapse:collapse}
+th{padding:9px 14px;text-align:left;font-size:10px;color:var(--text3);text-transform:uppercase;
+   letter-spacing:.5px;font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:9px 14px;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.02)}
+td a{color:var(--text2);text-decoration:none}
+td a:hover{color:var(--accent)}
+.pid{font-family:'Courier New',monospace;font-size:10px;color:var(--text3)}
+
+/* RANK BADGE */
+.rb{display:inline-flex;align-items:center;justify-content:center;min-width:34px;padding:3px 7px;
+    border-radius:5px;font-size:12px;font-weight:700;font-family:'Courier New',monospace}
+.rb-1{background:rgba(245,200,66,.18);color:var(--yellow)}
+.rb-2{background:rgba(79,142,247,.18);color:var(--accent)}
+.rb-3{background:rgba(167,139,250,.18);color:var(--purple)}
+.rb-t10{background:rgba(62,207,142,.14);color:var(--green)}
+.rb-ok{background:rgba(255,255,255,.05);color:var(--text2)}
+
+/* SP */
+.sp-ok{color:var(--green);font-weight:700}
+.sp-miss{color:var(--red);font-weight:700}
+.sp-nv{color:var(--text3)}
+.diff-neg{color:var(--red);font-family:'Courier New',monospace;font-size:11px}
+.diff-pos{color:var(--green);font-family:'Courier New',monospace;font-size:11px}
+
+/* CHARTS */
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.chart-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px;cursor:pointer;transition:border-color .2s}
+.chart-card:hover{border-color:var(--border2)}
+.chart-card.selected{border-color:var(--accent)}
+.chart-title{font-size:11px;font-weight:700;margin-bottom:10px;color:var(--text2);display:flex;align-items:center;justify-content:space-between}
+.chart-title-hint{font-size:10px;color:var(--text3);font-weight:400}
+.chart-wrap{position:relative;height:180px}
+.chart-tabs{display:flex;gap:4px;margin-bottom:8px}
+.ctab{padding:2px 8px;border-radius:4px;border:1px solid var(--border2);background:none;
+  color:var(--text3);font-size:10px;font-family:'Calibri',sans-serif;font-weight:600;cursor:pointer}
+.ctab.active{background:var(--border2);color:var(--text2)}
+
+/* TREND */
+.trend-up{color:var(--green);font-size:11px}
+.trend-dn{color:var(--red);font-size:11px}
+
+/* RATING */
+.star{color:var(--yellow);font-size:11px}
+.rv{font-weight:700}.rc{color:var(--text3);font-size:11px;font-family:'Courier New',monospace}
+
+/* EMPTY */
+.empty{padding:36px;text-align:center;color:var(--text3);font-size:13px}
+
+/* LOADING */
+#loading{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:12px;z-index:999}
+.spin{width:30px;height:30px;border:2px solid var(--border2);border-top-color:var(--accent);
+  border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+#loading p{font-size:11px;color:var(--text3);font-family:'Courier New',monospace}
+
+.selected-info{font-size:11px;color:var(--accent);font-family:'Courier New',monospace;margin-bottom:8px;min-height:16px}
+</style>
+</head>
+<body>
+
+<div id="loading"><div class="spin"></div><p>Loading Flipkart data...</p></div>
+
+<nav>
+  <a class="nav-logo" href="#"><div class="nav-logo-icon">J</div><span class="nav-logo-text">J.A.R.V.I.S</span></a>
+  <button class="nav-tab active" onclick="showPage('overview',this)">📊 Overview</button>
+  <button class="nav-tab" onclick="showPage('rankings',this)">🏆 Rankings</button>
+  <button class="nav-tab" onclick="showPage('sp',this)">💰 SP Compliance</button>
+  <button class="nav-tab" onclick="showPage('ratings',this)">⭐ Ratings</button>
+  <div class="nav-right">
+    <span class="nav-meta" id="nav-meta">—</span>
+    <button class="btn-sm" onclick="loadData()">↻ Refresh</button>
+  </div>
+</nav>
+
+<!-- ═══ OVERVIEW ═══════════════════════════════════════════════════════ -->
+<div class="page active" id="page-overview">
+  <div class="filters">
+    <span class="filter-label">Brand</span>
+    <button class="fbtn active" onclick="setF('ov','brand','ALL',this)">All</button>
+    <button class="fbtn ba" onclick="setF('ov','brand','BARE ANATOMY',this)">BA</button>
+    <button class="fbtn cap" onclick="setF('ov','brand','Chemist at Play',this)">CAP</button>
+    <button class="fbtn ss" onclick="setF('ov','brand','SunScoop',this)">SS</button>
+    <div class="fsep"></div>
+    <span class="filter-label">Date</span>
+    <select class="fsel" id="ov-date-sel" onchange="setDateSel('ov')"><option value="">Latest</option></select>
+  </div>
+
+  <div class="stat-grid" id="ov-stats"></div>
+  <div class="brand-pills" id="ov-pills"></div>
+  <div id="ov-an" style="display:none;margin-bottom:12px"><div id="ov-an-c"></div></div>
+  <div class="chart-grid">
+    <div class="chart-card"><div class="chart-title">SP Compliance History</div><div class="chart-wrap"><canvas id="ch-sp-hist"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">Rank Distribution</div><div class="chart-wrap"><canvas id="ch-rk-dist"></canvas></div></div>
+  </div>
+  <div class="card">
+    <div class="card-hdr"><span class="card-title">Top 20 by Vertical Rank</span><span class="card-sub" id="ov-date-lbl"></span></div>
+    <table><thead><tr><th>#</th><th>Product</th><th>Size</th><th>Brand</th><th>Vertical #</th><th>Category</th><th>Sub #</th><th>SP</th><th>Rating</th></tr></thead>
+    <tbody id="ov-table"></tbody></table>
+  </div>
+</div>
+
+<!-- ═══ RANKINGS ═══════════════════════════════════════════════════════ -->
+<div class="page" id="page-rankings">
+  <div class="filters">
+    <span class="filter-label">Brand</span>
+    <button class="fbtn active" onclick="setF('rk','brand','ALL',this)">All</button>
+    <button class="fbtn ba" onclick="setF('rk','brand','BARE ANATOMY',this)">BA</button>
+    <button class="fbtn cap" onclick="setF('rk','brand','Chemist at Play',this)">CAP</button>
+    <button class="fbtn ss" onclick="setF('rk','brand','SunScoop',this)">SS</button>
+    <div class="fsep"></div>
+    <span class="filter-label">Category</span>
+    <select class="fsel" id="rk-cat" onchange="renderRankings()"><option value="ALL">All Categories</option></select>
+    <div class="fsep"></div>
+    <input class="fsearch" placeholder="Search product..." id="rk-search" oninput="renderRankings()">
+    <div class="fsep"></div>
+    <span class="filter-label">Date</span>
+    <select class="fsel" id="rk-date-sel" onchange="setDateSel('rk')"><option value="">Latest</option></select>
+  </div>
+  <div id="rk-an" style="display:none;margin-bottom:12px"><div id="rk-an-c"></div></div>
+  <div class="selected-info" id="rk-sel-info">Click a chart to highlight that product below</div>
+  <div class="chart-grid" id="rk-charts"></div>
+  <div class="card">
+    <div class="card-hdr"><span class="card-title">All Products — Rank Tracker</span><span class="card-sub" id="rk-count"></span></div>
+    <table><thead><tr><th>Product</th><th>Size</th><th>Brand</th><th>Category</th><th>Vertical #</th><th>Sub Cat #</th><th>Super Cat #</th><th>7d Trend ▼</th><th>7d Trend Sub</th></tr></thead>
+    <tbody id="rk-table"></tbody></table>
+  </div>
+</div>
+
+<!-- ═══ SP COMPLIANCE ══════════════════════════════════════════════════ -->
+<div class="page" id="page-sp">
+  <div class="filters">
+    <span class="filter-label">Status</span>
+    <button class="fbtn active" onclick="setF('sp','status','ALL',this)">All</button>
+    <button class="fbtn" onclick="setF('sp','status','MISMATCH',this)">Mismatches</button>
+    <button class="fbtn" onclick="setF('sp','status','OK',this)">OK</button>
+    <button class="fbtn" onclick="setF('sp','status','NOT VERIFIED',this)">Not Verified</button>
+    <div class="fsep"></div>
+    <span class="filter-label">Brand</span>
+    <button class="fbtn active" onclick="setF('sp','brand','ALL',this)">All</button>
+    <button class="fbtn ba" onclick="setF('sp','brand','BARE ANATOMY',this)">BA</button>
+    <button class="fbtn cap" onclick="setF('sp','brand','Chemist at Play',this)">CAP</button>
+    <button class="fbtn ss" onclick="setF('sp','brand','SunScoop',this)">SS</button>
+    <div class="fsep"></div>
+    <span class="filter-label">Date</span>
+    <select class="fsel" id="sp-date-sel" onchange="setDateSel('sp')"><option value="">Latest</option></select>
+  </div>
+
+  <div class="stat-grid" id="sp-stats"></div>
+  <div id="sp-an" style="display:none;margin-bottom:12px"><div id="sp-an-c"></div></div>
+  <div class="chart-grid">
+    <div class="chart-card" style="grid-column:1/-1">
+      <div class="chart-title">SP Compliance Over Time</div>
+      <div class="chart-wrap" style="height:140px"><canvas id="ch-sp-trend"></canvas></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-hdr"><span class="card-title">Product SP Details</span><span class="card-sub" id="sp-count"></span></div>
+    <table><thead><tr><th>Product</th><th>Size</th><th>Brand</th><th>MRP</th><th>Expected SP</th><th>Live SP</th><th>Diff</th><th>Status</th></tr></thead>
+    <tbody id="sp-table"></tbody></table>
+  </div>
+</div>
+
+<!-- ═══ RATINGS ════════════════════════════════════════════════════════ -->
+<div class="page" id="page-ratings">
+  <div class="filters">
+    <span class="filter-label">Brand</span>
+    <button class="fbtn active" onclick="setF('rt','brand','ALL',this)">All</button>
+    <button class="fbtn ba" onclick="setF('rt','brand','BARE ANATOMY',this)">BA</button>
+    <button class="fbtn cap" onclick="setF('rt','brand','Chemist at Play',this)">CAP</button>
+    <button class="fbtn ss" onclick="setF('rt','brand','SunScoop',this)">SS</button>
+    <div class="fsep"></div>
+    <span class="filter-label">Filter</span>
+    <button class="fbtn" onclick="setF('rt','rf','drops',this)">Rating Drops</button>
+    <button class="fbtn" onclick="setF('rt','rf','low',this)">Low (≤4.0)</button>
+    <button class="fbtn active" onclick="setF('rt','rf','all',this)">All</button>
+    <div class="fsep"></div>
+    <span class="filter-label">Date</span>
+    <select class="fsel" id="rt-date-sel" onchange="setDateSel('rt')"><option value="">Latest</option></select>
+  </div>
+
+  <div class="stat-grid" id="rt-stats"></div>
+  <div id="rt-an" style="display:none;margin-bottom:12px"><div id="rt-an-c"></div></div>
+  <div class="chart-grid">
+    <div class="chart-card"><div class="chart-title">Avg Rating by Brand</div><div class="chart-wrap"><canvas id="ch-rt-brand"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">Rating Distribution</div><div class="chart-wrap"><canvas id="ch-rt-dist"></canvas></div></div>
+  </div>
+  <div class="card">
+    <div class="card-hdr"><span class="card-title">All Products — Rating Tracker</span><span class="card-sub" id="rt-count"></span></div>
+    <table><thead><tr><th>Product</th><th>Size</th><th>Brand</th><th>Rating</th><th>Reviews</th><th>7d Change</th><th>30d Change</th></tr></thead>
+    <tbody id="rt-table"></tbody></table>
+  </div>
+</div>
+
+<script>
+let D = null;
+// Per-tab state
+const S = {
+  ov:  {brand:'ALL', date:null},
+  rk:  {brand:'ALL', date:null, cat:'ALL', search:'', selPid:null},
+  sp:  {brand:'ALL', date:null, status:'ALL'},
+  rt:  {brand:'ALL', date:null, rf:'all'},
+};
+const charts = {};
+
+// ── FORMAT HELPERS ─────────────────────────────────────────────────
+function fmtDate(d) {
+  if (!d) return '—';
+  const [y,m,day] = d.split('-');
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${parseInt(day)} ${months[parseInt(m)-1]}`;
+}
+function fmtR(v) { return v != null ? `₹${Number(v).toLocaleString('en-IN')}` : '—'; }
+function shortT(t,n=42) { return t && t.length>n ? t.slice(0,n-1)+'…' : (t||''); }
+function brandColor(b) { return b==='BARE ANATOMY'?'var(--ba)':b==='Chemist at Play'?'var(--cap)':'var(--ss)'; }
+function brandClass(b) { return b==='BARE ANATOMY'?'ba':b==='Chemist at Play'?'cap':'ss'; }
+function brandShort(b) { return b==='BARE ANATOMY'?'BA':b==='Chemist at Play'?'CAP':'SS'; }
+// ── ALIAS HELPERS (used in analysis panels) ─────────────────────────────
+function bClass(b) { return brandClass(b); }
+function bColor(b) { return brandColor(b); }
+function short(t, n) { return shortT(t, n); }
+
+
+function subBadge(v){if(v==null)return'<span style="color:var(--text3)">—</span>';return`<span style="color:rgba(79,142,247,.9);font-family:'Courier New',monospace;font-size:11px">#${v}</span>`;}
+function superBadge(v){if(v==null)return'<span style="color:var(--text3)">—</span>';return`<span style="color:var(--text3);font-size:11px">#${v}</span>`;}
+function rb(v) {
+  if (v==null) return '<span style="color:var(--text3)">—</span>';
+  const cls = v===1?'rb-1':v===2?'rb-2':v===3?'rb-3':v<=10?'rb-t10':'rb-ok';
+  return `<span class="rb ${cls}">#${v}</span>`;
+}
+
+function trendStr(val) {
+  if (val==null) return '<span style="color:var(--text3)">—</span>';
+  if (val<0) return `<span class="trend-up">▲${Math.abs(val)}</span>`;
+  if (val>0) return `<span class="trend-dn">▼${val}</span>`;
+  return '<span style="color:var(--text3)">—</span>';
+}
+
+// ── DATA LOAD ───────────────────────────────────────────────────────
+async function loadData() {
+  try {
+    const res = await fetch('fk_data.json?'+Date.now());
+    D = await res.json();
+    document.getElementById('nav-meta').textContent = 'Updated '+D.generated;
+    document.getElementById('loading').style.display='none';
+    // Default to latest date
+    const latest = D.days[D.days.length-1];
+    S.ov.date=latest; S.rk.date=latest; S.sp.date=latest; S.rt.date=latest;
+    buildDateBars();
+    renderAll();
+  } catch(e) {
+    document.getElementById('loading').querySelector('p').textContent='fk_data.json not found — run fk_data_processor.py first';
+  }
+}
+
+// ── DATE BARS ───────────────────────────────────────────────────────
+function buildDateBars() {
+  ['ov','rk','sp','rt'].forEach(tab=>{
+    const el = document.getElementById(tab+'-date-sel');
+    if(!el||!D)return;
+    el.innerHTML='<option value="">Latest ('+fmtDate(D.latest.date)+')</option>'+
+      D.days.slice().reverse().map(d=>`<option value="${d}" ${S[tab].date===d?'selected':''}>${fmtDate(d)}</option>`).join('');
+  });
+}
+function setDateSel(tab){
+  const d=document.getElementById(tab+'-date-sel').value||D.latest.date;
+  ['ov','rk','sp','rt'].forEach(t=>{S[t].date=d;});
+  buildDateBars();
+  buildAnalysis(d);buildRankAnalysis(d);buildSPAnalysis(d);buildRatingAnalysis(d);
+  renderOverview();renderRankings();renderSP();renderRatings();
+}
+
+// setDate replaced by setDateSel
+
+
+// ── FILTER HANDLER ──────────────────────────────────────────────────
+function setF(tab, key, val, btn) {
+  S[tab][key] = val;
+  // Toggle active within same group
+  const grpMap = {brand:['ALL','BARE ANATOMY','Chemist at Play','SunScoop','BA','CAP','SS'],
+                  status:['ALL','MISMATCH','OK','NOT VERIFIED'],rf:['drops','low','all']};
+  const grp = grpMap[key]||[];
+  btn.closest('.filters').querySelectorAll('.fbtn').forEach(b=>{
+    if(grp.some(g=>b.textContent.trim()===g||b.textContent.trim()===brandShort(g))) b.classList.remove('active');
+  });
+  btn.classList.add('active');
+  if(tab==='ov') renderOverview();
+  if(tab==='rk') renderRankings();
+  if(tab==='sp') renderSP();
+  if(tab==='rt') renderRatings();
+}
+
+// ── GET SNAPSHOT FOR DATE ───────────────────────────────────────────
+function snapForDate(date) {
+  return D.all_snaps ? D.all_snaps[date] : (date===D.latest.date ? D.latest : D.latest);
+}
+function prodsForDate(date) {
+  // Overlay historical rank + rating from history arrays (always accurate)
+  const d = date || D.latest.date;
+  return D.latest.products.map(p => {
+    const rh = (D.rank_history[p.pid]||[]).filter(e=>e.date<=d);
+    const rt = (D.rating_history[p.pid]||[]).filter(e=>e.date<=d);
+    const re = rh.length ? rh[rh.length-1] : null;
+    const rte = rt.length ? rt[rt.length-1] : null;
+    // SP: check sp_history for that day
+    const spDay = D.sp_history.find(x=>x.date===d);
+    const spItem = spDay && (spDay.items||[]).find(x=>x.pid===p.pid);
+    return {
+      ...p,
+      rank_v:        re  ? re.rank_v   : null,
+      rank_sub:      re  ? re.rank_sub  : null,
+      rank_sup:      re  ? re.rank_sup  : null,
+      rank_v_name:   p.rank_v_name,
+      rank_sub_name: p.rank_sub_name,
+      rating:        rte ? rte.rating   : p.rating,
+      rating_count:  rte ? (rte.count || rte.rating_count || 0) : p.rating_count,
+      sp_status:     spItem ? 'MISMATCH' : (d===D.latest.date ? p.sp_status : 'OK'),
+      sp_diff:       spItem ? spItem.sp_diff : 0,
+    };
+  });
+}
+
+function filteredProds(tab) {
+  let p = prodsForDate(S[tab].date);
+  if (S[tab].brand !== 'ALL') p = p.filter(x=>x.brand===S[tab].brand);
+  return p;
+}
+
+// ── RANK/RATING HISTORY HELPERS ─────────────────────────────────────
+function getRankH(pid) { return (D.rank_history[pid]||[]); }
+function getRatingH(pid) { return (D.rating_history[pid]||[]); }
+
+function rankTrend(pid, field, days) {
+  const h = getRankH(pid).filter(x=>x[field]!=null);
+  if (h.length<2) return null;
+  const last=h[h.length-1][field], prev=h[Math.max(0,h.length-days)][field];
+  return last-prev;
+}
+
+function ratingTrend(pid, days) {
+  const h = getRatingH(pid).filter(x=>x.rating!=null);
+  if (h.length<2) return null;
+  const last=h[h.length-1].rating, prev=h[Math.max(0,h.length-days)].rating;
+  return +(last-prev).toFixed(1);
+}
+
+// ── CHART HELPERS ───────────────────────────────────────────────────
+const CHART_COLORS = {
+  ba:'#4f8ef7', cap:'#3ecf8e', ss:'#f5a524',
+  grid:'rgba(255,255,255,.05)', tick:'#4a5168',
+};
+
+function dChart(id) { if(charts[id]){charts[id].destroy();delete charts[id];} }
+
+function baseOpts(extraY={}) {
+  return {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{legend:{labels:{color:'#8892a4',font:{size:10},boxWidth:10}}},
+    scales:{
+      x:{ticks:{color:CHART_COLORS.tick,font:{size:9}},grid:{color:CHART_COLORS.grid}},
+      y:{ticks:{color:CHART_COLORS.tick,font:{size:9}},grid:{color:CHART_COLORS.grid},...extraY}
+    }
+  };
+}
+
+// ── PAGE SWITCH ─────────────────────────────────────────────────────
+function showPage(name, btn) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  btn.classList.add('active');
+}
+
+function renderAll(){renderOverview();renderRankings();renderSP();renderRatings();setTimeout(()=>{buildAnalysis(D.latest.date);buildRankAnalysis(D.latest.date);buildSPAnalysis(D.latest.date);buildRatingAnalysis(D.latest.date);},100);}
+
+// ══ OVERVIEW ════════════════════════════════════════════════════════
+function renderOverview() {
+  const prods = filteredProds('ov');
+  const ranked = prods.filter(p=>p.rank_v!=null);
+  const top10  = ranked.filter(p=>p.rank_v<=10).length;
+  const miss   = prods.filter(p=>p.sp_status==='MISMATCH').length;
+  const low    = prods.filter(p=>p.rating!=null&&p.rating<=4.0).length;
+
+  document.getElementById('ov-date-lbl').textContent = fmtDate(S.ov.date);
+  document.getElementById('ov-stats').innerHTML = `
+    <div class="stat-card"><div class="stat-label">Total SKUs</div><div class="stat-value">${prods.length}</div></div>
+    <div class="stat-card"><div class="stat-label">Ranked</div><div class="stat-value">${ranked.length}</div><div class="stat-sub">of ${prods.length}</div></div>
+    <div class="stat-card"><div class="stat-label">Top 10 Ranks</div><div class="stat-value ${top10>0?'sv-green':''}">${top10}</div></div>
+    <div class="stat-card"><div class="stat-label">SP Mismatches</div><div class="stat-value ${miss>0?'sv-red':''}">${miss}</div></div>
+    <div class="stat-card"><div class="stat-label">Low Ratings</div><div class="stat-value ${low>0?'sv-orange':''}">${low}</div></div>
+    <div class="stat-card"><div class="stat-label">Days of Data</div><div class="stat-value">${D.days.length}</div></div>
+  `;
+
+  const brands=[['BARE ANATOMY','ba','BA'],['Chemist at Play','cap','CAP'],['SunScoop','ss','SS']];
+  document.getElementById('ov-pills').innerHTML = brands.map(([b,cls,sh])=>{
+    const bp=D.latest.products.filter(p=>p.brand===b);
+    const avg=(bp.filter(p=>p.rating!=null).reduce((s,p)=>s+p.rating,0)/Math.max(1,bp.filter(p=>p.rating!=null).length)).toFixed(1);
+    return `<div class="brand-pill ${cls}"><div class="dot"></div>
+      <span style="color:var(--text);font-size:13px">${sh}</span>
+      <span style="color:var(--text3)">${bp.length} SKUs</span>
+      <span style="color:var(--yellow)">★ ${avg}</span></div>`;
+  }).join('');
+
+  // SP History chart
+  dChart('sp-hist');
+  document.getElementById('ch-sp-hist').style.cursor='pointer';document.getElementById('ch-sp-hist').onclick=()=>{document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('on'));document.getElementById('page-sp').classList.add('on');document.querySelectorAll('.ntab')[2].classList.add('on');setF('sp','status','MISMATCH',document.querySelector('#page-sp .filter-btn:nth-child(3)'));};charts['sp-hist']=new Chart(document.getElementById('ch-sp-hist').getContext('2d'),{
+    type:'bar',
+    data:{labels:D.sp_history.map(d=>fmtDate(d.date)),
+      datasets:[
+        {label:'OK',data:D.sp_history.map(d=>d.ok),backgroundColor:'rgba(62,207,142,.55)',stack:'s'},
+        {label:'Mismatch',data:D.sp_history.map(d=>d.mismatches),backgroundColor:'rgba(240,82,82,.75)',stack:'s'},
+        {label:'Not Verified',data:D.sp_history.map(d=>d.not_verified),backgroundColor:'rgba(255,255,255,.12)',stack:'s'},
+      ]},
+    options:baseOpts()
+  });
+
+  document.getElementById('ch-sp-hist').style.cursor='pointer';
+  document.getElementById('ch-sp-hist').onclick=function(){document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('on'));document.getElementById('page-sp').classList.add('on');document.querySelectorAll('.ntab')[2].classList.add('on');};
+
+  // Rank dist doughnut
+  dChart('rk-dist');
+  const r1=ranked.filter(p=>p.rank_v===1).length,r25=ranked.filter(p=>p.rank_v>=2&&p.rank_v<=5).length,
+        r610=ranked.filter(p=>p.rank_v>=6&&p.rank_v<=10).length,
+        r1150=ranked.filter(p=>p.rank_v>=11&&p.rank_v<=50).length,
+        r51=ranked.filter(p=>p.rank_v>50).length;
+  charts['rk-dist']=new Chart(document.getElementById('ch-rk-dist').getContext('2d'),{
+    type:'doughnut',
+    data:{labels:['#1','#2-5','#6-10','#11-50','#51+'],
+      datasets:[{data:[r1,r25,r610,r1150,r51],
+        backgroundColor:['rgba(245,200,66,.85)','rgba(79,142,247,.75)','rgba(62,207,142,.65)','rgba(167,139,250,.55)','rgba(255,255,255,.1)'],
+        borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8892a4',font:{size:10},boxWidth:10}}}}
+  });
+
+  // Top 20 table
+  const sorted=[...ranked].sort((a,b)=>a.rank_v-b.rank_v).slice(0,20);
+  document.getElementById('ov-table').innerHTML = sorted.map((p,i)=>`<tr>
+    <td class="mono" style="color:var(--text3)">${i+1}</td>
+    <td><a href="${p.url}" target="_blank">${shortT(p.title)}</a></td>
+    <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:'Courier New',monospace">${p.size||'—'}</span></td>
+    <td><span style="color:${brandColor(p.brand)};font-weight:700;font-size:11px">${brandShort(p.brand)}</span></td>
+    <td>${rb(p.rank_v)}</td>
+    <td>${p.rank_v_name||'—'}</td>
+    <td>${subBadge(p.rank_sub)}</td>
+    <td>${fmtR(p.sp)}</td>
+    <td><div style="display:flex;align-items:center;gap:4px"><span class="star">★</span><span class="rv">${p.rating||'—'}</span><span class="rc">(${(p.rating_count||0).toLocaleString('en-IN')})</span></div></td>
+  </tr>`).join('');
+}
+
+// ══ RANKINGS ════════════════════════════════════════════════════════
+let rkChartMode = {}; // pid → 'v' or 'sub'
+
+function renderRankings() {
+  let prods = filteredProds('rk').filter(p=>p.rank_v!=null).sort((a,b)=>a.rank_v-b.rank_v);
+  const cat = document.getElementById('rk-cat').value||'ALL';
+  const search = (document.getElementById('rk-search').value||'').toLowerCase();
+
+  // Populate category dropdown
+  const catSel = document.getElementById('rk-cat');
+  if (catSel.options.length<=1) {
+    [...new Set(D.latest.products.filter(p=>p.rank_v_name).map(p=>p.rank_v_name))].sort()
+    .forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;catSel.appendChild(o);});
+  }
+
+  // Filter table by category + search
+  let filtered = prods;
+  if (cat!=='ALL') filtered=filtered.filter(p=>p.rank_v_name===cat);
+  if (search) filtered=filtered.filter(p=>p.title.toLowerCase().includes(search)||p.pid.toLowerCase().includes(search));
+
+  document.getElementById('rk-count').textContent=`${filtered.length} products`;
+
+  // Trend charts — top 4 from FILTERED set (so category filter affects charts too)
+  const top4 = filtered.slice(0,4);
+  document.getElementById('rk-charts').innerHTML = top4.map(p=>`
+    <div class="chart-card ${S.rk.selPid===p.pid?'selected':''}" id="cc-${p.pid}" onclick="selectRkChart('${p.pid}')">
+      <div class="chart-title">
+        <span>${shortT(p.title,35)} <span style="color:${brandColor(p.brand)}">#${p.rank_v}</span></span>
+        <span class="chart-title-hint">Click to highlight</span>
+      </div>
+      <div class="chart-tabs">
+        <button class="ctab ${(rkChartMode[p.pid]||'v')==='v'?'active':''}" onclick="event.stopPropagation();setRkMode('${p.pid}','v')">Vertical</button>
+        <button class="ctab ${(rkChartMode[p.pid]||'v')==='sub'?'active':''}" onclick="event.stopPropagation();setRkMode('${p.pid}','sub')">Sub Cat</button>
+      </div>
+      <div class="chart-wrap"><canvas id="rk-c-${p.pid}"></canvas></div>
+    </div>`).join('');
+
+  top4.forEach(p=>drawRkChart(p));
+
+  // Table — highlight selected
+  document.getElementById('rk-table').innerHTML = filtered.length===0
+    ? `<tr><td colspan="9" class="empty">No ranked products</td></tr>`
+    : filtered.map(p=>{
+      const tv=rankTrend(p.pid,'rank_v',7), ts=rankTrend(p.pid,'rank_sub',7);
+      const hl = S.rk.selPid===p.pid ? 'background:rgba(79,142,247,.08);' : '';
+      return `<tr id="tr-${p.pid}" style="${hl}">
+        <td><a href="${p.url}" target="_blank">${shortT(p.title)}</a><br><span class="pid">${p.pid}</span></td>
+        <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:'Courier New',monospace">${p.size||'—'}</span></td>
+        <td><span style="color:${brandColor(p.brand)};font-weight:700;font-size:11px">${brandShort(p.brand)}</span></td>
+        <td>${p.rank_v_name||'—'}</td>
+        <td>${rb(p.rank_v)}</td>
+        <td style="color:var(--text3)">${subBadge(p.rank_sub)}</td>
+        <td style="color:var(--text3)">${superBadge(p.rank_sup)}</td>
+        <td>${trendStr(tv)}</td>
+        <td>${trendStr(ts)}</td>
+      </tr>`;
+    }).join('');
+}
+
+function drawRkChart(p) {
+  const id='rk-c-'+p.pid;
+  dChart(id);
+  const el=document.getElementById(id);
+  if(!el)return;
+  const mode=rkChartMode[p.pid]||'v';
+  const field=mode==='v'?'rank_v':'rank_sub';
+  const label=mode==='v'?'Vertical Rank':'Sub Cat Rank';
+  const lineColor=mode==='v'?'rgba(245,200,66,1)':'rgba(79,142,247,1)';
+  const h=getRankH(p.pid).filter(x=>x[field]!=null);
+  if(h.length<2)return;
+  charts[id]=new Chart(el.getContext('2d'),{
+    type:'line',
+    data:{
+      labels:h.map(x=>fmtDate(x.date)),
+      datasets:[{
+        label,data:h.map(x=>x[field]),
+        borderColor:lineColor,
+        backgroundColor:'transparent',
+        pointBackgroundColor:lineColor,
+        borderWidth:2,pointRadius:4,tension:.35,fill:false
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        y:{
+          reverse:true,
+          ticks:{color:CHART_COLORS.tick,font:{size:9},
+            // Force integer steps
+            callback:v=>Number.isInteger(v)?'#'+v:'',
+            stepSize:1
+          },
+          grid:{color:CHART_COLORS.grid}
+        },
+        x:{ticks:{color:CHART_COLORS.tick,font:{size:9}},grid:{color:CHART_COLORS.grid}}
+      }
+    }
+  });
+}
+
+function setRkMode(pid, mode) {
+  rkChartMode[pid]=mode;
+  // Update tab buttons
+  const cc=document.getElementById('cc-'+pid);
+  if(cc) cc.querySelectorAll('.ctab').forEach(b=>{
+    b.classList.toggle('active', (b.textContent==='Vertical'&&mode==='v')||(b.textContent==='Sub Cat'&&mode==='sub'));
+  });
+  const p=D.latest.products.find(x=>x.pid===pid);
+  if(p)drawRkChart(p);
+}
+
+function selectRkChart(pid) {
+  S.rk.selPid = S.rk.selPid===pid ? null : pid;
+  const info = document.getElementById('rk-sel-info');
+  if(S.rk.selPid) {
+    const p=D.latest.products.find(x=>x.pid===pid);
+    info.textContent = p ? `Highlighted: ${shortT(p.title,50)}` : '';
+    // Scroll table to highlighted row
+    setTimeout(()=>{
+      const row=document.getElementById('tr-'+pid);
+      if(row)row.scrollIntoView({behavior:'smooth',block:'center'});
+    },100);
+  } else {
+    info.textContent='Click a chart to highlight that product below';
+  }
+  renderRankings();
+}
+
+// ══ SP COMPLIANCE ════════════════════════════════════════════════════
+function renderSP() {
+  const prods=filteredProds('sp');
+  const ok=prods.filter(p=>p.sp_status==='OK').length;
+  const miss=prods.filter(p=>p.sp_status==='MISMATCH').length;
+  const nv=prods.filter(p=>p.sp_status==='NOT VERIFIED').length;
+
+  document.getElementById('sp-stats').innerHTML=`
+    <div class="stat-card"><div class="stat-label">Date</div><div class="stat-value" style="font-size:18px">${fmtDate(S.sp.date)}</div></div>
+    <div class="stat-card"><div class="stat-label">SP Correct</div><div class="stat-value sv-green">${ok}</div></div>
+    <div class="stat-card"><div class="stat-label">Mismatches</div><div class="stat-value ${miss>0?'sv-red':''}">${miss}</div></div>
+    <div class="stat-card"><div class="stat-label">Not Verified</div><div class="stat-value">${nv}</div></div>
+    <div class="stat-card"><div class="stat-label">Compliance</div><div class="stat-value ${ok/Math.max(1,prods.length)>.95?'sv-green':'sv-orange'}">${Math.round(ok/Math.max(1,prods.length)*100)}%</div></div>
+  `;
+
+  dChart('sp-trend');
+  charts['sp-trend']=new Chart(document.getElementById('ch-sp-trend').getContext('2d'),{
+    type:'line',
+    data:{labels:D.sp_history.map(d=>fmtDate(d.date)),
+      datasets:[
+        {label:'Mismatches',data:D.sp_history.map(d=>d.mismatches),borderColor:'rgba(240,82,82,.9)',backgroundColor:'rgba(240,82,82,.12)',fill:true,tension:.4,borderWidth:2,pointRadius:3},
+        {label:'Not Verified',data:D.sp_history.map(d=>d.not_verified),borderColor:'rgba(255,255,255,.25)',backgroundColor:'transparent',tension:.4,borderWidth:1.5,pointRadius:2},
+      ]},
+    options:baseOpts()
+  });
+
+  let filtered=prods;
+  if(S.sp.status!=='ALL')filtered=filtered.filter(p=>p.sp_status===S.sp.status);
+  document.getElementById('sp-count').textContent=`${filtered.length} products`;
+  document.getElementById('sp-table').innerHTML=filtered.length===0
+    ?`<tr><td colspan="8" class="empty">No products match filter</td></tr>`
+    :filtered.map(p=>{
+      const d=p.sp_diff;
+      const dStr=d==null?'—':d<0?`<span class="diff-neg">${d}</span>`:d>0?`<span class="diff-pos">+${d}</span>`:'<span style="color:var(--text3)">0</span>';
+      const sc=p.sp_status==='OK'?'sp-ok':p.sp_status==='MISMATCH'?'sp-miss':'sp-nv';
+      return `<tr>
+        <td><a href="${p.url}" target="_blank">${shortT(p.title)}</a></td>
+        <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:'Courier New',monospace">${p.size||'—'}</span></td>
+        <td><span style="color:${brandColor(p.brand)};font-weight:700;font-size:11px">${brandShort(p.brand)}</span></td>
+        <td>${fmtR(p.mrp)}</td><td>${fmtR(p.expected_sp)}</td><td style="font-weight:700">${fmtR(p.sp)}</td>
+        <td>${dStr}</td><td><span class="${sc}">${p.sp_status||'—'}</span></td>
+      </tr>`;
+    }).join('');
+}
+
+// ══ RATINGS ══════════════════════════════════════════════════════════
+function renderRatings() {
+  let prods=filteredProds('rt').filter(p=>p.rating!=null);
+  const avg=(prods.reduce((s,p)=>s+p.rating,0)/Math.max(1,prods.length)).toFixed(2);
+  const low=prods.filter(p=>p.rating<=4.0).length;
+  const drops=prods.filter(p=>{const c=ratingTrend(p.pid,7);return c!=null&&c<0;}).length;
+  const totalRev=prods.reduce((s,p)=>s+(p.rating_count||0),0);
+
+  document.getElementById('rt-stats').innerHTML=`
+    <div class="stat-card"><div class="stat-label">Date</div><div class="stat-value" style="font-size:18px">${fmtDate(S.rt.date)}</div></div>
+    <div class="stat-card"><div class="stat-label">Avg Rating</div><div class="stat-value ${avg>=4.3?'sv-green':avg>=4.0?'sv-orange':'sv-red'}">${avg}</div></div>
+    <div class="stat-card"><div class="stat-label">Low (≤4.0)</div><div class="stat-value ${low>0?'sv-orange':''}">${low}</div></div>
+    <div class="stat-card"><div class="stat-label">7d Drops</div><div class="stat-value ${drops>0?'sv-red':''}">${drops}</div></div>
+    <div class="stat-card"><div class="stat-label">Total Reviews</div><div class="stat-value">${Math.round(totalRev/1000)}K</div></div>
+  `;
+
+  dChart('rt-brand');
+  const brands=[['BARE ANATOMY','ba'],['Chemist at Play','cap'],['SunScoop','ss']];
+  charts['rt-brand']=new Chart(document.getElementById('ch-rt-brand').getContext('2d'),{
+    type:'bar',
+    data:{labels:['BA','CAP','SS'],datasets:[{
+      data:brands.map(([b])=>{
+        const bp=D.latest.products.filter(p=>p.brand===b&&p.rating!=null);
+        return +(bp.reduce((s,p)=>s+p.rating,0)/Math.max(1,bp.length)).toFixed(2);
+      }),
+      backgroundColor:['rgba(79,142,247,.75)','rgba(62,207,142,.75)','rgba(245,165,36,.75)'],
+      borderRadius:5
+    }]},
+    options:{...baseOpts({min:3.5,max:5}),plugins:{legend:{display:false}}}
+  });
+
+  dChart('rt-dist');
+  const bins=[0,0,0,0,0];
+  D.latest.products.filter(p=>p.rating).forEach(p=>{
+    if(p.rating<4.0)bins[0]++;
+    else if(p.rating<4.2)bins[1]++;
+    else if(p.rating<4.4)bins[2]++;
+    else if(p.rating<4.6)bins[3]++;
+    else bins[4]++;
+  });
+  charts['rt-dist']=new Chart(document.getElementById('ch-rt-dist').getContext('2d'),{
+    type:'bar',
+    data:{labels:['<4.0','4.0-4.1','4.2-4.3','4.4-4.5','4.6+'],
+      datasets:[{data:bins,backgroundColor:['rgba(240,82,82,.8)','rgba(245,165,36,.7)','rgba(62,207,142,.5)','rgba(62,207,142,.7)','rgba(62,207,142,.9)'],borderRadius:5}]},
+    options:{...baseOpts(),plugins:{legend:{display:false}}}
+  });
+
+  let filtered=prods;
+  if(S.rt.rf==='drops') filtered=filtered.filter(p=>{const c=ratingTrend(p.pid,7);return c!=null&&c<0;});
+  if(S.rt.rf==='low') filtered=filtered.filter(p=>p.rating<=4.0);
+  filtered.sort((a,b)=>a.rating-b.rating);
+  document.getElementById('rt-count').textContent=`${filtered.length} products`;
+
+  document.getElementById('rt-table').innerHTML=filtered.length===0
+    ?`<tr><td colspan="7" class="empty">No products match filter</td></tr>`
+    :filtered.map(p=>{
+      const c7=ratingTrend(p.pid,7),c30=ratingTrend(p.pid,30);
+      const rc=p.rating>=4.4?'var(--green)':p.rating>=4.0?'var(--text)':'var(--red)';
+      return `<tr>
+        <td><a href="${p.url}" target="_blank">${shortT(p.title)}</a></td>
+        <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:'Courier New',monospace">${p.size||'—'}</span></td>
+        <td><span style="color:${brandColor(p.brand)};font-weight:700;font-size:11px">${brandShort(p.brand)}</span></td>
+        <td><div style="display:flex;align-items:center;gap:4px"><span class="star">★</span><span class="rv" style="color:${rc}">${p.rating}</span></div></td>
+        <td class="mono" style="color:var(--text3)">${(p.rating_count||0).toLocaleString('en-IN')}</td>
+        <td>${trendStr(c7)}</td><td>${trendStr(c30)}</td>
+      </tr>`;
+    }).join('');
+}
+
+
+function showAN(id,html){const e=document.getElementById(id);if(!e)return;if(!html){e.style.display='none';return;}document.getElementById(id+'-c').innerHTML=html;e.style.display='block';}
+function getPD(date){if(!D||!date)return null;const i=D.days.indexOf(date);return i>0?D.days[i-1]:null;}
+function getRkC(date,pd){const out=[];D.latest.products.forEach(p=>{const h=D.rank_history[p.pid]||[];const cur=h.filter(e=>e.date<=date);const prev=pd?h.filter(e=>e.date<=pd):[];const cv=cur.length?cur[cur.length-1]:null;const pv=prev.length?prev[prev.length-1]:null;const dv=pv&&pv.rank_v!=null&&cv.rank_v!=null?cv.rank_v-pv.rank_v:null;const ds=pv&&pv.rank_sub!=null&&cv.rank_sub!=null?cv.rank_sub-pv.rank_sub:null;if(cv)out.push({pid:p.pid,t:short(p.title,34),br:bClass(p.brand),bc:bColor(p.brand),cv:cv.rank_v,pv:pv?pv.rank_v:null,cs:cv.rank_sub,ps:pv?pv.rank_sub:null,dv:dv,ds:ds});});return out;}
+function card(html){return`<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:7px;padding:9px 11px">${html}</div>`;}
+function hdr(col,icon,txt){return`<div style="color:${col};font-weight:700;margin-bottom:6px;font-size:11px;border-bottom:1px solid rgba(255,255,255,.06);padding-bottom:5px">${icon} ${txt}</div>`;}
+function rrow(r,sub){const dv=r.dv;const ds=r.ds;const dStr=(dv==null||isNaN(dv))?'':dv<0?`<span style="color:var(--green)">▲${Math.abs(dv)}</span>`:dv>0?`<span style="color:var(--red)">▼${dv}</span>`:'';const prev=r.pv!=null&&!isNaN(r.pv)?`<span style="color:var(--text3)">#${r.pv}→</span>`:'';const subStr=sub&&r.cs!=null?`<span style="color:rgba(79,142,247,.7);font-size:10px;margin-left:5px">sub#${r.cs}${(ds==null||isNaN(ds))?'':ds<0?`<span style="color:var(--green)">▲${Math.abs(ds)}</span>`:`<span style="color:var(--red)">▼${ds}</span>`}</span>`:'';if(!r.t||r.t==='nan'||!r.br||r.br==='nan')return'';return`<div style="padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);display:flex;justify-content:space-between;align-items:center;gap:4px"><div style="flex:1;min-width:0"><span style="color:${r.bc};font-weight:700;font-size:10px;margin-right:3px">${r.br}</span><span style="color:var(--text2);font-size:11px">${r.t}</span></div><div style="white-space:nowrap;font-family:'Courier New',monospace;font-size:11px">${prev}<span style="color:var(--yellow);font-weight:700">#${r.cv}</span> ${dStr}${subStr}</div></div>`;}
+
+function buildAnalysis(date){
+  if(!D)return;if(!date)date=D.latest.date;
+  const pd=getPD(date);const rkc=getRkC(date,pd);
+  const gains=rkc.filter(r=>r.dv!=null&&!isNaN(r.dv)&&r.dv<0&&r.cv!=null&&r.cv<100).sort((a,b)=>a.dv-b.dv).slice(0,5);
+  const drops=rkc.filter(r=>r.dv!=null&&!isNaN(r.dv)&&r.dv>0&&r.cv!=null&&r.cv<100).sort((a,b)=>b.dv-a.dv).slice(0,5);
+  const rtC=[];D.latest.products.forEach(p=>{const h=D.rating_history[p.pid]||[];const cur=h.filter(e=>e.date<=date);const prev=pd?h.filter(e=>e.date<=pd):[];const cv=cur.length?cur[cur.length-1].rating:null;const pv=prev.length?prev[prev.length-1].rating:null;if(cv!=null&&pv!=null&&cv!==pv)rtC.push({t:short(p.title,28),br:bClass(p.brand),bc:bColor(p.brand),prev:pv,cur:cv,d:+(cv-pv).toFixed(1)});});
+  const lowRev=D.latest.products.filter(p=>p.pid&&p.title&&p.title!=='nan'&&p.brand&&p.brand!=='nan').map(p=>{const h=(D.rating_history[p.pid]||[]).filter(e=>e.date<=date);return{...p,cnt:h.length?h[h.length-1].count:(p.rating_count||0)};}).filter(p=>(p.cnt||0)<50).sort((a,b)=>a.cnt-b.cnt);
+  const zeroes=lowRev.filter(p=>!p.cnt&&p.title&&p.title!=='nan');
+  const spD=D.sp_history.find(d=>d.date===date);const spP=pd?D.sp_history.find(d=>d.date===pd):null;const spDelta=spD&&spP?spD.mismatches-spP.mismatches:null;
+  const cards=[];
+  cards.push(card(`${hdr('var(--accent)','📅',`${fmtDate(date)} vs ${fmtDate(pd||'—')}`)}<div style="color:var(--text3);font-size:10px;line-height:1.7"><span style="color:var(--green)">▲${gains.length}</span> gains &nbsp;<span style="color:var(--red)">▼${drops.length}</span> drops<br><span style="color:var(--yellow)">${rtC.length}</span> rating Δ${spDelta!=null?`&nbsp;<span style="${spDelta>0?'color:var(--red)':'color:var(--green)'}">${spDelta>0?'+':''}${spDelta}</span> SP`:''}<br><span style="color:var(--purple)">${lowRev.length}</span> low reviews (${zeroes.length} zero)</div>`));
+  if(gains.length)cards.push(card(hdr('var(--green)','▲',`Rank Gains (${gains.length})`)+gains.map(r=>rrow(r,false)).join('')));
+  if(drops.length)cards.push(card(hdr('var(--red)','▼',`Rank Drops (${drops.length})`)+drops.map(r=>rrow(r,false)).join('')));
+  if(rtC.length)cards.push(card(hdr('var(--yellow)','★',`Rating Changes (${rtC.length})`)+rtC.map(r=>`<div style="margin-bottom:4px"><span style="color:${r.bc};font-size:10px;font-weight:700">${r.br}</span> <span style="color:var(--text2)">${r.t}</span><br><span style="${r.d<0?'color:var(--red)':'color:var(--green)'}">${r.d>0?'▲':'▼'}${Math.abs(r.d)}</span> <span style="color:var(--text3)">${r.prev}→${r.cur}</span></div>`).join('')));
+  if(zeroes.length)cards.push(card(hdr('var(--red)','🚨',`Zero Reviews (${zeroes.length})`)+zeroes.map(p=>`<div style="margin-bottom:4px;display:flex;justify-content:space-between"><span style="color:${bColor(p.brand)};font-size:10px;font-weight:700">${bClass(p.brand)}</span><span style="color:var(--text2);margin:0 6px">${short(p.title,28)}</span><span style="color:var(--red);font-weight:700">0</span></div>`).join('')));
+  if(lowRev.filter(p=>p.cnt>0).length)cards.push(card(hdr('var(--purple)','💬',`Low Reviews <50`)+lowRev.filter(p=>p.cnt>0).slice(0,8).map(p=>`<div style="margin-bottom:3px;display:flex;justify-content:space-between"><span style="color:var(--text2)">${short(p.title,28)}</span><span style="color:var(--purple);font-weight:700">${p.cnt}</span></div>`).join('')));
+  showAN('ov-an',cards.length>1?`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:8px">${cards.join('')}</div>`:null);
+}
+
+function buildRankAnalysis(date){
+  if(!D)return;if(!date)date=D.latest.date;
+  const pd=getPD(date);const rkc=getRkC(date,pd);
+  // Only show gains/drops for rank_v < 100; filter out NaN
+  const gains=rkc.filter(r=>r.dv!=null&&!isNaN(r.dv)&&r.dv<0&&r.cv!=null&&r.cv<100).sort((a,b)=>a.dv-b.dv);
+  const drops=rkc.filter(r=>r.dv!=null&&!isNaN(r.dv)&&r.dv>0&&r.cv!=null&&r.cv<100).sort((a,b)=>b.dv-a.dv);
+  const top10=rkc.filter(r=>r.cv!=null&&r.cv<=10).sort((a,b)=>a.cv-b.cv);
+  const newT10=top10.filter(r=>r.pv!=null&&!isNaN(r.pv)&&r.pv>10);
+  const leftT10=rkc.filter(r=>r.cv!=null&&r.cv>10&&r.pv!=null&&!isNaN(r.pv)&&r.pv<=10);
+  // Sub cat movers: only for products with vertical rank < 10
+  const subM=rkc.filter(r=>r.cv!=null&&r.cv<10&&r.ds!=null&&!isNaN(r.ds)&&r.ds!==0).sort((a,b)=>Math.abs(b.ds)-Math.abs(a.ds));
+  let html=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">`;
+  html+=card(hdr('var(--yellow)','🥇',`Top 10 Vertical (${top10.length})`)+`<div style="max-height:200px;overflow-y:auto">${top10.map(r=>rrow(r,true)).join('')}</div>${newT10.length?`<div style="color:var(--green);font-size:10px;margin-top:6px">🆕 Entered: ${newT10.map(r=>r.t.slice(0,18)).join(', ')}</div>`:''}${leftT10.length?`<div style="color:var(--red);font-size:10px;margin-top:4px">⬇ Left: ${leftT10.map(r=>r.t.slice(0,18)).join(', ')}</div>`:''}`);
+  if(gains.length)html+=card(hdr('var(--green)','▲',`All Rank Gains (${gains.length})`)+`<div style="max-height:200px;overflow-y:auto">${gains.map(r=>rrow(r,r.cv<=20)).join('')}</div>`);
+  if(drops.length)html+=card(hdr('var(--red)','▼',`All Rank Drops (${drops.length})`)+`<div style="max-height:200px;overflow-y:auto">${drops.map(r=>rrow(r,r.cv<=20)).join('')}</div>`);
+  if(subM.length)html+=card(hdr('var(--accent)','📊',`Sub Cat Movers — Top 20 (${subM.length})`)+`<div style="max-height:200px;overflow-y:auto">${subM.map(r=>`<div style="margin-bottom:5px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)"><span style="color:${r.bc};font-size:10px;font-weight:700">${r.br}</span> <span style="color:var(--text2)">${r.t}</span><br><span style="color:var(--yellow)">V#${r.cv}</span> <span style="color:rgba(79,142,247,.9);margin-left:8px">Sub: <span style="color:var(--text3)">#${r.ps}→</span>#${r.cs} <span style="${r.ds<0?'color:var(--green)':'color:var(--red)'}">${r.ds<0?'▲'+Math.abs(r.ds):'▼'+r.ds}</span></span></div>`).join('')}</div>`);
+  html+='</div>';
+  showAN('rk-an',gains.length+drops.length>0?html:null);
+}
+
+function buildSPAnalysis(date){
+  if(!D)return;if(!date)date=D.latest.date;
+  const pd=getPD(date);
+  const spD=D.sp_history.find(d=>d.date===date);
+  const spP=pd?D.sp_history.find(d=>d.date===pd):null;
+  if(!spD){showAN('sp-an',null);return;}
+  const mPids=new Set((spD.items||[]).map(x=>x.pid));
+  const pPids=new Set((spP?.items||[]).map(x=>x.pid));
+  const newM=[...mPids].filter(pid=>!pPids.has(pid));
+  const res=[...pPids].filter(pid=>!mPids.has(pid));
+  const miss=(spD.items||[]).map(item=>{const p=D.latest.products.find(x=>x.pid===item.pid);return p?{...p,sd:item.sp_diff,sl:item.sp}:null;}).filter(Boolean).sort((a,b)=>a.sd-b.sd);
+  const delta=spP?spD.mismatches-spP.mismatches:null;
+  let html=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">`;
+  html+=card(`${hdr('var(--red)','💰','SP Summary')}<div style="display:flex;gap:16px;margin-bottom:8px"><div><div style="color:var(--text3);font-size:10px">Today</div><div style="color:var(--red);font-weight:700;font-size:20px">${spD.mismatches}</div></div>${spP?`<div><div style="color:var(--text3);font-size:10px">Yesterday</div><div style="font-weight:700;font-size:20px">${spP.mismatches}</div></div>`:''}${delta!=null?`<div><div style="color:var(--text3);font-size:10px">Change</div><div style="font-weight:700;font-size:20px;color:${delta>0?'var(--red)':'var(--green)'}">${delta>0?'+':''}${delta}</div></div>`:''}</div>${newM.length?`<div style="color:var(--red);font-size:10px">🆕 New: ${newM.length}</div>`:''}${res.length?`<div style="color:var(--green);font-size:10px">✅ Fixed: ${res.length}</div>`:''}`);
+  if(miss.length)html+=card(`${hdr('var(--red)','⚠️',`Mismatches (${miss.length})`)}<div style="max-height:200px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:11px"><tr style="color:var(--text3);border-bottom:1px solid rgba(255,255,255,.06)"><th style="text-align:left;padding:4px 0">Product</th><th style="text-align:right;padding:4px">Exp</th><th style="text-align:right;padding:4px">Live</th><th style="text-align:right;padding:4px">Diff</th></tr>${miss.map(p=>`<tr style="border-bottom:1px solid rgba(255,255,255,.04)"><td style="padding:5px 0"><span style="color:${bColor(p.brand)};font-weight:700;font-size:10px">${bClass(p.brand)}</span> <span style="color:var(--text2)">${short(p.title,24)}</span></td><td style="text-align:right;color:var(--text3)">${fmtR(p.expected_sp)}</td><td style="text-align:right;font-weight:700;color:var(--red)">${fmtR(p.sp)}</td><td style="text-align:right;color:var(--red);font-family:'Courier New',monospace">${p.sd}</td></tr>`).join('')}</table></div>`);
+  const newProds=newM.map(pid=>{const p=D.latest.products.find(x=>x.pid===pid);const item=spD.items?.find(x=>x.pid===pid);return p?{...p,sd:item?.sp_diff}:null;}).filter(Boolean);
+  if(newProds.length)html+=card(`${hdr('var(--orange)','🆕',`New Mismatches (${newProds.length})`)}<div>${newProds.map(p=>`<div style="margin-bottom:4px;display:flex;justify-content:space-between"><span style="color:${bColor(p.brand)};font-size:10px;font-weight:700">${bClass(p.brand)}</span><span style="color:var(--text2);flex:1;margin:0 8px">${short(p.title,28)}</span><span style="color:var(--red);font-family:'Courier New',monospace">${p.sd}</span></div>`).join('')}</div>`);
+  const resProds=res.map(pid=>D.latest.products.find(x=>x.pid===pid)).filter(Boolean);
+  if(resProds.length)html+=card(`${hdr('var(--green)','✅',`Resolved (${resProds.length})`)}<div>${resProds.map(p=>`<div style="margin-bottom:4px"><span style="color:${bColor(p.brand)};font-size:10px;font-weight:700">${bClass(p.brand)}</span> <span style="color:var(--text2)">${short(p.title,30)}</span></div>`).join('')}</div>`);
+  html+='</div>';
+  showAN('sp-an',html);
+}
+
+function buildRatingAnalysis(date){
+  if(!D)return;if(!date)date=D.latest.date;
+  const pd=getPD(date);
+  const rtD=[],revD=[];
+  D.latest.products.forEach(p=>{const h=D.rating_history[p.pid]||[];const cur=h.filter(e=>e.date<=date);const prev=pd?h.filter(e=>e.date<=pd):[];const cv=cur.length?cur[cur.length-1]:null;const pv=prev.length?prev[prev.length-1]:null;if(cv&&pv&&cv.rating!==pv.rating)rtD.push({t:short(p.title,34),br:bClass(p.brand),bc:bColor(p.brand),prev:pv.rating,cur:cv.rating,d:+(cv.rating-pv.rating).toFixed(1)});if(cv&&pv&&cv.count!==pv.count)revD.push({t:short(p.title,34),br:bClass(p.brand),bc:bColor(p.brand),prev:pv.count||0,cur:cv.count||0,d:(cv.count||0)-(pv.count||0)});});
+  const allRev=D.latest.products.filter(p=>p.pid&&p.title&&p.title!=='nan'&&p.brand&&p.brand!=='nan').map(p=>{const h=(D.rating_history[p.pid]||[]).filter(e=>e.date<=date);return{...p,cnt:h.length?h[h.length-1].count:(p.rating_count||0)};});
+  const zeroes=allRev.filter(p=>!p.cnt).sort((a,b)=>a.rating-b.rating);
+  const lowRev=allRev.filter(p=>p.cnt>0&&p.cnt<50).sort((a,b)=>a.cnt-b.cnt);
+  const drops=rtD.filter(r=>r.d<0).sort((a,b)=>a.d-b.d);
+  const gains=rtD.filter(r=>r.d>0).sort((a,b)=>b.d-a.d);
+  const topGain=revD.filter(r=>r.d>0).sort((a,b)=>b.d-a.d).slice(0,8);
+  let html=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">`;
+  if(drops.length)html+=card(`${hdr('var(--red)','⬇️',`Rating Drops (${drops.length})`)}<div>${drops.map(r=>`<div style="margin-bottom:5px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)"><span style="color:${r.bc};font-size:10px;font-weight:700">${r.br}</span> <span style="color:var(--text2)">${r.t}</span><br><span style="color:var(--text3)">${r.prev}</span>→<span style="color:var(--red);font-weight:700">${r.cur}</span> <span style="color:var(--red)">▼${Math.abs(r.d)}</span></div>`).join('')}</div>`);
+  if(gains.length)html+=card(`${hdr('var(--green)','⬆️',`Rating Gains (${gains.length})`)}<div>${gains.map(r=>`<div style="margin-bottom:5px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)"><span style="color:${r.bc};font-size:10px;font-weight:700">${r.br}</span> <span style="color:var(--text2)">${r.t}</span><br><span style="color:var(--text3)">${r.prev}</span>→<span style="color:var(--green);font-weight:700">${r.cur}</span> <span style="color:var(--green)">▲${r.d}</span></div>`).join('')}</div>`);
+  if(zeroes.length)html+=card(`${hdr('var(--red)','🚨',`Zero Reviews — Urgent (${zeroes.length})`)}<div style="color:var(--text3);font-size:10px;margin-bottom:8px">No social proof. Prioritise immediately.</div>${zeroes.map(p=>`<div style="margin-bottom:4px;display:flex;justify-content:space-between;align-items:center"><div><span style="color:${bColor(p.brand)};font-size:10px;font-weight:700">${bClass(p.brand)}</span> <span style="color:var(--text2)">${short(p.title,28)}</span></div><span style="color:var(--red);font-weight:700;margin-left:8px">0 ★${p.rating||'—'}</span></div>`).join('')}`);
+  if(lowRev.length)html+=card(`${hdr('var(--purple)','💬',`Low Reviews <50 (${lowRev.length})`)}<div style="max-height:180px;overflow-y:auto">${lowRev.map(p=>`<div style="margin-bottom:4px;display:flex;justify-content:space-between"><span style="color:var(--text2)">${short(p.title,26)}</span><span style="color:var(--purple);font-weight:700">${p.cnt}</span></div>`).join('')}</div>`);
+  if(topGain.length)html+=card(`${hdr('var(--cyan)','📈',`Top Review Gains (${topGain.length})`)}<div>${topGain.map(r=>`<div style="margin-bottom:4px;display:flex;justify-content:space-between"><span style="color:var(--text2)">${r.t}</span><span style="color:var(--green);font-weight:700;font-family:'Courier New',monospace">+${r.d.toLocaleString('en-IN')}</span></div>`).join('')}</div>`);
+  html+='</div>';
+  showAN('rt-an',html);
+}
+
+
+loadData();
+</script>
+</body>
+</html>

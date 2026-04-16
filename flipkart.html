@@ -82,6 +82,8 @@ input.fsearch::placeholder{color:var(--text3)}
 
 /* CARD / TABLE */
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:14px}
+.an-scroll{overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border2) transparent}
+.an-scroll::-webkit-scrollbar{width:3px}.an-scroll::-webkit-scrollbar-track{background:transparent}.an-scroll::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 .card-hdr{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .card-title{font-size:13px;font-weight:700}.card-sub{font-size:11px;color:var(--text3)}
 table{width:100%;border-collapse:collapse}
@@ -206,7 +208,6 @@ td a:hover{color:var(--accent)}
     <select class="fsel" id="rk-date-sel" onchange="setDateSel('rk')"><option value="">Latest</option></select>
   </div>
   <div id="rk-an" style="display:none;margin-bottom:12px"><div id="rk-an-c"></div></div>
-  <div class="selected-info" id="rk-sel-info">Click a chart to highlight that product below</div>
   <div class="chart-grid" id="rk-charts"></div>
   <div class="card">
     <div class="card-hdr"><span class="card-title">All Products — Rank Tracker</span><span class="card-sub" id="rk-count"></span></div>
@@ -275,7 +276,7 @@ td a:hover{color:var(--accent)}
   </div>
   <div class="card">
     <div class="card-hdr"><span class="card-title">All Products — Rating Tracker</span><span class="card-sub" id="rt-count"></span></div>
-    <table><thead><tr><th>Product</th><th>Size</th><th>Brand</th><th>Rating</th><th>Reviews</th><th>7d Change</th><th>30d Change</th></tr></thead>
+    <table><thead><tr><th>Product</th><th>Size</th><th>Brand</th><th>Rating</th><th>Reviews</th><th>7d Rating Δ</th><th>30d Rating Δ</th><th>7d Reviews +</th></tr></thead>
     <tbody id="rt-table"></tbody></table>
   </div>
 </div>
@@ -364,18 +365,21 @@ function setDateSel(tab){
 // ── FILTER HANDLER ──────────────────────────────────────────────────
 function setF(tab, key, val, btn) {
   S[tab][key] = val;
-  // Toggle active within same group
-  const grpMap = {brand:['ALL','BARE ANATOMY','Chemist at Play','SunScoop','BA','CAP','SS'],
+  const grpMap = {brand:['ALL','BARE ANATOMY','Chemist at Play','SunScoop'],
                   status:['ALL','MISMATCH','OK','NOT VERIFIED'],rf:['drops','low','all']};
   const grp = grpMap[key]||[];
+  // Remove active from all buttons in this group
   btn.closest('.filters').querySelectorAll('.fbtn').forEach(b=>{
-    if(grp.some(g=>b.textContent.trim()===g||b.textContent.trim()===brandShort(g))) b.classList.remove('active');
+    const t=b.textContent.trim();
+    if(grp.includes(t)||t==='BA'||t==='CAP'||t==='SS'||t==='All') b.classList.remove('active');
   });
   btn.classList.add('active');
-  if(tab==='ov') renderOverview();
-  if(tab==='rk') renderRankings();
-  if(tab==='sp') renderSP();
-  if(tab==='rt') renderRatings();
+  // Re-render analysis with brand filter applied
+  const d = S[tab].date || (D ? D.latest.date : null);
+  if(tab==='ov'){renderOverview();buildAnalysis(d);}
+  if(tab==='rk'){renderRankings();buildRankAnalysis(d);}
+  if(tab==='sp'){renderSP();buildSPAnalysis(d);}
+  if(tab==='rt'){renderRatings();buildRatingAnalysis(d);}
 }
 
 // ── GET SNAPSHOT FOR DATE ───────────────────────────────────────────
@@ -397,9 +401,10 @@ function prodsForDate(date) {
       ...p,
       rank_v:        re  ? re.rank_v   : null,
       rank_sub:      re  ? re.rank_sub  : null,
-      rank_sup:      re  ? re.rank_sup  : null,
-      rank_v_name:   p.rank_v_name,
-      rank_sub_name: p.rank_sub_name,
+      rank_sup:      (re && re.rank_sup!=null) ? re.rank_sup : (p.rank_sup||null),
+      rank_v_name:   (p.rank_v_name&&p.rank_v_name!=='nan')?p.rank_v_name:'',
+      rank_sub_name: (p.rank_sub_name&&p.rank_sub_name!=='nan')?p.rank_sub_name:'',
+      rank_sup_name: (p.rank_sup_name&&p.rank_sup_name!=='nan')?p.rank_sup_name:'',
       rating:        rte ? rte.rating   : p.rating,
       rating_count:  rte ? (rte.count || rte.rating_count || 0) : p.rating_count,
       sp_status:     spItem ? 'MISMATCH' : (d===D.latest.date ? p.sp_status : 'OK'),
@@ -528,7 +533,7 @@ function renderOverview() {
     <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:'Courier New',monospace">${p.size||'—'}</span></td>
     <td><span style="color:${brandColor(p.brand)};font-weight:700;font-size:11px">${brandShort(p.brand)}</span></td>
     <td>${rb(p.rank_v)}</td>
-    <td>${p.rank_v_name||'—'}</td>
+    <td>${(p.rank_v_name&&p.rank_v_name!=='nan')?p.rank_v_name:'—'}</td>
     <td>${subBadge(p.rank_sub)}</td>
     <td>${fmtR(p.sp)}</td>
     <td><div style="display:flex;align-items:center;gap:4px"><span class="star">★</span><span class="rv">${p.rating||'—'}</span><span class="rc">(${(p.rating_count||0).toLocaleString('en-IN')})</span></div></td>
@@ -536,8 +541,6 @@ function renderOverview() {
 }
 
 // ══ RANKINGS ════════════════════════════════════════════════════════
-let rkChartMode = {}; // pid → 'v' or 'sub'
-
 function renderRankings() {
   let prods = filteredProds('rk').filter(p=>p.rank_v!=null).sort((a,b)=>a.rank_v-b.rank_v);
   const cat = document.getElementById('rk-cat').value||'ALL';
@@ -563,12 +566,8 @@ function renderRankings() {
     <div class="chart-card ${S.rk.selPid===p.pid?'selected':''}" id="cc-${p.pid}" onclick="selectRkChart('${p.pid}')">
       <div class="chart-title">
         <span>${shortT(p.title,35)} <span style="color:${brandColor(p.brand)}">#${p.rank_v}</span></span>
-        <span class="chart-title-hint">Click to highlight</span>
       </div>
-      <div class="chart-tabs">
-        <button class="ctab ${(rkChartMode[p.pid]||'v')==='v'?'active':''}" onclick="event.stopPropagation();setRkMode('${p.pid}','v')">Vertical</button>
-        <button class="ctab ${(rkChartMode[p.pid]||'v')==='sub'?'active':''}" onclick="event.stopPropagation();setRkMode('${p.pid}','sub')">Sub Cat</button>
-      </div>
+
       <div class="chart-wrap"><canvas id="rk-c-${p.pid}"></canvas></div>
     </div>`).join('');
 
@@ -584,10 +583,10 @@ function renderRankings() {
         <td><a href="${p.url}" target="_blank">${shortT(p.title)}</a><br><span class="pid">${p.pid}</span></td>
         <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:'Courier New',monospace">${p.size||'—'}</span></td>
         <td><span style="color:${brandColor(p.brand)};font-weight:700;font-size:11px">${brandShort(p.brand)}</span></td>
-        <td>${p.rank_v_name||'—'}</td>
+        <td>${(p.rank_v_name&&p.rank_v_name!=='nan')?p.rank_v_name:'—'}</td>
         <td>${rb(p.rank_v)}</td>
         <td style="color:var(--text3)">${subBadge(p.rank_sub)}</td>
-        <td style="color:var(--text3)">${superBadge(p.rank_sup)}</td>
+        <td style="color:var(--text3)">${superBadge(p.rank_sup)}${p.rank_sup_name?`<span style="color:var(--text3);font-size:10px;margin-left:3px">${p.rank_sup_name}</span>`:''}</td>
         <td>${trendStr(tv)}</td>
         <td>${trendStr(ts)}</td>
       </tr>`;
@@ -599,36 +598,54 @@ function drawRkChart(p) {
   dChart(id);
   const el=document.getElementById(id);
   if(!el)return;
-  const mode=rkChartMode[p.pid]||'v';
-  const field=mode==='v'?'rank_v':'rank_sub';
-  const label=mode==='v'?'Vertical Rank':'Sub Cat Rank';
-  const lineColor=mode==='v'?'rgba(245,200,66,1)':'rgba(79,142,247,1)';
-  const h=getRankH(p.pid).filter(x=>x[field]!=null);
-  if(h.length<2)return;
+  const hAll=getRankH(p.pid);
+  const hV=hAll.filter(x=>x.rank_v!=null);
+  const hS=hAll.filter(x=>x.rank_sub!=null);
+  // Use all dates from vertical history as labels
+  if(hV.length<1)return;
+  const labels=hV.map(x=>fmtDate(x.date));
+  const datasets=[{
+    label:'Vertical',
+    data:hV.map(x=>x.rank_v),
+    borderColor:'rgba(245,200,66,1)',
+    backgroundColor:'transparent',
+    pointBackgroundColor:'rgba(245,200,66,1)',
+    borderWidth:2,pointRadius:3,tension:.35,fill:false,
+    yAxisID:'y'
+  }];
+  // Only add sub cat line if data exists and has different scale
+  if(hS.length>=1){
+    // Map sub ranks to same date labels
+    const subMap={};hS.forEach(x=>{subMap[x.date]=x.rank_sub;});
+    const subData=hV.map(x=>subMap[x.date]??null);
+    if(subData.some(v=>v!=null)){
+      datasets.push({
+        label:'Sub Cat',
+        data:subData,
+        borderColor:'rgba(79,142,247,.8)',
+        backgroundColor:'transparent',
+        pointBackgroundColor:'rgba(79,142,247,.8)',
+        borderWidth:1.5,pointRadius:3,tension:.35,fill:false,
+        yAxisID:'y2'
+      });
+    }
+  }
   charts[id]=new Chart(el.getContext('2d'),{
     type:'line',
-    data:{
-      labels:h.map(x=>fmtDate(x.date)),
-      datasets:[{
-        label,data:h.map(x=>x[field]),
-        borderColor:lineColor,
-        backgroundColor:'transparent',
-        pointBackgroundColor:lineColor,
-        borderWidth:2,pointRadius:4,tension:.35,fill:false
-      }]
-    },
+    data:{labels,datasets},
     options:{
       responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false}},
+      plugins:{legend:{display:datasets.length>1,labels:{color:'#8892a4',font:{size:9},boxWidth:8,padding:6}}},
       scales:{
         y:{
-          reverse:true,
-          ticks:{color:CHART_COLORS.tick,font:{size:9},
-            // Force integer steps
-            callback:v=>Number.isInteger(v)?'#'+v:'',
-            stepSize:1
-          },
+          reverse:true,position:'left',
+          ticks:{color:'rgba(245,200,66,.8)',font:{size:9},callback:v=>Number.isInteger(v)?'#'+v:'',stepSize:1},
           grid:{color:CHART_COLORS.grid}
+        },
+        y2:{
+          reverse:true,position:'right',
+          ticks:{color:'rgba(79,142,247,.7)',font:{size:9},callback:v=>Number.isInteger(v)?'#'+v:''},
+          grid:{display:false}
         },
         x:{ticks:{color:CHART_COLORS.tick,font:{size:9}},grid:{color:CHART_COLORS.grid}}
       }
@@ -636,30 +653,15 @@ function drawRkChart(p) {
   });
 }
 
-function setRkMode(pid, mode) {
-  rkChartMode[pid]=mode;
-  // Update tab buttons
-  const cc=document.getElementById('cc-'+pid);
-  if(cc) cc.querySelectorAll('.ctab').forEach(b=>{
-    b.classList.toggle('active', (b.textContent==='Vertical'&&mode==='v')||(b.textContent==='Sub Cat'&&mode==='sub'));
-  });
-  const p=D.latest.products.find(x=>x.pid===pid);
-  if(p)drawRkChart(p);
-}
+
 
 function selectRkChart(pid) {
   S.rk.selPid = S.rk.selPid===pid ? null : pid;
-  const info = document.getElementById('rk-sel-info');
   if(S.rk.selPid) {
-    const p=D.latest.products.find(x=>x.pid===pid);
-    info.textContent = p ? `Highlighted: ${shortT(p.title,50)}` : '';
-    // Scroll table to highlighted row
     setTimeout(()=>{
       const row=document.getElementById('tr-'+pid);
       if(row)row.scrollIntoView({behavior:'smooth',block:'center'});
     },100);
-  } else {
-    info.textContent='Click a chart to highlight that product below';
   }
   renderRankings();
 }
@@ -763,10 +765,14 @@ function renderRatings() {
   document.getElementById('rt-count').textContent=`${filtered.length} products`;
 
   document.getElementById('rt-table').innerHTML=filtered.length===0
-    ?`<tr><td colspan="7" class="empty">No products match filter</td></tr>`
+    ?`<tr><td colspan="8" class="empty">No products match filter</td></tr>`
     :filtered.map(p=>{
       const c7=ratingTrend(p.pid,7),c30=ratingTrend(p.pid,30);
       const rc=p.rating>=4.4?'var(--green)':p.rating>=4.0?'var(--text)':'var(--red)';
+      // 7d review gain
+      const rh7=getRatingH(p.pid);
+      const rev7=(()=>{if(rh7.length<2)return null;const cur=rh7[rh7.length-1];const prev=rh7[Math.max(0,rh7.length-7)];const d=(cur.count||0)-(prev.count||0);return d;})();
+      const rev7Str=rev7==null?'—':rev7>0?`<span style="color:var(--green);font-family:'Courier New',monospace;font-size:11px">+${rev7.toLocaleString('en-IN')}</span>`:rev7<0?`<span style="color:var(--red);font-family:'Courier New',monospace;font-size:11px">${rev7.toLocaleString('en-IN')}</span>`:'<span style="color:var(--text3)">—</span>';
       return `<tr>
         <td><a href="${p.url}" target="_blank">${shortT(p.title)}</a></td>
         <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:'Courier New',monospace">${p.size||'—'}</span></td>
@@ -774,6 +780,7 @@ function renderRatings() {
         <td><div style="display:flex;align-items:center;gap:4px"><span class="star">★</span><span class="rv" style="color:${rc}">${p.rating}</span></div></td>
         <td class="mono" style="color:var(--text3)">${(p.rating_count||0).toLocaleString('en-IN')}</td>
         <td>${trendStr(c7)}</td><td>${trendStr(c30)}</td>
+        <td>${rev7Str}</td>
       </tr>`;
     }).join('');
 }
@@ -781,18 +788,19 @@ function renderRatings() {
 
 function showAN(id,html){const e=document.getElementById(id);if(!e)return;if(!html){e.style.display='none';return;}document.getElementById(id+'-c').innerHTML=html;e.style.display='block';}
 function getPD(date){if(!D||!date)return null;const i=D.days.indexOf(date);return i>0?D.days[i-1]:null;}
-function getRkC(date,pd){const out=[];D.latest.products.forEach(p=>{const h=D.rank_history[p.pid]||[];const cur=h.filter(e=>e.date<=date);const prev=pd?h.filter(e=>e.date<=pd):[];const cv=cur.length?cur[cur.length-1]:null;const pv=prev.length?prev[prev.length-1]:null;const dv=pv&&pv.rank_v!=null&&cv.rank_v!=null?cv.rank_v-pv.rank_v:null;const ds=pv&&pv.rank_sub!=null&&cv.rank_sub!=null?cv.rank_sub-pv.rank_sub:null;if(cv)out.push({pid:p.pid,t:short(p.title,34),br:bClass(p.brand),bc:bColor(p.brand),cv:cv.rank_v,pv:pv?pv.rank_v:null,cs:cv.rank_sub,ps:pv?pv.rank_sub:null,dv:dv,ds:ds});});return out;}
-function card(html){return`<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:7px;padding:9px 11px">${html}</div>`;}
-function hdr(col,icon,txt){return`<div style="color:${col};font-weight:700;margin-bottom:6px;font-size:11px;border-bottom:1px solid rgba(255,255,255,.06);padding-bottom:5px">${icon} ${txt}</div>`;}
-function rrow(r,sub){const dv=r.dv;const ds=r.ds;const dStr=(dv==null||isNaN(dv))?'':dv<0?`<span style="color:var(--green)">▲${Math.abs(dv)}</span>`:dv>0?`<span style="color:var(--red)">▼${dv}</span>`:'';const prev=r.pv!=null&&!isNaN(r.pv)?`<span style="color:var(--text3)">#${r.pv}→</span>`:'';const subStr=sub&&r.cs!=null?`<span style="color:rgba(79,142,247,.7);font-size:10px;margin-left:5px">sub#${r.cs}${(ds==null||isNaN(ds))?'':ds<0?`<span style="color:var(--green)">▲${Math.abs(ds)}</span>`:`<span style="color:var(--red)">▼${ds}</span>`}</span>`:'';if(!r.t||r.t==='nan'||!r.br||r.br==='nan')return'';return`<div style="padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);display:flex;justify-content:space-between;align-items:center;gap:4px"><div style="flex:1;min-width:0"><span style="color:${r.bc};font-weight:700;font-size:10px;margin-right:3px">${r.br}</span><span style="color:var(--text2);font-size:11px">${r.t}</span></div><div style="white-space:nowrap;font-family:'Courier New',monospace;font-size:11px">${prev}<span style="color:var(--yellow);font-weight:700">#${r.cv}</span> ${dStr}${subStr}</div></div>`;}
+function getRkC(date,pd,brand){const out=[];D.latest.products.filter(p=>!brand||brand==='ALL'||p.brand===brand).forEach(p=>{const h=D.rank_history[p.pid]||[];const cur=h.filter(e=>e.date<=date);const prev=pd?h.filter(e=>e.date<=pd):[];const cv=cur.length?cur[cur.length-1]:null;const pv=prev.length?prev[prev.length-1]:null;const dv=pv&&pv.rank_v!=null&&cv.rank_v!=null?cv.rank_v-pv.rank_v:null;const ds=pv&&pv.rank_sub!=null&&cv.rank_sub!=null?cv.rank_sub-pv.rank_sub:null;if(cv)out.push({pid:p.pid,t:short(p.title,34),br:bClass(p.brand),bc:bColor(p.brand),cv:cv.rank_v,pv:pv?pv.rank_v:null,cs:cv.rank_sub,ps:pv?pv.rank_sub:null,dv:dv,ds:ds});});return out;}
+function card(html){return`<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:7px;padding:10px 12px">${html}</div>`;}
+function hdr(col,icon,txt){return`<div style="color:${col};font-weight:700;margin-bottom:7px;font-size:12px;border-bottom:1px solid rgba(255,255,255,.07);padding-bottom:5px">${icon} ${txt}</div>`;}
+function rrow(r,sub){const dv=r.dv;const ds=r.ds;const dStr=(dv==null||isNaN(dv))?'':dv<0?`<span style="color:var(--green)">▲${Math.abs(dv)}</span>`:dv>0?`<span style="color:var(--red)">▼${dv}</span>`:'';const prev=r.pv!=null&&!isNaN(r.pv)?`<span style="color:var(--text3)">#${r.pv}→</span>`:'';const subStr=sub&&r.cs!=null?`<span style="color:rgba(79,142,247,.7);font-size:10px;margin-left:5px">sub#${r.cs}${(ds==null||isNaN(ds))?'':ds<0?`<span style="color:var(--green)">▲${Math.abs(ds)}</span>`:`<span style="color:var(--red)">▼${ds}</span>`}</span>`:'';if(!r.t||r.t==='nan'||!r.br||r.br==='nan')return'';return`<div style="padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);display:flex;justify-content:space-between;align-items:center;gap:4px"><div style="flex:1;min-width:0"><span style="color:${r.bc};font-weight:700;font-size:10px;margin-right:3px">${r.br}</span><span style="color:var(--text2);font-size:12px">${r.t}</span></div><div style="white-space:nowrap;font-family:'Courier New',monospace;font-size:12px">${prev}<span style="color:var(--yellow);font-weight:700">#${r.cv}</span> ${dStr}${subStr}</div></div>`;}
 
 function buildAnalysis(date){
   if(!D)return;if(!date)date=D.latest.date;
-  const pd=getPD(date);const rkc=getRkC(date,pd);
+  const brand=S.ov.brand;
+  const pd=getPD(date);const rkc=getRkC(date,pd,brand);
   const gains=rkc.filter(r=>r.dv!=null&&!isNaN(r.dv)&&r.dv<0&&r.cv!=null&&r.cv<100).sort((a,b)=>a.dv-b.dv).slice(0,5);
   const drops=rkc.filter(r=>r.dv!=null&&!isNaN(r.dv)&&r.dv>0&&r.cv!=null&&r.cv<100).sort((a,b)=>b.dv-a.dv).slice(0,5);
-  const rtC=[];D.latest.products.forEach(p=>{const h=D.rating_history[p.pid]||[];const cur=h.filter(e=>e.date<=date);const prev=pd?h.filter(e=>e.date<=pd):[];const cv=cur.length?cur[cur.length-1].rating:null;const pv=prev.length?prev[prev.length-1].rating:null;if(cv!=null&&pv!=null&&cv!==pv)rtC.push({t:short(p.title,28),br:bClass(p.brand),bc:bColor(p.brand),prev:pv,cur:cv,d:+(cv-pv).toFixed(1)});});
-  const lowRev=D.latest.products.filter(p=>p.pid&&p.title&&p.title!=='nan'&&p.brand&&p.brand!=='nan').map(p=>{const h=(D.rating_history[p.pid]||[]).filter(e=>e.date<=date);return{...p,cnt:h.length?h[h.length-1].count:(p.rating_count||0)};}).filter(p=>(p.cnt||0)<50).sort((a,b)=>a.cnt-b.cnt);
+  const rtC=[];D.latest.products.filter(p=>!brand||brand==='ALL'||p.brand===brand).forEach(p=>{const h=D.rating_history[p.pid]||[];const cur=h.filter(e=>e.date<=date);const prev=pd?h.filter(e=>e.date<=pd):[];const cv=cur.length?cur[cur.length-1].rating:null;const pv=prev.length?prev[prev.length-1].rating:null;if(cv!=null&&pv!=null&&cv!==pv)rtC.push({t:short(p.title,28),br:bClass(p.brand),bc:bColor(p.brand),prev:pv,cur:cv,d:+(cv-pv).toFixed(1)});});
+  const lowRev=D.latest.products.filter(p=>p.pid&&p.title&&p.title!=='nan'&&p.brand&&p.brand!=='nan'&&(!brand||brand==='ALL'||p.brand===brand)).map(p=>{const h=(D.rating_history[p.pid]||[]).filter(e=>e.date<=date);return{...p,cnt:h.length?h[h.length-1].count:(p.rating_count||0)};}).filter(p=>(p.cnt||0)<50).sort((a,b)=>a.cnt-b.cnt);
   const zeroes=lowRev.filter(p=>!p.cnt&&p.title&&p.title!=='nan');
   const spD=D.sp_history.find(d=>d.date===date);const spP=pd?D.sp_history.find(d=>d.date===pd):null;const spDelta=spD&&spP?spD.mismatches-spP.mismatches:null;
   const cards=[];
@@ -802,12 +810,13 @@ function buildAnalysis(date){
   if(rtC.length)cards.push(card(hdr('var(--yellow)','★',`Rating Changes (${rtC.length})`)+rtC.map(r=>`<div style="margin-bottom:4px"><span style="color:${r.bc};font-size:10px;font-weight:700">${r.br}</span> <span style="color:var(--text2)">${r.t}</span><br><span style="${r.d<0?'color:var(--red)':'color:var(--green)'}">${r.d>0?'▲':'▼'}${Math.abs(r.d)}</span> <span style="color:var(--text3)">${r.prev}→${r.cur}</span></div>`).join('')));
   if(zeroes.length)cards.push(card(hdr('var(--red)','🚨',`Zero Reviews (${zeroes.length})`)+zeroes.map(p=>`<div style="margin-bottom:4px;display:flex;justify-content:space-between"><span style="color:${bColor(p.brand)};font-size:10px;font-weight:700">${bClass(p.brand)}</span><span style="color:var(--text2);margin:0 6px">${short(p.title,28)}</span><span style="color:var(--red);font-weight:700">0</span></div>`).join('')));
   if(lowRev.filter(p=>p.cnt>0).length)cards.push(card(hdr('var(--purple)','💬',`Low Reviews <50`)+lowRev.filter(p=>p.cnt>0).slice(0,8).map(p=>`<div style="margin-bottom:3px;display:flex;justify-content:space-between"><span style="color:var(--text2)">${short(p.title,28)}</span><span style="color:var(--purple);font-weight:700">${p.cnt}</span></div>`).join('')));
-  showAN('ov-an',cards.length>1?`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:8px">${cards.join('')}</div>`:null);
+  showAN('ov-an',cards.length>1?`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px">${cards.join('')}</div>`:null);
 }
 
 function buildRankAnalysis(date){
   if(!D)return;if(!date)date=D.latest.date;
-  const pd=getPD(date);const rkc=getRkC(date,pd);
+  const brand=S.rk.brand;
+  const pd=getPD(date);const rkc=getRkC(date,pd,brand);
   // Only show gains/drops for rank_v < 100; filter out NaN
   const gains=rkc.filter(r=>r.dv!=null&&!isNaN(r.dv)&&r.dv<0&&r.cv!=null&&r.cv<100).sort((a,b)=>a.dv-b.dv);
   const drops=rkc.filter(r=>r.dv!=null&&!isNaN(r.dv)&&r.dv>0&&r.cv!=null&&r.cv<100).sort((a,b)=>b.dv-a.dv);
@@ -816,11 +825,11 @@ function buildRankAnalysis(date){
   const leftT10=rkc.filter(r=>r.cv!=null&&r.cv>10&&r.pv!=null&&!isNaN(r.pv)&&r.pv<=10);
   // Sub cat movers: only for products with vertical rank < 10
   const subM=rkc.filter(r=>r.cv!=null&&r.cv<10&&r.ds!=null&&!isNaN(r.ds)&&r.ds!==0).sort((a,b)=>Math.abs(b.ds)-Math.abs(a.ds));
-  let html=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">`;
-  html+=card(hdr('var(--yellow)','🥇',`Top 10 Vertical (${top10.length})`)+`<div style="max-height:200px;overflow-y:auto">${top10.map(r=>rrow(r,true)).join('')}</div>${newT10.length?`<div style="color:var(--green);font-size:10px;margin-top:6px">🆕 Entered: ${newT10.map(r=>r.t.slice(0,18)).join(', ')}</div>`:''}${leftT10.length?`<div style="color:var(--red);font-size:10px;margin-top:4px">⬇ Left: ${leftT10.map(r=>r.t.slice(0,18)).join(', ')}</div>`:''}`);
-  if(gains.length)html+=card(hdr('var(--green)','▲',`All Rank Gains (${gains.length})`)+`<div style="max-height:200px;overflow-y:auto">${gains.map(r=>rrow(r,r.cv<=20)).join('')}</div>`);
-  if(drops.length)html+=card(hdr('var(--red)','▼',`All Rank Drops (${drops.length})`)+`<div style="max-height:200px;overflow-y:auto">${drops.map(r=>rrow(r,r.cv<=20)).join('')}</div>`);
-  if(subM.length)html+=card(hdr('var(--accent)','📊',`Sub Cat Movers — Top 20 (${subM.length})`)+`<div style="max-height:200px;overflow-y:auto">${subM.map(r=>`<div style="margin-bottom:5px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)"><span style="color:${r.bc};font-size:10px;font-weight:700">${r.br}</span> <span style="color:var(--text2)">${r.t}</span><br><span style="color:var(--yellow)">V#${r.cv}</span> <span style="color:rgba(79,142,247,.9);margin-left:8px">Sub: <span style="color:var(--text3)">#${r.ps}→</span>#${r.cs} <span style="${r.ds<0?'color:var(--green)':'color:var(--red)'}">${r.ds<0?'▲'+Math.abs(r.ds):'▼'+r.ds}</span></span></div>`).join('')}</div>`);
+  let html=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px">`;
+  html+=card(hdr('var(--yellow)','🥇',`Top 10 Vertical (${top10.length})`)+`<div class="an-scroll" style="max-height:200px">${top10.map(r=>rrow(r,true)).join('')}</div>${newT10.length?`<div style="color:var(--green);font-size:10px;margin-top:6px">🆕 Entered: ${newT10.map(r=>r.t.slice(0,18)).join(', ')}</div>`:''}${leftT10.length?`<div style="color:var(--red);font-size:10px;margin-top:4px">⬇ Left: ${leftT10.map(r=>r.t.slice(0,18)).join(', ')}</div>`:''}`);
+  if(gains.length)html+=card(hdr('var(--green)','▲',`All Rank Gains (${gains.length})`)+`<div class="an-scroll" style="max-height:200px">${gains.map(r=>rrow(r,r.cv<=20)).join('')}</div>`);
+  if(drops.length)html+=card(hdr('var(--red)','▼',`All Rank Drops (${drops.length})`)+`<div class="an-scroll" style="max-height:200px">${drops.map(r=>rrow(r,r.cv<=20)).join('')}</div>`);
+  if(subM.length)html+=card(hdr('var(--accent)','📊',`Sub Cat Movers — Top 20 (${subM.length})`)+`<div class="an-scroll" style="max-height:200px">${subM.map(r=>`<div style="margin-bottom:5px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)"><span style="color:${r.bc};font-size:10px;font-weight:700">${r.br}</span> <span style="color:var(--text2)">${r.t}</span><br><span style="color:var(--yellow)">V#${r.cv}</span> <span style="color:rgba(79,142,247,.9);margin-left:8px">Sub: <span style="color:var(--text3)">#${r.ps}→</span>#${r.cs} <span style="${r.ds<0?'color:var(--green)':'color:var(--red)'}">${r.ds<0?'▲'+Math.abs(r.ds):'▼'+r.ds}</span></span></div>`).join('')}</div>`);
   html+='</div>';
   showAN('rk-an',gains.length+drops.length>0?html:null);
 }
@@ -835,11 +844,12 @@ function buildSPAnalysis(date){
   const pPids=new Set((spP?.items||[]).map(x=>x.pid));
   const newM=[...mPids].filter(pid=>!pPids.has(pid));
   const res=[...pPids].filter(pid=>!mPids.has(pid));
-  const miss=(spD.items||[]).map(item=>{const p=D.latest.products.find(x=>x.pid===item.pid);return p?{...p,sd:item.sp_diff,sl:item.sp}:null;}).filter(Boolean).sort((a,b)=>a.sd-b.sd);
+  const brand=S.sp.brand;
+  const miss=(spD.items||[]).map(item=>{const p=D.latest.products.find(x=>x.pid===item.pid&&(!brand||brand==='ALL'||x.brand===brand));return p?{...p,sd:item.sp_diff,sl:item.sp}:null;}).filter(Boolean).sort((a,b)=>a.sd-b.sd);
   const delta=spP?spD.mismatches-spP.mismatches:null;
-  let html=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">`;
+  let html=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px">`;
   html+=card(`${hdr('var(--red)','💰','SP Summary')}<div style="display:flex;gap:16px;margin-bottom:8px"><div><div style="color:var(--text3);font-size:10px">Today</div><div style="color:var(--red);font-weight:700;font-size:20px">${spD.mismatches}</div></div>${spP?`<div><div style="color:var(--text3);font-size:10px">Yesterday</div><div style="font-weight:700;font-size:20px">${spP.mismatches}</div></div>`:''}${delta!=null?`<div><div style="color:var(--text3);font-size:10px">Change</div><div style="font-weight:700;font-size:20px;color:${delta>0?'var(--red)':'var(--green)'}">${delta>0?'+':''}${delta}</div></div>`:''}</div>${newM.length?`<div style="color:var(--red);font-size:10px">🆕 New: ${newM.length}</div>`:''}${res.length?`<div style="color:var(--green);font-size:10px">✅ Fixed: ${res.length}</div>`:''}`);
-  if(miss.length)html+=card(`${hdr('var(--red)','⚠️',`Mismatches (${miss.length})`)}<div style="max-height:200px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:11px"><tr style="color:var(--text3);border-bottom:1px solid rgba(255,255,255,.06)"><th style="text-align:left;padding:4px 0">Product</th><th style="text-align:right;padding:4px">Exp</th><th style="text-align:right;padding:4px">Live</th><th style="text-align:right;padding:4px">Diff</th></tr>${miss.map(p=>`<tr style="border-bottom:1px solid rgba(255,255,255,.04)"><td style="padding:5px 0"><span style="color:${bColor(p.brand)};font-weight:700;font-size:10px">${bClass(p.brand)}</span> <span style="color:var(--text2)">${short(p.title,24)}</span></td><td style="text-align:right;color:var(--text3)">${fmtR(p.expected_sp)}</td><td style="text-align:right;font-weight:700;color:var(--red)">${fmtR(p.sp)}</td><td style="text-align:right;color:var(--red);font-family:'Courier New',monospace">${p.sd}</td></tr>`).join('')}</table></div>`);
+  if(miss.length)html+=card(`${hdr('var(--red)','⚠️',`Mismatches (${miss.length})`)}<div class="an-scroll" style="max-height:200px"><table style="width:100%;border-collapse:collapse;font-size:11px"><tr style="color:var(--text3);border-bottom:1px solid rgba(255,255,255,.06)"><th style="text-align:left;padding:4px 0">Product</th><th style="text-align:right;padding:4px">Exp</th><th style="text-align:right;padding:4px">Live</th><th style="text-align:right;padding:4px">Diff</th></tr>${miss.map(p=>`<tr style="border-bottom:1px solid rgba(255,255,255,.04)"><td style="padding:5px 0"><span style="color:${bColor(p.brand)};font-weight:700;font-size:10px">${bClass(p.brand)}</span> <span style="color:var(--text2)">${short(p.title,24)}</span></td><td style="text-align:right;color:var(--text3)">${fmtR(p.expected_sp)}</td><td style="text-align:right;font-weight:700;color:var(--red)">${fmtR(p.sp)}</td><td style="text-align:right;color:var(--red);font-family:'Courier New',monospace">${p.sd}</td></tr>`).join('')}</table></div>`);
   const newProds=newM.map(pid=>{const p=D.latest.products.find(x=>x.pid===pid);const item=spD.items?.find(x=>x.pid===pid);return p?{...p,sd:item?.sp_diff}:null;}).filter(Boolean);
   if(newProds.length)html+=card(`${hdr('var(--orange)','🆕',`New Mismatches (${newProds.length})`)}<div>${newProds.map(p=>`<div style="margin-bottom:4px;display:flex;justify-content:space-between"><span style="color:${bColor(p.brand)};font-size:10px;font-weight:700">${bClass(p.brand)}</span><span style="color:var(--text2);flex:1;margin:0 8px">${short(p.title,28)}</span><span style="color:var(--red);font-family:'Courier New',monospace">${p.sd}</span></div>`).join('')}</div>`);
   const resProds=res.map(pid=>D.latest.products.find(x=>x.pid===pid)).filter(Boolean);
@@ -850,21 +860,31 @@ function buildSPAnalysis(date){
 
 function buildRatingAnalysis(date){
   if(!D)return;if(!date)date=D.latest.date;
+  const brand=S.rt.brand;
   const pd=getPD(date);
   const rtD=[],revD=[];
-  D.latest.products.forEach(p=>{const h=D.rating_history[p.pid]||[];const cur=h.filter(e=>e.date<=date);const prev=pd?h.filter(e=>e.date<=pd):[];const cv=cur.length?cur[cur.length-1]:null;const pv=prev.length?prev[prev.length-1]:null;if(cv&&pv&&cv.rating!==pv.rating)rtD.push({t:short(p.title,34),br:bClass(p.brand),bc:bColor(p.brand),prev:pv.rating,cur:cv.rating,d:+(cv.rating-pv.rating).toFixed(1)});if(cv&&pv&&cv.count!==pv.count)revD.push({t:short(p.title,34),br:bClass(p.brand),bc:bColor(p.brand),prev:pv.count||0,cur:cv.count||0,d:(cv.count||0)-(pv.count||0)});});
-  const allRev=D.latest.products.filter(p=>p.pid&&p.title&&p.title!=='nan'&&p.brand&&p.brand!=='nan').map(p=>{const h=(D.rating_history[p.pid]||[]).filter(e=>e.date<=date);return{...p,cnt:h.length?h[h.length-1].count:(p.rating_count||0)};});
+  D.latest.products.filter(p=>!brand||brand==='ALL'||p.brand===brand).forEach(p=>{const h=D.rating_history[p.pid]||[];const cur=h.filter(e=>e.date<=date);const prev=pd?h.filter(e=>e.date<=pd):[];const cv=cur.length?cur[cur.length-1]:null;const pv=prev.length?prev[prev.length-1]:null;if(cv&&pv&&cv.rating!==pv.rating)rtD.push({t:short(p.title,34),br:bClass(p.brand),bc:bColor(p.brand),prev:pv.rating,cur:cv.rating,d:+(cv.rating-pv.rating).toFixed(1)});if(cv&&pv&&cv.count!==pv.count)revD.push({t:short(p.title,34),br:bClass(p.brand),bc:bColor(p.brand),prev:pv.count||0,cur:cv.count||0,d:(cv.count||0)-(pv.count||0)});});
+  const allRev=D.latest.products.filter(p=>p.pid&&p.title&&p.title!=='nan'&&p.brand&&p.brand!=='nan'&&(!brand||brand==='ALL'||p.brand===brand)).map(p=>{const h=(D.rating_history[p.pid]||[]).filter(e=>e.date<=date);return{...p,cnt:h.length?h[h.length-1].count:(p.rating_count||0)};});
   const zeroes=allRev.filter(p=>!p.cnt).sort((a,b)=>a.rating-b.rating);
   const lowRev=allRev.filter(p=>p.cnt>0&&p.cnt<50).sort((a,b)=>a.cnt-b.cnt);
   const drops=rtD.filter(r=>r.d<0).sort((a,b)=>a.d-b.d);
   const gains=rtD.filter(r=>r.d>0).sort((a,b)=>b.d-a.d);
   const topGain=revD.filter(r=>r.d>0).sort((a,b)=>b.d-a.d).slice(0,8);
-  let html=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">`;
+  // 7d review gain per product
+  const rev7Gains=D.latest.products.filter(p=>(!brand||brand==='ALL'||p.brand===brand)&&p.pid&&p.title&&p.title!=='nan').map(p=>{
+    const rh=getRatingH(p.pid);
+    if(rh.length<2)return null;
+    const cur=rh[rh.length-1];const prev=rh[Math.max(0,rh.length-7)];
+    const d=(cur.count||0)-(prev.count||0);
+    return d>0?{t:short(p.title,30),br:bClass(p.brand),bc:bColor(p.brand),d,total:cur.count||0}:null;
+  }).filter(Boolean).sort((a,b)=>b.d-a.d).slice(0,10);
+  let html=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px">`;
   if(drops.length)html+=card(`${hdr('var(--red)','⬇️',`Rating Drops (${drops.length})`)}<div>${drops.map(r=>`<div style="margin-bottom:5px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)"><span style="color:${r.bc};font-size:10px;font-weight:700">${r.br}</span> <span style="color:var(--text2)">${r.t}</span><br><span style="color:var(--text3)">${r.prev}</span>→<span style="color:var(--red);font-weight:700">${r.cur}</span> <span style="color:var(--red)">▼${Math.abs(r.d)}</span></div>`).join('')}</div>`);
   if(gains.length)html+=card(`${hdr('var(--green)','⬆️',`Rating Gains (${gains.length})`)}<div>${gains.map(r=>`<div style="margin-bottom:5px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)"><span style="color:${r.bc};font-size:10px;font-weight:700">${r.br}</span> <span style="color:var(--text2)">${r.t}</span><br><span style="color:var(--text3)">${r.prev}</span>→<span style="color:var(--green);font-weight:700">${r.cur}</span> <span style="color:var(--green)">▲${r.d}</span></div>`).join('')}</div>`);
   if(zeroes.length)html+=card(`${hdr('var(--red)','🚨',`Zero Reviews — Urgent (${zeroes.length})`)}<div style="color:var(--text3);font-size:10px;margin-bottom:8px">No social proof. Prioritise immediately.</div>${zeroes.map(p=>`<div style="margin-bottom:4px;display:flex;justify-content:space-between;align-items:center"><div><span style="color:${bColor(p.brand)};font-size:10px;font-weight:700">${bClass(p.brand)}</span> <span style="color:var(--text2)">${short(p.title,28)}</span></div><span style="color:var(--red);font-weight:700;margin-left:8px">0 ★${p.rating||'—'}</span></div>`).join('')}`);
-  if(lowRev.length)html+=card(`${hdr('var(--purple)','💬',`Low Reviews <50 (${lowRev.length})`)}<div style="max-height:180px;overflow-y:auto">${lowRev.map(p=>`<div style="margin-bottom:4px;display:flex;justify-content:space-between"><span style="color:var(--text2)">${short(p.title,26)}</span><span style="color:var(--purple);font-weight:700">${p.cnt}</span></div>`).join('')}</div>`);
+  if(lowRev.length)html+=card(`${hdr('var(--purple)','💬',`Low Reviews <50 (${lowRev.length})`)}<div class="an-scroll" style="max-height:180px">${lowRev.map(p=>`<div style="margin-bottom:4px;display:flex;justify-content:space-between"><span style="color:var(--text2)">${short(p.title,26)}</span><span style="color:var(--purple);font-weight:700">${p.cnt}</span></div>`).join('')}</div>`);
   if(topGain.length)html+=card(`${hdr('var(--cyan)','📈',`Top Review Gains (${topGain.length})`)}<div>${topGain.map(r=>`<div style="margin-bottom:4px;display:flex;justify-content:space-between"><span style="color:var(--text2)">${r.t}</span><span style="color:var(--green);font-weight:700;font-family:'Courier New',monospace">+${r.d.toLocaleString('en-IN')}</span></div>`).join('')}</div>`);
+  if(rev7Gains.length)html+=card(`${hdr('var(--green)','📊',`7d Review Gains (${rev7Gains.length})`)}<div>${rev7Gains.map(r=>`<div style="padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);display:flex;justify-content:space-between;align-items:center"><div><span style="color:${r.bc};font-size:10px;font-weight:700;margin-right:3px">${r.br}</span><span style="color:var(--text2);font-size:12px">${r.t}</span></div><div style="white-space:nowrap;font-family:'Courier New',monospace;font-size:12px"><span style="color:var(--text3)">${r.total.toLocaleString('en-IN')}</span> <span style="color:var(--green);font-weight:700">+${r.d.toLocaleString('en-IN')}</span></div></div>`).join('')}</div>`);
   html+='</div>';
   showAN('rt-an',html);
 }

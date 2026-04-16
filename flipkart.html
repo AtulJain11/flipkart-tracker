@@ -95,7 +95,7 @@ input.fsearch::placeholder{color:var(--text3)}
 table{width:100%;border-collapse:collapse}
 th{padding:8px 10px;text-align:left;font-size:10px;color:var(--text3);text-transform:uppercase;
    letter-spacing:.5px;font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap}
-td{padding:8px 10px;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border);vertical-align:middle}
+td{padding:8px 10px;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border);vertical-align:middle;max-width:0}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:rgba(255,255,255,.02)}
 td a{color:var(--text2);text-decoration:none}
@@ -243,7 +243,7 @@ function checkPW(){
   </div>
   <div class="card">
     <div class="card-hdr"><span class="card-title">Top 20 by Vertical Rank</span><span class="card-sub" id="ov-date-lbl"></span></div>
-    <table><thead><tr><th>#</th><th>Product</th><th>Size</th><th>Brand</th><th>Vertical #</th><th>Category</th><th>Sub #</th><th>SP</th><th>Rating</th></tr></thead>
+    <table><thead><tr><th>#</th><th style="min-width:260px">Product</th><th>Size</th><th>Brand</th><th>Vertical #</th><th>Category</th><th>Sub #</th><th>SP</th><th>Rating</th></tr></thead>
     <tbody id="ov-table"></tbody></table>
   </div>
 </div>
@@ -269,7 +269,7 @@ function checkPW(){
   <div class="chart-grid" id="rk-charts"></div>
   <div class="card">
     <div class="card-hdr"><span class="card-title">All Products — Rank Tracker</span><span class="card-sub" id="rk-count"></span></div>
-    <table><thead><tr><th>Product</th><th>Size</th><th>Brand</th><th>Category</th><th>Vertical #</th><th>Sub Cat #</th><th>Super Cat #</th><th>7d Trend ▼</th><th>7d Trend Sub</th></tr></thead>
+    <table><thead><tr><th style="min-width:260px">Product</th><th>Size</th><th>Brand</th><th>Category</th><th>Vertical #</th><th>Sub Cat #</th><th>Super Cat #</th><th>7d Trend ▼</th><th>7d Trend Sub</th></tr></thead>
     <tbody id="rk-table"></tbody></table>
   </div>
 </div>
@@ -303,7 +303,7 @@ function checkPW(){
   </div>
   <div class="card">
     <div class="card-hdr"><span class="card-title">Product SP Details</span><span class="card-sub" id="sp-count"></span></div>
-    <table><thead><tr><th>Product</th><th>Size</th><th>Brand</th><th>MRP</th><th>Expected SP</th><th>Live SP</th><th>Diff</th><th>Status</th></tr></thead>
+    <table><thead><tr><th style="min-width:260px">Product</th><th>Size</th><th>Brand</th><th>MRP</th><th>Expected SP</th><th>Live SP</th><th>Diff</th><th>Status</th></tr></thead>
     <tbody id="sp-table"></tbody></table>
   </div>
 </div>
@@ -334,7 +334,7 @@ function checkPW(){
   </div>
   <div class="card">
     <div class="card-hdr"><span class="card-title">All Products — Rating Tracker</span><span class="card-sub" id="rt-count"></span></div>
-    <table><thead><tr><th>Product</th><th>Size</th><th>Brand</th><th>Rating</th><th>Reviews</th><th>7d Rating Δ</th><th>30d Rating Δ</th><th>7d Reviews +</th></tr></thead>
+    <table><thead><tr><th style="min-width:260px">Product</th><th>Size</th><th>Brand</th><th>Rating</th><th>Reviews</th><th>7d Rating Δ</th><th>30d Rating Δ</th><th>7d Reviews +</th></tr></thead>
     <tbody id="rt-table"></tbody></table>
   </div>
 </div>
@@ -608,7 +608,7 @@ function renderOverview() {
   const sorted=[...ranked].sort((a,b)=>a.rank_v-b.rank_v).slice(0,20);
   document.getElementById('ov-table').innerHTML = sorted.map((p,i)=>`<tr>
     <td class="mono" style="color:var(--text3)">${i+1}</td>
-    <td style="max-width:340px"><a href="${p.url}" target="_blank" style="white-space:normal;word-break:break-word">${p.title}</a></td>
+    <td><a href="${p.url}" target="_blank" title="${p.title}">${p.title}</a></td>
     <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:'Courier New',monospace">${p.size||'—'}</span></td>
     <td><span style="color:${brandColor(p.brand)};font-weight:700;font-size:11px">${brandShort(p.brand)}</span></td>
     <td>${rb(p.rank_v)}</td>
@@ -646,10 +646,16 @@ function renderRankings() {
   const top4 = filtered.slice(0,4);
   document.getElementById('rk-charts').innerHTML = top4.map(p=>`
     <div class="chart-card ${S.rk.selPid===p.pid?'selected':''}" id="cc-${p.pid}" onclick="selectRkChart('${p.pid}')">
-      <div class="chart-title">
-        <span>${shortT(p.title,60)} <span style="color:${brandColor(p.brand)}">#${p.rank_v}</span></span>
+      <div class="chart-title" style="flex-direction:column;align-items:flex-start;gap:3px">
+        <div style="width:100%;display:flex;align-items:baseline;gap:6px">
+          <span style="flex:1;font-size:12px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.title}</span>
+          <span style="color:${brandColor(p.brand)};font-weight:700;white-space:nowrap">#${p.rank_v}</span>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span style="padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:monospace">${p.size||''}</span>
+          <span style="font-size:10px;color:var(--text3)">${p.rank_v_name||''}</span>
+        </div>
       </div>
-
       <div class="chart-wrap"><canvas id="rk-c-${p.pid}"></canvas></div>
     </div>`).join('');
 
@@ -662,7 +668,7 @@ function renderRankings() {
       const tv=rankTrend(p.pid,'rank_v',7), ts=rankTrend(p.pid,'rank_sub',7);
       const hl = S.rk.selPid===p.pid ? 'background:rgba(79,142,247,.08);' : '';
       return `<tr id="tr-${p.pid}" style="${hl}">
-        <td style="max-width:320px"><a href="${p.url}" target="_blank" style="white-space:normal;word-break:break-word">${p.title}</a><br><span class="pid">${p.pid}</span></td>
+        <td><a href="${p.url}" target="_blank" title="${p.title}">${p.title}</a><br><span class="pid">${p.pid}</span></td>
         <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:'Courier New',monospace">${p.size||'—'}</span></td>
         <td><span style="color:${brandColor(p.brand)};font-weight:700;font-size:11px">${brandShort(p.brand)}</span></td>
         <td>${(()=>{const nm=p.rank_v_name||(D.latest.products.find(x=>x.pid===p.pid)||{}).rank_v_name||"";return nm&&nm!=="nan"?nm:"—";})()}</td>
@@ -784,7 +790,7 @@ function renderSP() {
       const dStr=d==null?'—':d<0?`<span class="diff-neg">${d}</span>`:d>0?`<span class="diff-pos">+${d}</span>`:'<span style="color:var(--text3)">0</span>';
       const sc=p.sp_status==='OK'?'sp-ok':p.sp_status==='MISMATCH'?'sp-miss':'sp-nv';
       return `<tr>
-        <td style="max-width:340px"><a href="${p.url}" target="_blank" style="white-space:normal;word-break:break-word">${p.title}</a></td>
+        <td><a href="${p.url}" target="_blank" title="${p.title}">${p.title}</a></td>
         <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:'Courier New',monospace">${p.size||'—'}</span></td>
         <td><span style="color:${brandColor(p.brand)};font-weight:700;font-size:11px">${brandShort(p.brand)}</span></td>
         <td>${fmtR(p.mrp)}</td><td>${fmtR(p.expected_sp)}</td><td style="font-weight:700">${fmtR(p.sp)}</td>
@@ -856,7 +862,7 @@ function renderRatings() {
       const rev7=(()=>{if(rh7.length<2)return null;const cur=rh7[rh7.length-1];const prev=rh7[Math.max(0,rh7.length-7)];const d=(cur.count||0)-(prev.count||0);return d;})();
       const rev7Str=rev7==null?'—':rev7>0?`<span style="color:var(--green);font-family:'Courier New',monospace;font-size:11px">+${rev7.toLocaleString('en-IN')}</span>`:rev7<0?`<span style="color:var(--red);font-family:'Courier New',monospace;font-size:11px">${rev7.toLocaleString('en-IN')}</span>`:'<span style="color:var(--text3)">—</span>';
       return `<tr>
-        <td style="max-width:340px"><a href="${p.url}" target="_blank" style="white-space:normal;word-break:break-word">${p.title}</a></td>
+        <td><a href="${p.url}" target="_blank" title="${p.title}">${p.title}</a></td>
         <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:'Courier New',monospace">${p.size||'—'}</span></td>
         <td><span style="color:${brandColor(p.brand)};font-weight:700;font-size:11px">${brandShort(p.brand)}</span></td>
         <td><div style="display:flex;align-items:center;gap:4px"><span class="star">★</span><span class="rv" style="color:${rc}">${p.rating}</span></div></td>

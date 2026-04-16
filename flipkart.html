@@ -592,7 +592,7 @@ function renderRankings() {
         <td><a href="${p.url}" target="_blank">${shortT(p.title)}</a><br><span class="pid">${p.pid}</span></td>
         <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:'Courier New',monospace">${p.size||'—'}</span></td>
         <td><span style="color:${brandColor(p.brand)};font-weight:700;font-size:11px">${brandShort(p.brand)}</span></td>
-        <td>${(p.rank_v_name&&p.rank_v_name!=='nan')?p.rank_v_name:'—'}</td>
+        <td>${(()=>{const nm=p.rank_v_name||(D.latest.products.find(x=>x.pid===p.pid)||{}).rank_v_name||"";return nm&&nm!=="nan"?nm:"—";})()}</td>
         <td>${rb(p.rank_v)}</td>
         <td style="color:var(--text3)">${subBadge(p.rank_sub)}</td>
         <td style="color:var(--text3)">${superBadge(p.rank_sup)}${p.rank_sup_name?`<span style="color:var(--text3);font-size:10px;margin-left:3px">${p.rank_sup_name}</span>`:''}</td>
@@ -832,12 +832,16 @@ function buildAnalysis(date){
   const alertCard=alertRows.length?card(`${hdr('var(--purple)','⚠️',`Reviews Alert (${alertRows.length})`)}${zeroes.length?`<div style="color:var(--red);font-size:10px;margin-bottom:4px">🚨 ${zeroes.length} zero reviews</div>`:''}${alertRows.join('')}`):'';
   const ratingCard=rtC.length?card(`${hdr('var(--yellow)','★',`Rating Δ (${rtC.length})`)}<div>${rtC.map(r=>`<div class="an-row"><div class="an-name"><span style="color:${r.bc};font-size:10px;font-weight:700">${r.br}</span> ${r.t}</div><div class="an-val" style="color:${r.d<0?'var(--red)':'var(--green)'};font-weight:700">${r.d>0?'▲':'▼'}${Math.abs(r.d)}</div></div>`).join('')}</div>`):'';
   // 4-col grid for main cards
-  let grid=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px">`;
+  // Build only cards that have data — fill grid dynamically
+  const mainCards=[];
+  if(gains.length)mainCards.push(card(hdr('var(--green)','▲',`Rank Gains (${gains.length})`)+gains.map(r=>rrow(r,false)).join('')));
+  if(drops.length)mainCards.push(card(hdr('var(--red)','▼',`Rank Drops (${drops.length})`)+drops.map(r=>rrow(r,false)).join('')));
+  if(ratingCard)mainCards.push(ratingCard);
+  if(alertCard)mainCards.push(alertCard);
+  const cols=Math.max(1,Math.min(4,mainCards.length));
+  let grid=`<div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:8px;margin-bottom:8px">`;
   grid+=`<div style="grid-column:1/-1">${card(sumHtml)}</div>`;
-  grid+=gains.length?card(hdr('var(--green)','▲',`Rank Gains (${gains.length})`)+gains.map(r=>rrow(r,false)).join('')):'<div></div>';
-  grid+=drops.length?card(hdr('var(--red)','▼',`Rank Drops (${drops.length})`)+drops.map(r=>rrow(r,false)).join('')):'<div></div>';
-  grid+=ratingCard||'<div></div>';
-  grid+=alertCard||'<div></div>';
+  grid+=mainCards.join('');
   grid+='</div>';
   showAN('ov-an',(gains.length||drops.length||rtC.length||alertRows.length)?grid:null);
 }
@@ -854,13 +858,14 @@ function buildRankAnalysis(date){
   const leftT10=rkc.filter(r=>r.cv!=null&&r.cv>10&&r.pv!=null&&!isNaN(r.pv)&&r.pv<=10);
   // Sub cat movers: only for products with vertical rank < 10
   const subM=rkc.filter(r=>r.cv!=null&&r.cv<10&&r.ds!=null&&!isNaN(r.ds)&&r.ds!==0).sort((a,b)=>Math.abs(b.ds)-Math.abs(a.ds));
-  let html=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px">`;
-  html+=card(hdr('var(--yellow)','🥇',`Top 10 Vertical (${top10.length})`)+`<div class="an-scroll" style="max-height:200px">${top10.map(r=>rrow(r,true)).join('')}</div>${newT10.length?`<div style="color:var(--green);font-size:10px;margin-top:6px">🆕 Entered: ${newT10.map(r=>r.t.slice(0,18)).join(', ')}</div>`:''}${leftT10.length?`<div style="color:var(--red);font-size:10px;margin-top:4px">⬇ Left: ${leftT10.map(r=>r.t.slice(0,18)).join(', ')}</div>`:''}`);
-  if(gains.length)html+=card(hdr('var(--green)','▲',`All Rank Gains (${gains.length})`)+`<div class="an-scroll" style="max-height:200px">${gains.map(r=>rrow(r,r.cv<=20)).join('')}</div>`);
-  if(drops.length)html+=card(hdr('var(--red)','▼',`All Rank Drops (${drops.length})`)+`<div class="an-scroll" style="max-height:200px">${drops.map(r=>rrow(r,r.cv<=20)).join('')}</div>`);
-  if(subM.length)html+=card(hdr('var(--accent)','📊',`Sub Cat Movers — Top 20 (${subM.length})`)+`<div class="an-scroll" style="max-height:200px">${subM.map(r=>`<div style="margin-bottom:5px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)"><span style="color:${r.bc};font-size:10px;font-weight:700">${r.br}</span> <span style="color:var(--text2)">${r.t}</span><br><span style="color:var(--yellow)">V#${r.cv}</span> <span style="color:rgba(79,142,247,.9);margin-left:8px">Sub: <span style="color:var(--text3)">#${r.ps}→</span>#${r.cs} <span style="${r.ds<0?'color:var(--green)':'color:var(--red)'}">${r.ds<0?'▲'+Math.abs(r.ds):'▼'+r.ds}</span></span></div>`).join('')}</div>`);
-  html+='</div>';
-  showAN('rk-an',gains.length+drops.length>0?html:null);
+  const rkCards=[];
+  rkCards.push(card(hdr('var(--yellow)','🥇',`Top 10 Vertical (${top10.length})`)+`<div class="an-scroll" style="max-height:200px">${top10.map(r=>rrow(r,true)).join('')}</div>${newT10.length?`<div style="color:var(--green);font-size:10px;margin-top:6px">🆕 Entered: ${newT10.map(r=>r.t.slice(0,18)).join(', ')}</div>`:''}${leftT10.length?`<div style="color:var(--red);font-size:10px;margin-top:4px">⬇ Left: ${leftT10.map(r=>r.t.slice(0,18)).join(', ')}</div>`:''}`);
+  if(gains.length)rkCards.push(card(hdr('var(--green)','▲',`All Rank Gains (${gains.length})`)+`<div class="an-scroll" style="max-height:200px">${gains.map(r=>rrow(r,r.cv<=20)).join('')}</div>`);
+  if(drops.length)rkCards.push(card(hdr('var(--red)','▼',`All Rank Drops (${drops.length})`)+`<div class="an-scroll" style="max-height:200px">${drops.map(r=>rrow(r,r.cv<=20)).join('')}</div>`);
+  if(subM.length)rkCards.push(card(hdr('var(--accent)','📊',`Sub Cat Movers — Top 20 (${subM.length})`)+`<div class="an-scroll" style="max-height:200px">${subM.map(r=>`<div style="margin-bottom:5px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)"><span style="color:${r.bc};font-size:10px;font-weight:700">${r.br}</span> <span style="color:var(--text2)">${r.t}</span><br><span style="color:var(--yellow)">V#${r.cv}</span> <span style="color:rgba(79,142,247,.9);margin-left:8px">Sub: <span style="color:var(--text3)">#${r.ps}→</span>#${r.cs} <span style="${r.ds<0?'color:var(--green)':'color:var(--red)'}">${r.ds<0?'▲'+Math.abs(r.ds):'▼'+r.ds}</span></span></div>`).join('')}</div>`);
+  const rkCols=Math.max(1,Math.min(4,rkCards.length));
+  const rkHtml=`<div style="display:grid;grid-template-columns:repeat(${rkCols},1fr);gap:8px">${rkCards.join('')}</div>`;
+  showAN('rk-an',gains.length+drops.length>0?rkHtml:null);
 }
 
 function buildSPAnalysis(date){
@@ -876,16 +881,16 @@ function buildSPAnalysis(date){
   const brand=S.sp.brand;
   const miss=(spD.items||[]).map(item=>{const p=D.latest.products.find(x=>x.pid===item.pid&&(!brand||brand==='ALL'||x.brand===brand));return p?{...p,sd:item.sp_diff,sl:item.sp}:null;}).filter(Boolean).sort((a,b)=>a.sd-b.sd);
   const delta=spP?spD.mismatches-spP.mismatches:null;
-  let html=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px">`;
-  
-  html+=card(`${hdr('var(--red)','💰','SP Summary')}<div style="display:flex;gap:16px;margin-bottom:8px"><div><div style="color:var(--text3);font-size:10px">Today</div><div style="color:var(--red);font-weight:700;font-size:20px">${spD.mismatches}</div></div>${spP?`<div><div style="color:var(--text3);font-size:10px">Yesterday</div><div style="font-weight:700;font-size:20px">${spP.mismatches}</div></div>`:''}${delta!=null?`<div><div style="color:var(--text3);font-size:10px">Change</div><div style="font-weight:700;font-size:20px;color:${delta>0?'var(--red)':'var(--green)'}">${delta>0?'+':''}${delta}</div></div>`:''}</div>${newM.length?`<div style="color:var(--red);font-size:10px">🆕 New: ${newM.length}</div>`:''}${res.length?`<div style="color:var(--green);font-size:10px">✅ Fixed: ${res.length}</div>`:''}`);
-  if(miss.length)html+=card(`${hdr('var(--red)','⚠️',`Mismatches (${miss.length})`)}<div class="an-scroll" style="max-height:200px"><table style="width:100%;border-collapse:collapse;font-size:11px"><tr style="color:var(--text3);border-bottom:1px solid rgba(255,255,255,.06)"><th style="text-align:left;padding:4px 0">Product</th><th style="text-align:right;padding:4px">Exp</th><th style="text-align:right;padding:4px">Live</th><th style="text-align:right;padding:4px">Diff</th></tr>${miss.map(p=>`<tr style="border-bottom:1px solid rgba(255,255,255,.05)"><td style="padding:4px 0"><span style="color:${bColor(p.brand)};font-weight:700;font-size:10px">${bClass(p.brand)}</span> <span style="color:var(--text2);font-size:12px">${short(p.title,24)}</span></td><td style="text-align:right;color:var(--text3)">${fmtR(p.expected_sp)}</td><td style="text-align:right;font-weight:700;color:var(--red)">${fmtR(p.sp)}</td><td style="text-align:right;color:var(--red);font-family:'Courier New',monospace">${p.sd}</td></tr>`).join('')}</table></div>`);
+  const spCards=[];
+  spCards.push(card(`${hdr('var(--red)','💰','SP Summary')}<div style="display:flex;gap:16px;margin-bottom:8px"><div><div style="color:var(--text3);font-size:10px">Today</div><div style="color:var(--red);font-weight:700;font-size:20px">${spD.mismatches}</div></div>${spP?`<div><div style="color:var(--text3);font-size:10px">Yesterday</div><div style="font-weight:700;font-size:20px">${spP.mismatches}</div></div>`:''}${delta!=null?`<div><div style="color:var(--text3);font-size:10px">Change</div><div style="font-weight:700;font-size:20px;color:${delta>0?'var(--red)':'var(--green)'}">${delta>0?'+':''}${delta}</div></div>`:''}</div>${newM.length?`<div style="color:var(--red);font-size:10px">🆕 New: ${newM.length}</div>`:''}${res.length?`<div style="color:var(--green);font-size:10px">✅ Fixed: ${res.length}</div>`:''}`);
+  if(miss.length)spCards.push(card(`${hdr('var(--red)','⚠️',`Mismatches (${miss.length})`)}<div class="an-scroll" style="max-height:200px"><table style="width:100%;border-collapse:collapse;font-size:11px"><tr style="color:var(--text3);border-bottom:1px solid rgba(255,255,255,.06)"><th style="text-align:left;padding:4px 0">Product</th><th style="text-align:right;padding:4px">Exp</th><th style="text-align:right;padding:4px">Live</th><th style="text-align:right;padding:4px">Diff</th></tr>${miss.map(p=>`<tr style="border-bottom:1px solid rgba(255,255,255,.05)"><td style="padding:4px 0"><span style="color:${bColor(p.brand)};font-weight:700;font-size:10px">${bClass(p.brand)}</span> <span style="color:var(--text2);font-size:12px">${short(p.title,24)}</span></td><td style="text-align:right;color:var(--text3)">${fmtR(p.expected_sp)}</td><td style="text-align:right;font-weight:700;color:var(--red)">${fmtR(p.sp)}</td><td style="text-align:right;color:var(--red);font-family:'Courier New',monospace">${p.sd}</td></tr>`).join('')}</table></div>`);
   const newProds=newM.map(pid=>{const p=D.latest.products.find(x=>x.pid===pid);const item=spD.items?.find(x=>x.pid===pid);return p?{...p,sd:item?.sp_diff}:null;}).filter(Boolean);
-  if(newProds.length)html+=card(`${hdr('var(--orange)','🆕',`New Mismatches (${newProds.length})`)}<div>${newProds.map(p=>`<div class="an-row"><div class="an-name"><span style="color:${bColor(p.brand)};font-size:10px;font-weight:700">${bClass(p.brand)}</span> ${short(p.title,28)}</div><span class="an-val" style="color:var(--red);font-weight:700">${p.sd}</span></div>`).join('')}</div>`);
+  if(newProds.length)spCards.push(card(`${hdr('var(--orange)','🆕',`New Mismatches (${newProds.length})`)}<div>${newProds.map(p=>`<div class="an-row"><div class="an-name"><span style="color:${bColor(p.brand)};font-size:10px;font-weight:700">${bClass(p.brand)}</span> ${short(p.title,28)}</div><span class="an-val" style="color:var(--red);font-weight:700">${p.sd}</span></div>`).join('')}</div>`);
   const resProds=res.map(pid=>D.latest.products.find(x=>x.pid===pid)).filter(Boolean);
-  if(resProds.length)html+=card(`${hdr('var(--green)','✅',`Resolved (${resProds.length})`)}<div>${resProds.map(p=>`<div class="an-row an-name"><span style="color:${bColor(p.brand)};font-size:10px;font-weight:700;margin-right:3px">${bClass(p.brand)}</span>${short(p.title,30)}</div>`).join('')}</div>`);
-  html+='</div>';
-  showAN('sp-an',html);
+  if(resProds.length)spCards.push(card(`${hdr('var(--green)','✅',`Resolved (${resProds.length})`)}<div>${resProds.map(p=>`<div class="an-row an-name"><span style="color:${bColor(p.brand)};font-size:10px;font-weight:700;margin-right:3px">${bClass(p.brand)}</span>${short(p.title,30)}</div>`).join('')}</div>`);
+  const spCols=Math.max(1,Math.min(4,spCards.length));
+  const spHtml=`<div style="display:grid;grid-template-columns:repeat(${spCols},1fr);gap:8px">${spCards.join('')}</div>`;
+  showAN('sp-an',spHtml);
 }
 
 function buildRatingAnalysis(date){
@@ -914,13 +919,16 @@ function buildRatingAnalysis(date){
   const zeroLowHtml=(zeroes.length||lowRev.length)?`${hdr('var(--purple)','⚠️',`Reviews (${zeroes.length} zero, ${lowRev.length} low)`)}${zeroes.map(p=>`<div class="an-row"><div class="an-name"><span style="color:${bColor(p.brand)};font-size:10px;font-weight:700">${bClass(p.brand)}</span> ${short(p.title,24)}</div><span class="an-val" style="color:var(--red);font-weight:700">0 ★${p.rating||'—'}</span></div>`).join('')}${lowRev.length?`<div style="border-top:1px solid rgba(255,255,255,.06);margin-top:5px;padding-top:5px">${lowRev.map(p=>`<div class="an-row"><div class="an-name"><span style="color:${bColor(p.brand)};font-size:10px;font-weight:700">${bClass(p.brand)}</span> ${short(p.title,24)}</div><span class="an-val" style="color:var(--purple);font-weight:700">${p.cnt}</span></div>`).join('')}</div>`:''}`:null;
   // 7d review gains: 2-col internal table for space efficiency
   const rev7Html=rev7Gains.length?`${hdr('var(--green)','📊',`7d Review Gains (${rev7Gains.length})`)}<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 12px">${rev7Gains.map(r=>`<div class="an-row"><div class="an-name"><span style="color:${r.bc};font-size:10px;font-weight:700;margin-right:2px">${r.br}</span>${short(r.t,20)}</div><div style="white-space:nowrap;font-family:'Courier New',monospace;font-size:11px"><span style="color:var(--text3);font-size:10px">${(r.total/1000).toFixed(0)}K</span> <span style="color:var(--green);font-weight:700">+${r.d>999?(r.d/1000).toFixed(1)+'K':r.d}</span></div></div>`).join('')}</div>`:null;
-  let html=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">`;
-  html+=drops.length?card(`${hdr('var(--red)','⬇️',`Rating Drops (${drops.length})`)}<div>${drops.map(r=>`<div class="an-row"><div class="an-name"><span style="color:${r.bc};font-size:10px;font-weight:700">${r.br}</span> ${r.t}</div><div class="an-val" style="color:var(--red)"><span style="color:var(--text3)">${r.prev}→</span><b>${r.cur}</b> ▼${Math.abs(r.d)}</div></div>`).join('')}</div>`):'<div></div>';
-  html+=gains.length?card(`${hdr('var(--green)','⬆️',`Rating Gains (${gains.length})`)}<div>${gains.map(r=>`<div class="an-row"><div class="an-name"><span style="color:${r.bc};font-size:10px;font-weight:700">${r.br}</span> ${r.t}</div><div class="an-val" style="color:var(--green)"><span style="color:var(--text3)">${r.prev}→</span><b>${r.cur}</b> ▲${r.d}</div></div>`).join('')}</div>`):'<div></div>';
-  html+=zeroLowHtml?card(zeroLowHtml):'<div></div>';
-  if(topGain.length)html+=card(`${hdr('var(--cyan)','📈',`Daily Rev Gains (${topGain.length})`)}<div>${topGain.map(r=>`<div class="an-row"><span class="an-name"><span style="color:${r.bc};font-size:10px;font-weight:700;margin-right:2px">${r.br}</span>${short(r.t,20)}</span><span class="an-val" style="color:var(--green);font-weight:700">+${r.d.toLocaleString('en-IN')}</span></div>`).join('')}</div>`);
-  else html+='<div></div>';
-  if(rev7Html)html+=`<div style="grid-column:1/-1">${card(rev7Html,4)}</div>`;
+  // Build rating cards dynamically — no empty placeholders
+  const rtCards=[];
+  if(drops.length)rtCards.push(card(`${hdr('var(--red)','⬇️',`Rating Drops (${drops.length})`)}<div>${drops.map(r=>`<div class="an-row"><div class="an-name"><span style="color:${r.bc};font-size:10px;font-weight:700">${r.br}</span> ${r.t}</div><div class="an-val" style="color:var(--red)"><span style="color:var(--text3)">${r.prev}→</span><b>${r.cur}</b> ▼${Math.abs(r.d)}</div></div>`).join('')}</div>`));
+  if(gains.length)rtCards.push(card(`${hdr('var(--green)','⬆️',`Rating Gains (${gains.length})`)}<div>${gains.map(r=>`<div class="an-row"><div class="an-name"><span style="color:${r.bc};font-size:10px;font-weight:700">${r.br}</span> ${r.t}</div><div class="an-val" style="color:var(--green)"><span style="color:var(--text3)">${r.prev}→</span><b>${r.cur}</b> ▲${r.d}</div></div>`).join('')}</div>`));
+  if(zeroLowHtml)rtCards.push(card(zeroLowHtml));
+  if(topGain.length)rtCards.push(card(`${hdr('var(--cyan)','📈',`Daily Rev Gains (${topGain.length})`)}<div>${topGain.map(r=>`<div class="an-row"><span class="an-name"><span style="color:${r.bc};font-size:10px;font-weight:700;margin-right:2px">${r.br}</span>${short(r.t,20)}</span><span class="an-val" style="color:var(--green);font-weight:700">+${r.d.toLocaleString('en-IN')}</span></div>`).join('')}</div>`));
+  const rtCols=Math.max(1,Math.min(4,rtCards.length));
+  let html=`<div style="display:grid;grid-template-columns:repeat(${rtCols},1fr);gap:8px">`;
+  html+=rtCards.join('');
+  if(rev7Html)html+=`<div style="grid-column:1/-1">${card(rev7Html)}</div>`;
   html+='</div>';
   html+='</div>';
   showAN('rt-an',(drops.length||gains.length||zeroes.length||lowRev.length||rev7Gains.length)?html:null);

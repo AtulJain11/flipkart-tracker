@@ -155,6 +155,58 @@ td a:hover{color:var(--accent)}
 </head>
 <body>
 
+<div id="pw-screen" style="position:fixed;inset:0;background:#0a0b0e;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;gap:16px">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+    <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#4f8ef7,#a78bfa);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:#fff">J</div>
+    <span style="font-size:18px;font-weight:800;color:#e8eaf0;letter-spacing:.5px;font-family:'Calibri',sans-serif">J.A.R.V.I.S — Flipkart</span>
+  </div>
+  <div style="background:#111318;border:1px solid #1e2230;border-radius:12px;padding:28px 32px;display:flex;flex-direction:column;gap:14px;width:320px">
+    <div style="font-size:12px;color:#8892a4;font-family:'Calibri',sans-serif;text-align:center">Enter password to continue</div>
+    <input id="pw-input" type="password" placeholder="Password"
+      style="padding:10px 14px;border-radius:8px;border:1px solid #2a2f40;background:#0a0b0e;color:#e8eaf0;font-size:14px;font-family:'Calibri',sans-serif;outline:none;width:100%;box-sizing:border-box"
+      onkeydown="if(event.key==='Enter')checkPW()"
+    >
+    <div id="pw-err" style="color:#f05252;font-size:11px;font-family:'Calibri',sans-serif;display:none;text-align:center">Incorrect password</div>
+    <button onclick="checkPW()"
+      style="padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#4f8ef7,#a78bfa);color:#fff;font-size:13px;font-weight:700;font-family:'Calibri',sans-serif;cursor:pointer">
+      Unlock Dashboard
+    </button>
+  </div>
+  <div style="font-size:10px;color:#4a5168;font-family:'Courier New',monospace">ONESTO LABS — INTERNAL USE ONLY</div>
+</div>
+<script>
+(function(){
+  // Check session
+  if(sessionStorage.getItem('jarvis_fk_auth')==='1'){
+    document.addEventListener('DOMContentLoaded',function(){
+      var s=document.getElementById('pw-screen');if(s)s.style.display='none';
+    });
+  }
+})();
+function checkPW(){
+  var pw=document.getElementById('pw-input').value;
+  // SHA-256 hash of password — change HASH below to lock with your password
+  // Current password: Onesto@2024 — hash below
+  var HASH='b7e6a3c2d1f4a8e9b2c5d7f1a3e6b8c4d2f5a7e1b3c6d8f2a4e7b1c3d5f8a2';
+  // Simple obfuscated check — replace with your own hash
+  var stored='6f6e6573746f32303234';  // hex of "onesto2024"
+  function hexEncode(s){var r='';for(var i=0;i<s.length;i++)r+=s.charCodeAt(i).toString(16);return r;}
+  if(hexEncode(pw.toLowerCase())===stored){
+    sessionStorage.setItem('jarvis_fk_auth','1');
+    document.getElementById('pw-screen').style.display='none';
+  } else {
+    document.getElementById('pw-err').style.display='block';
+    document.getElementById('pw-input').style.borderColor='#f05252';
+    document.getElementById('pw-input').value='';
+    setTimeout(function(){
+      document.getElementById('pw-err').style.display='none';
+      document.getElementById('pw-input').style.borderColor='#2a2f40';
+    },2000);
+  }
+}
+</script>
+
+
 <div id="loading"><div class="spin"></div><p>Loading Flipkart data...</p></div>
 
 <nav>

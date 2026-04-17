@@ -216,6 +216,7 @@ function checkPW(){
   <button class="nav-tab" onclick="showPage('sp',this)">💰 SP Compliance</button>
   <button class="nav-tab" onclick="showPage('ratings',this)">⭐ Ratings</button>
   <button class="nav-tab" onclick="showPage('sales',this)">📈 Sales</button>
+  <button class="nav-tab" onclick="showPage('traffic',this)">🔍 Traffic</button>
   <button class="nav-tab" onclick="showPage('ads',this)">📣 Ads</button>
   <div class="nav-right">
     <span class="nav-meta" id="nav-meta">—</span>
@@ -358,6 +359,11 @@ function checkPW(){
     <button class="fbtn"        onclick="setHubPeriod('sales','12M',this)">12M</button>
     <button class="fbtn"        onclick="setHubPeriod('sales','ALL',this)">All-Time</button>
     <div class="fsep"></div>
+    <span class="filter-label">Day</span>
+    <select class="fsel" id="sales-day-sel" onchange="setHubDay('sales')"><option value="">Whole period</option></select>
+    <span class="filter-label">Month</span>
+    <select class="fsel" id="sales-month-sel" onchange="setHubMonth('sales')"><option value="">All months</option></select>
+    <div class="fsep"></div>
     <input class="fsearch" placeholder="Search SKU / title..." id="sales-search" oninput="renderSales()">
     <div class="fsep"></div>
     <span id="sales-window" style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace"></span>
@@ -413,6 +419,9 @@ function checkPW(){
     <button class="fbtn"        onclick="setHubPeriod('ads','12M',this)">12M</button>
     <button class="fbtn"        onclick="setHubPeriod('ads','ALL',this)">All-Time</button>
     <div class="fsep"></div>
+    <span class="filter-label">Month</span>
+    <select class="fsel" id="ads-month-sel" onchange="setHubMonth('ads')"><option value="">All months</option></select>
+    <div class="fsep"></div>
     <span class="filter-label">View</span>
     <button class="fbtn active" id="ads-view-sku"    onclick="setAdsView('sku',this)">SKU</button>
     <button class="fbtn"        id="ads-view-camp"   onclick="setAdsView('campaign',this)">Campaign</button>
@@ -444,13 +453,75 @@ function checkPW(){
   </div>
 </div>
 
+<!-- ═══ TRAFFIC TAB ════════════════════════════════════════════════════ -->
+<div class="page" id="page-traffic">
+  <div class="filters">
+    <span class="filter-label">Brand</span>
+    <button class="fbtn active" onclick="setHubFilter('traffic','brand','ALL',this)">All</button>
+    <button class="fbtn ba"     onclick="setHubFilter('traffic','brand','BARE ANATOMY',this)">BA</button>
+    <button class="fbtn cap"    onclick="setHubFilter('traffic','brand','Chemist at Play',this)">CAP</button>
+    <button class="fbtn ss"     onclick="setHubFilter('traffic','brand','SunScoop',this)">SS</button>
+    <div class="fsep"></div>
+    <span class="filter-label">Period</span>
+    <button class="fbtn"        onclick="setHubPeriod('traffic',7,this)">7d</button>
+    <button class="fbtn"        onclick="setHubPeriod('traffic',15,this)">15d</button>
+    <button class="fbtn active" onclick="setHubPeriod('traffic',999,this)">Current</button>
+    <button class="fbtn"        onclick="setHubPeriod('traffic','3M',this)">3M</button>
+    <button class="fbtn"        onclick="setHubPeriod('traffic','6M',this)">6M</button>
+    <button class="fbtn"        onclick="setHubPeriod('traffic','12M',this)">12M</button>
+    <button class="fbtn"        onclick="setHubPeriod('traffic','ALL',this)">All-Time</button>
+    <div class="fsep"></div>
+    <span class="filter-label">Day</span>
+    <select class="fsel" id="traffic-day-sel" onchange="setHubDay('traffic')"><option value="">Whole period</option></select>
+    <span class="filter-label">Month</span>
+    <select class="fsel" id="traffic-month-sel" onchange="setHubMonth('traffic')"><option value="">All months</option></select>
+    <div class="fsep"></div>
+    <input class="fsearch" placeholder="Search SKU / title..." id="traffic-search" oninput="renderTraffic()">
+    <div class="fsep"></div>
+    <span id="traffic-window" style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace"></span>
+  </div>
+
+  <!-- KPI tiles -->
+  <div class="stat-grid" id="traffic-kpi" style="grid-template-columns:repeat(auto-fill,minmax(145px,1fr))"></div>
+
+  <!-- Charts -->
+  <div class="chart-grid" style="grid-template-columns:2fr 1fr">
+    <div class="chart-card"><div class="chart-title">Impressions & CVR</div><div class="chart-wrap"><canvas id="ch-traffic-trend"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">Traffic by Brand</div><div class="chart-wrap"><canvas id="ch-traffic-brand"></canvas></div></div>
+  </div>
+
+  <!-- SKU table -->
+  <div class="card">
+    <div class="card-hdr">
+      <span class="card-title">🧾 SKU-level Traffic</span>
+      <span class="card-sub" id="traffic-sku-count"></span>
+    </div>
+    <table>
+      <thead><tr>
+        <th style="min-width:150px" onclick="sortHub('traffic','sku')">SKU</th>
+        <th style="min-width:260px" onclick="sortHub('traffic','title')">Product</th>
+        <th onclick="sortHub('traffic','brand')">Brand</th>
+        <th style="text-align:right" onclick="sortHub('traffic','views')">Views ▼</th>
+        <th style="text-align:right" onclick="sortHub('traffic','clicks')">Clicks</th>
+        <th style="text-align:right" onclick="sortHub('traffic','ctr')">CTR</th>
+        <th style="text-align:right" onclick="sortHub('traffic','traffic_sales')">Sales (u)</th>
+        <th style="text-align:right" onclick="sortHub('traffic','cvr')">CVR</th>
+        <th style="text-align:right" onclick="sortHub('traffic','traffic_revenue')">Revenue</th>
+        <th style="text-align:right" onclick="sortHub('traffic','aov')">AOV</th>
+      </tr></thead>
+      <tbody id="traffic-sku-body"></tbody>
+    </table>
+  </div>
+</div>
+
 <script>
 // ══ SALES & ADS TABS ═════════════════════════════════════════════════════════
 
 // Per-tab state (using hub prefix to not collide with other tab state)
 var H = {
-  sales: {brand:'ALL', period:999, sort:'net_sales', sortDesc:true, search:''},
-  ads:   {brand:'ALL', period:999, view:'sku', sort:'ad_spend', sortDesc:true, search:''},
+  sales:   {brand:'ALL', period:999, month:'', day:'', sort:'net_sales', sortDesc:true, search:''},
+  ads:     {brand:'ALL', period:999, month:'', sort:'ad_spend', sortDesc:true, view:'sku', search:''},
+  traffic: {brand:'ALL', period:999, month:'', day:'', sort:'views', sortDesc:true, search:''},
 };
 
 // ── Formatters ───────────────────────────────────────────────────────────────
@@ -494,16 +565,52 @@ function brandPill(b) {
   return '<span style="color:'+brandColor(b)+';font-weight:700;font-size:11px">'+brandShort(b)+'</span>';
 }
 
+// Renders a given tab by name
+function renderHubTab(tab) {
+  if (tab === 'sales') renderSales();
+  else if (tab === 'ads') renderAds();
+  else if (tab === 'traffic') renderTraffic();
+}
+
 // Hub period filter — 7d/15d/Current use daily data, 3M/6M/12M/All-Time use history.totals
 function setHubPeriod(tab, n, btn) {
   H[tab].period = n;
+  // Clear day/month selectors when period buttons clicked — period overrides
+  H[tab].month = ''; H[tab].day = '';
+  var mSel = document.getElementById(tab+'-month-sel'); if (mSel) mSel.value = '';
+  var dSel = document.getElementById(tab+'-day-sel');   if (dSel) dSel.value = '';
   // Toggle active among period buttons in this tab's filter bar
   btn.closest('.filters').querySelectorAll('.fbtn').forEach(function(b){
     var t = b.textContent.trim();
     if (t.match(/^(7d|15d|30d|Current|3M|6M|12M|All|All-Time)$/)) b.classList.remove('active');
   });
   btn.classList.add('active');
-  if (tab === 'sales') renderSales(); else renderAds();
+  renderHubTab(tab);
+}
+
+// Jump to a single month from the historical dropdown
+function setHubMonth(tab) {
+  var val = document.getElementById(tab+'-month-sel').value;
+  H[tab].month = val;
+  H[tab].day = '';  // Clear day when month changes
+  var dSel = document.getElementById(tab+'-day-sel');
+  if (dSel) dSel.value = '';
+  // If a month is chosen, clear the period-button active state (month overrides)
+  if (val) {
+    var bar = document.querySelector('#page-'+tab+' .filters');
+    if (bar) bar.querySelectorAll('.fbtn').forEach(function(b){
+      var t = b.textContent.trim();
+      if (t.match(/^(7d|15d|Current|3M|6M|12M|All-Time)$/)) b.classList.remove('active');
+    });
+  }
+  renderHubTab(tab);
+}
+
+// Filter to a single day (only relevant when daily data is available — current month)
+function setHubDay(tab) {
+  var val = document.getElementById(tab+'-day-sel').value;
+  H[tab].day = val;
+  renderHubTab(tab);
 }
 
 // Is this period a historical (multi-month) period?
@@ -533,7 +640,7 @@ function setHubFilter(tab, key, val, btn) {
     if (['All','BA','CAP','SS'].includes(t)) b.classList.remove('active');
   });
   btn.classList.add('active');
-  if (tab === 'sales') renderSales(); else renderAds();
+  renderHubTab(tab);
 }
 
 function setAdsView(view, btn) {
@@ -570,6 +677,11 @@ function renderSales() {
       '<div class="stat-value" style="font-size:12px;color:var(--text3)">Run FK_Hub_Processor.py</div></div>';
     return;
   }
+  // Single-month override from month dropdown
+  if (H.sales.month) {
+    renderSalesSingleMonth(H.sales.month);
+    return;
+  }
   // Historical (multi-month) mode
   if (isHistPeriod(H.sales.period)) {
     renderSalesHistorical();
@@ -593,10 +705,16 @@ function renderSales() {
   var periodDays = H.sales.period;
   var salesDaily = hubSliceDaily(sales.daily || [], periodDays);
 
+  // Day filter — single day selected overrides period slicing
+  if (H.sales.day) {
+    salesDaily = (sales.daily || []).filter(function(d){ return d.date === H.sales.day; });
+  }
+
   // Window label
   var win = hub.window || {};
+  var dayLabel = H.sales.day ? (' · Day: ' + H.sales.day) : '';
   document.getElementById('sales-window').textContent =
-    'Window: ' + (win.from || '—') + ' → ' + (win.to || '—');
+    'Window: ' + (win.from || '—') + ' → ' + (win.to || '—') + dayLabel;
 
   // ── KPI aggregates (over the period)
   var pNet    = hubSum(salesDaily, 'net_sales');
@@ -718,6 +836,11 @@ function renderAds() {
     document.getElementById('ads-kpi').innerHTML =
       '<div class="stat-card" style="grid-column:1/-1"><div class="stat-label">NO HUB DATA YET</div>' +
       '<div class="stat-value" style="font-size:12px;color:var(--text3)">Run FK_Hub_Processor.py</div></div>';
+    return;
+  }
+  // Single-month override from month dropdown
+  if (H.ads.month) {
+    renderAdsSingleMonth(H.ads.month);
     return;
   }
   // Historical (multi-month) mode
@@ -1314,6 +1437,776 @@ function renderAdsHistorical() {
   }
 }
 
+// ══ SALES SINGLE-MONTH RENDERER ══════════════════════════════════════════════
+function renderSalesSingleMonth(month) {
+  var hub = D.hub;
+  var hist = hub.history || {};
+  var brand = H.sales.brand;
+
+  var series = brand === 'ALL'
+    ? (hist.totals?.sales || [])
+    : (hist.by_brand?.[brand]?.sales || []);
+  var m = series.find(function(x){ return x.month === month; });
+  if (!m) {
+    document.getElementById('sales-kpi').innerHTML =
+      '<div class="stat-card" style="grid-column:1/-1"><div class="stat-label">NO DATA</div>' +
+      '<div class="stat-value" style="font-size:12px;color:var(--text3)">No sales data for '+month+'</div></div>';
+    return;
+  }
+  document.getElementById('sales-window').textContent = 'Month: ' + monthLabel(month);
+
+  var pNet    = m.net_sales || 0;
+  var pNetU   = m.net_units || 0;
+  var pGross  = m.gross_sales || 0;
+  var pGrossU = m.gross_units || 0;
+  var pCxl    = m.cancellations || 0;
+  var pRtn    = m.returns || 0;
+  var aov     = pNetU > 0 ? pNet / pNetU : null;
+
+  var kpis = [
+    {label:'Net Sales',     val:fmtCr(pNet),   sub:fmtUnits(pNetU)+' units',  col:'var(--green)'},
+    {label:'Gross Sales',   val:fmtCr(pGross), sub:fmtUnits(pGrossU)+' units', col:'var(--accent)'},
+    {label:'Cancellations', val:fmtCr(pCxl),   sub:fmtPct(pGross>0?pCxl/pGross*100:null)+' of gross', col:'var(--red)'},
+    {label:'Returns',       val:fmtCr(pRtn),   sub:fmtPct(pGross>0?pRtn/pGross*100:null)+' of gross', col:'var(--orange)'},
+    {label:'AOV',           val:aov!=null?('₹'+Math.round(aov)):'—', sub:'Net/units', col:'var(--purple)'},
+    {label:'DRR',           val:fmtCr(pNet/30), sub:fmtUnits(pNetU/30)+' /day (30d est)', col:'var(--yellow)'},
+  ];
+  document.getElementById('sales-kpi').innerHTML = kpis.map(function(k){
+    return '<div class="stat-card"><div class="stat-label">'+k.label+'</div>' +
+      '<div class="stat-value" style="color:'+k.col+';font-size:18px">'+k.val+'</div>' +
+      '<div class="stat-sub">'+k.sub+'</div></div>';
+  }).join('');
+
+  // Single-month: show a simple bar for Net vs Gross
+  dChart('sales-trend');
+  charts['sales-trend'] = new Chart(document.getElementById('ch-sales-trend').getContext('2d'), {
+    type:'bar',
+    data:{labels:[monthLabel(month)], datasets:[
+      {label:'Gross Sales (₹L)', data:[+((pGross||0)/1e5).toFixed(1)], backgroundColor:'rgba(79,142,247,.55)', borderWidth:0},
+      {label:'Net Sales (₹L)',   data:[+((pNet||0)/1e5).toFixed(1)],   backgroundColor:'rgba(62,207,142,.85)', borderWidth:0},
+    ]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#8892a4',font:{size:10},boxWidth:10}}},
+      scales:{
+        x:{ticks:{color:'#4a5168'}, grid:{display:false}},
+        y:{ticks:{color:'#4a5168',font:{size:9},callback:function(v){return '₹'+v+'L'}}, grid:{color:'rgba(255,255,255,.05)'}},
+      }
+    }
+  });
+
+  dChart('sales-brand');
+  var brandNames = ['BARE ANATOMY','Chemist at Play','SunScoop'];
+  var brandCols  = ['rgba(79,142,247,.85)','rgba(62,207,142,.85)','rgba(245,165,36,.85)'];
+  var brandVals = brandNames.map(function(b){
+    var bSeries = hist.by_brand?.[b]?.sales || [];
+    var mm = bSeries.find(function(x){ return x.month === month; });
+    return +((mm?.net_sales||0)/1e5).toFixed(1);
+  });
+  charts['sales-brand'] = new Chart(document.getElementById('ch-sales-brand').getContext('2d'), {
+    type:'doughnut',
+    data:{labels:brandNames.map(brandShort), datasets:[{data:brandVals, backgroundColor:brandCols, borderWidth:0}]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'right',labels:{color:'#8892a4',font:{size:10},boxWidth:10}},
+               tooltip:{callbacks:{label:function(c){return c.label+': ₹'+c.parsed+'L';}}}}}
+  });
+
+  // SKU table for that specific month (from history.skus[].months[month])
+  var rows = (hist.skus || []).map(function(s){
+    var mData = s.months && s.months[month];
+    if (!mData) return null;
+    return Object.assign({}, s, {
+      net_sales:     mData.net_sales || 0,
+      net_units:     mData.net_units || 0,
+      gmv:           mData.gmv || 0,
+      cancellations: mData.cancellations || 0,
+      returns:       mData.returns || 0,
+      drr:           (mData.net_sales||0) / 30,
+      cancel_pct:    (mData.gmv > 0) ? mData.cancellations/mData.gmv*100 : 0,
+      return_pct:    (mData.gmv > 0) ? mData.returns/mData.gmv*100 : 0,
+    });
+  }).filter(function(s){ return s && (s.net_sales > 0 || s.gmv > 0); });
+
+  if (brand !== 'ALL') rows = rows.filter(function(s){ return s.brand === brand; });
+  var q = (document.getElementById('sales-search')?.value || '').toLowerCase().trim();
+  if (q) rows = rows.filter(function(s){ return (s.sku||'').toLowerCase().includes(q) || (s.title||'').toLowerCase().includes(q); });
+
+  var col = H.sales.sort, desc = H.sales.sortDesc;
+  rows.sort(function(a,b){
+    var x = a[col], y = b[col];
+    if (typeof x === 'string' || typeof y === 'string'){ x=(x||'').toString(); y=(y||'').toString(); return desc?y.localeCompare(x):x.localeCompare(y); }
+    x = x == null ? (desc?-Infinity:Infinity) : x;
+    y = y == null ? (desc?-Infinity:Infinity) : y;
+    return desc ? y-x : x-y;
+  });
+
+  document.getElementById('sales-sku-count').textContent =
+    rows.length + ' SKUs · Net ' + fmtCr(rows.reduce(function(a,s){return a+s.net_sales;},0)) + ' · ' + monthLabel(month);
+
+  document.getElementById('sales-sku-body').innerHTML = rows.length === 0
+    ? '<tr><td colspan="11" class="empty">No sales for '+month+'</td></tr>'
+    : rows.map(function(s){
+        var urlCell = s.url
+          ? '<a href="'+s.url+'" target="_blank" style="color:var(--text2)">'+(s.title||'—').slice(0,55)+'</a>'
+          : (s.title || '—').slice(0,55);
+        var cxlCol = s.cancel_pct > 10 ? 'var(--red)' : s.cancel_pct > 5 ? 'var(--orange)' : 'var(--text2)';
+        var rtnCol = s.return_pct > 5  ? 'var(--red)' : s.return_pct > 2 ? 'var(--orange)' : 'var(--text2)';
+        return '<tr>' +
+          '<td class="pid">'+(s.sku||'—')+'</td>' +
+          '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(s.title||'')+'">'+urlCell+'</td>' +
+          '<td>'+brandPill(s.brand)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace">'+(s.mrp?'₹'+s.mrp:'—')+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace">'+(s.sp?'₹'+s.sp:'—')+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--green);font-weight:700">'+fmtCr(s.net_sales)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace">'+fmtUnits(s.net_units)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">'+fmtCr(s.gmv)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace">'+fmtCr(s.drr)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:'+cxlCol+'">'+fmtPct(s.cancel_pct,1)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:'+rtnCol+'">'+fmtPct(s.return_pct,1)+'</td>' +
+          '</tr>';
+    }).join('');
+}
+
+// ══ ADS SINGLE-MONTH RENDERER ════════════════════════════════════════════════
+function renderAdsSingleMonth(month) {
+  var hub = D.hub;
+  var hist = hub.history || {};
+  var brand = H.ads.brand;
+
+  var adsSeries = brand === 'ALL'
+    ? (hist.totals?.ads || [])
+    : (hist.by_brand?.[brand]?.ads || []);
+  var salesSeries = brand === 'ALL'
+    ? (hist.totals?.sales || [])
+    : (hist.by_brand?.[brand]?.sales || []);
+  var m = adsSeries.find(function(x){ return x.month === month; });
+  var ms = salesSeries.find(function(x){ return x.month === month; });
+  if (!m) {
+    document.getElementById('ads-kpi').innerHTML =
+      '<div class="stat-card" style="grid-column:1/-1"><div class="stat-label">NO DATA</div>' +
+      '<div class="stat-value" style="font-size:12px;color:var(--text3)">No ads data for '+month+'</div></div>';
+    return;
+  }
+  document.getElementById('ads-window').textContent = 'Month: ' + monthLabel(month);
+
+  var pSpend = m.spend || 0;
+  var pRev   = m.revenue || 0;
+  var pUnits = m.units || 0;
+  var pClicks = m.clicks || 0;
+  var pViews  = m.views || 0;
+  var pRoi   = m.roi;
+  var pNet   = ms ? (ms.net_sales || 0) : 0;
+  var pTacos = pNet > 0 && pSpend > 0 ? (pSpend/pNet*100) : null;
+  var pCtr   = pViews > 0 ? pClicks/pViews*100 : null;
+  var pCpc   = pClicks > 0 ? pSpend/pClicks : null;
+
+  var kpis = [
+    {label:'Ad Spend',    val:fmtCr(pSpend), sub:'CPC '+(pCpc!=null?'₹'+pCpc.toFixed(2):'—'), col:'var(--red)'},
+    {label:'Ad Revenue',  val:fmtCr(pRev),   sub:fmtUnits(pUnits)+' units', col:'var(--green)'},
+    {label:'ROI',         val:pRoi!=null?(+pRoi).toFixed(2)+'x':'—', sub:'Rev/Spend', col:'var(--yellow)'},
+    {label:'TACOS',       val:pTacos!=null?pTacos.toFixed(1)+'%':'—', sub:'Spend/Net Sales', col:'var(--orange)'},
+    {label:'Clicks',      val:fmtImpr(pClicks), sub:pCtr!=null?'CTR '+pCtr.toFixed(2)+'%':'—', col:'var(--purple)'},
+    {label:'Ad Views',    val:fmtImpr(pViews), sub:'Impressions served', col:'var(--accent)'},
+  ];
+  document.getElementById('ads-kpi').innerHTML = kpis.map(function(k){
+    return '<div class="stat-card"><div class="stat-label">'+k.label+'</div>' +
+      '<div class="stat-value" style="color:'+k.col+';font-size:18px">'+k.val+'</div>' +
+      '<div class="stat-sub">'+k.sub+'</div></div>';
+  }).join('');
+
+  // Single-month chart
+  dChart('ads-brand');
+  charts['ads-brand'] = new Chart(document.getElementById('ch-ads-brand').getContext('2d'), {
+    type:'bar',
+    data:{labels:[monthLabel(month)], datasets:[
+      {label:'Spend (₹L)',   data:[+((pSpend||0)/1e5).toFixed(1)], backgroundColor:'rgba(240,82,82,.75)'},
+      {label:'Revenue (₹L)', data:[+((pRev||0)/1e5).toFixed(1)],   backgroundColor:'rgba(62,207,142,.75)'},
+    ]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#8892a4',font:{size:10},boxWidth:10}}},
+      scales:{
+        x:{ticks:{color:'#4a5168'}, grid:{display:false}},
+        y:{ticks:{color:'#4a5168',font:{size:9},callback:function(v){return '₹'+v+'L'}}, grid:{color:'rgba(255,255,255,.05)'}},
+      }
+    }
+  });
+
+  // Brand ROI/spend for this month
+  dChart('ads-roi');
+  var brandNames = ['BARE ANATOMY','Chemist at Play','SunScoop'];
+  var brandSpend = brandNames.map(function(b){
+    var bSeries = hist.by_brand?.[b]?.ads || [];
+    var mm = bSeries.find(function(x){ return x.month === month; });
+    return +((mm?.spend||0)/1e5).toFixed(1);
+  });
+  var brandRoi = brandNames.map(function(b){
+    var bSeries = hist.by_brand?.[b]?.ads || [];
+    var mm = bSeries.find(function(x){ return x.month === month; });
+    return mm?.roi || 0;
+  });
+  charts['ads-roi'] = new Chart(document.getElementById('ch-ads-roi').getContext('2d'), {
+    data:{labels:brandNames.map(brandShort), datasets:[
+      {type:'bar',  label:'Spend (₹L)', data:brandSpend, backgroundColor:'rgba(240,82,82,.65)', yAxisID:'y'},
+      {type:'line', label:'ROI (x)',    data:brandRoi,   borderColor:'#f5c842', backgroundColor:'rgba(245,200,66,.1)', fill:false, borderWidth:2, pointRadius:4, yAxisID:'y2'},
+    ]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#8892a4',font:{size:10},boxWidth:10}}},
+      scales:{
+        x:{ticks:{color:'#4a5168'}, grid:{display:false}},
+        y:{ticks:{color:'#4a5168',font:{size:9},callback:function(v){return '₹'+v+'L'}}, grid:{color:'rgba(255,255,255,.05)'}},
+        y2:{position:'right', ticks:{color:'#f5c842',font:{size:9},callback:function(v){return v+'x'}}, grid:{display:false}},
+      }
+    }
+  });
+
+  // SKU table for this month
+  if (H.ads.view === 'sku') {
+    document.getElementById('ads-table-title').textContent = '📣 SKU-level Ads — ' + monthLabel(month);
+    var rows = (hist.skus || []).map(function(s){
+      var mData = s.months && s.months[month];
+      if (!mData) return null;
+      return Object.assign({}, s, {
+        ad_spend:       mData.ad_spend || 0,
+        ad_revenue:     mData.ad_revenue || 0,
+        ad_units:       mData.ad_units || 0,
+        ad_clicks:      mData.clicks || 0,
+        ad_roi:         mData.ad_roi,
+        net_sales:      mData.net_sales || 0,
+        campaign_count: mData.campaign_count || 0,
+        tacos:          (mData.net_sales > 0 && mData.ad_spend > 0) ? mData.ad_spend/mData.net_sales*100 : null,
+      });
+    }).filter(function(s){ return s && (s.ad_spend > 0); });
+
+    if (brand !== 'ALL') rows = rows.filter(function(s){ return s.brand === brand; });
+    var q = (document.getElementById('ads-search')?.value || '').toLowerCase().trim();
+    if (q) rows = rows.filter(function(s){ return (s.sku||'').toLowerCase().includes(q) || (s.title||'').toLowerCase().includes(q); });
+
+    var col = H.ads.sort, desc = H.ads.sortDesc;
+    rows.sort(function(a,b){
+      var x = a[col], y = b[col];
+      if (typeof x === 'string' || typeof y === 'string'){ x=(x||'').toString(); y=(y||'').toString(); return desc?y.localeCompare(x):x.localeCompare(y); }
+      x = x == null ? (desc?-Infinity:Infinity) : x;
+      y = y == null ? (desc?-Infinity:Infinity) : y;
+      return desc ? y-x : x-y;
+    });
+
+    document.getElementById('ads-table-count').textContent =
+      rows.length + ' SKUs · Spend ' + fmtCr(rows.reduce(function(a,s){return a+s.ad_spend;},0));
+
+    document.getElementById('ads-table-hdr').innerHTML =
+      '<th style="min-width:150px" onclick="sortHub(\'ads\',\'sku\')">SKU</th>' +
+      '<th style="min-width:250px" onclick="sortHub(\'ads\',\'title\')">Product</th>' +
+      '<th onclick="sortHub(\'ads\',\'brand\')">Brand</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'campaign_count\')">Camps</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'ad_spend\')">Spend ▼</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'ad_revenue\')">Ad Rev</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'ad_roi\')">ROI</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'ad_units\')">Ad Units</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'ad_clicks\')">Clicks</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'net_sales\')">Net Sales</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'tacos\')">TACOS</th>';
+
+    document.getElementById('ads-table-body').innerHTML = rows.length === 0
+      ? '<tr><td colspan="11" class="empty">No SKUs with ad spend for '+month+'</td></tr>'
+      : rows.map(function(s){
+          var roiCol = s.ad_roi >= 3 ? 'var(--green)' : s.ad_roi >= 1.5 ? 'var(--orange)' : 'var(--red)';
+          var tacosVal = s.tacos;
+          var tacosCol = tacosVal > 30 ? 'var(--red)' : tacosVal > 20 ? 'var(--orange)' : 'var(--text2)';
+          var urlCell = s.url
+            ? '<a href="'+s.url+'" target="_blank" style="color:var(--text2)">'+(s.title||'—').slice(0,50)+'</a>'
+            : (s.title || '—').slice(0,50);
+          return '<tr>' +
+            '<td class="pid">'+(s.sku||'—')+'</td>' +
+            '<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(s.title||'')+'">'+urlCell+'</td>' +
+            '<td>'+brandPill(s.brand)+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">'+(s.campaign_count||0)+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace;color:var(--red)">'+fmtCr(s.ad_spend)+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace;color:var(--green)">'+fmtCr(s.ad_revenue)+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace;color:'+roiCol+';font-weight:700">'+(s.ad_roi!=null?(+s.ad_roi).toFixed(2)+'x':'—')+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace">'+fmtUnits(s.ad_units)+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">'+fmtImpr(s.ad_clicks)+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace">'+fmtCr(s.net_sales)+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace;color:'+tacosCol+'">'+(tacosVal!=null?tacosVal.toFixed(1)+'%':'—')+'</td>' +
+          '</tr>';
+      }).join('');
+  } else {
+    // Campaign view for single month — show aggregated-from-SKUs flat list
+    document.getElementById('ads-table-title').textContent = '📣 Campaigns — ' + monthLabel(month);
+    document.getElementById('ads-table-count').textContent = 'Campaign-level breakdown not stored per-month';
+    document.getElementById('ads-table-hdr').innerHTML = '<th>Note</th>';
+    document.getElementById('ads-table-body').innerHTML =
+      '<tr><td class="empty">Individual campaign rows are only available for the Current period. For this historical month, switch to SKU view.</td></tr>';
+  }
+}
+// ══ TRAFFIC TAB ══════════════════════════════════════════════════════════════
+function renderTraffic() {
+  if (!D || !D.hub) {
+    document.getElementById('traffic-kpi').innerHTML =
+      '<div class="stat-card" style="grid-column:1/-1"><div class="stat-label">NO HUB DATA YET</div>' +
+      '<div class="stat-value" style="font-size:12px;color:var(--text3)">Run FK_Hub_Processor.py</div></div>';
+    return;
+  }
+
+  // Month override — jump to one specific month from history
+  if (H.traffic.month) {
+    renderTrafficSingleMonth(H.traffic.month);
+    return;
+  }
+
+  // Historical multi-month
+  if (isHistPeriod(H.traffic.period)) {
+    renderTrafficHistorical();
+    return;
+  }
+
+  var hub = D.hub;
+  var traffic = hub.traffic || {};
+  var skus = (hub.skus || []).filter(function(s){ return (s.views||0) > 0; });
+
+  var brand = H.traffic.brand;
+  if (brand !== 'ALL') skus = skus.filter(function(s){ return s.brand === brand; });
+
+  var q = (document.getElementById('traffic-search')?.value || '').toLowerCase().trim();
+  if (q) skus = skus.filter(function(s){
+    return (s.sku||'').toLowerCase().includes(q) || (s.title||'').toLowerCase().includes(q);
+  });
+
+  // Slice by period
+  var periodDays = H.traffic.period;
+  var trafficDaily = (traffic.daily || []).slice();
+
+  // Day filter — single day selected
+  if (H.traffic.day) {
+    trafficDaily = trafficDaily.filter(function(d){ return d.date === H.traffic.day; });
+  } else if (!isHistPeriod(periodDays)) {
+    var N = periodDays === 999 ? 999 : periodDays;
+    trafficDaily = N >= 999 ? trafficDaily : trafficDaily.slice(-N);
+  }
+
+  var win = hub.window || {};
+  var dayLabel = H.traffic.day ? (' · ' + H.traffic.day) : '';
+  document.getElementById('traffic-window').textContent =
+    'Window: ' + (win.from || '—') + ' → ' + (win.to || '—') + dayLabel;
+
+  // KPI aggregates
+  function sumF(field){ return trafficDaily.reduce(function(a,m){return a+(m[field]||0);},0); }
+  var impr   = sumF('views');
+  var clicks = sumF('clicks');
+  var tSales = sumF('sales');
+  var tRev   = sumF('revenue');
+  var ctr    = impr > 0 ? clicks/impr*100 : null;
+  var cvr    = impr > 0 ? tSales/impr*100 : null;
+  var aov    = tSales > 0 ? tRev/tSales : null;
+
+  // If brand filter ON, override with brand totals from traffic.by_brand
+  if (brand !== 'ALL' && traffic.by_brand && traffic.by_brand[brand] && !H.traffic.day) {
+    var bb = traffic.by_brand[brand];
+    impr = bb.views; clicks = bb.clicks; tSales = bb.sales; tRev = bb.revenue;
+    ctr = impr > 0 ? clicks/impr*100 : null;
+    cvr = impr > 0 ? tSales/impr*100 : null;
+    aov = tSales > 0 ? tRev/tSales : null;
+  }
+
+  var kpis = [
+    {label:'Impressions', val:fmtImpr(impr),   sub:fmtImpr(clicks)+' clicks', col:'var(--purple)'},
+    {label:'CTR',         val:ctr!=null?ctr.toFixed(2)+'%':'—', sub:'Clicks/Views', col:'var(--accent)'},
+    {label:'Traffic Sales',val:fmtUnits(tSales), sub:'units', col:'var(--green)'},
+    {label:'CVR',         val:cvr!=null?cvr.toFixed(2)+'%':'—', sub:'Sales/Views', col:'var(--yellow)'},
+    {label:'Revenue',     val:fmtCr(tRev),     sub:'₹ from traffic', col:'var(--green)'},
+    {label:'AOV',         val:aov!=null?('₹'+Math.round(aov)):'—', sub:'Revenue/Sales', col:'var(--orange)'},
+  ];
+  document.getElementById('traffic-kpi').innerHTML = kpis.map(function(k){
+    return '<div class="stat-card"><div class="stat-label">'+k.label+'</div>' +
+      '<div class="stat-value" style="color:'+k.col+';font-size:18px">'+k.val+'</div>' +
+      '<div class="stat-sub">'+k.sub+'</div></div>';
+  }).join('');
+
+  // Daily trend chart — Impressions + CVR
+  dChart('traffic-trend');
+  var labels = trafficDaily.map(function(d){ return fmtDate(d.date); });
+  var imprArr = trafficDaily.map(function(d){ return +((d.views||0)/1e5).toFixed(1); });
+  var cvrArr  = trafficDaily.map(function(d){
+    if (d.views && d.sales != null) return +(d.sales/d.views*100).toFixed(2);
+    return null;
+  });
+  charts['traffic-trend'] = new Chart(document.getElementById('ch-traffic-trend').getContext('2d'), {
+    type:'line',
+    data:{labels:labels, datasets:[
+      {label:'Impressions (L)', data:imprArr, borderColor:'#a78bfa', backgroundColor:'rgba(167,139,250,.1)', fill:true,  tension:.35, borderWidth:2, pointRadius:3, yAxisID:'y'},
+      {label:'CVR (%)',         data:cvrArr,  borderColor:'#f5a524', backgroundColor:'transparent',          fill:false, tension:.35, borderWidth:1.5, pointRadius:2, yAxisID:'y2'},
+    ]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#8892a4',font:{size:10},boxWidth:10}}},
+      scales:{
+        x: {ticks:{color:'#4a5168',font:{size:9}}, grid:{color:'rgba(255,255,255,.05)'}},
+        y: {ticks:{color:'#a78bfa',font:{size:9}}, grid:{color:'rgba(255,255,255,.05)'}, position:'left'},
+        y2:{ticks:{color:'#f5a524',font:{size:9}}, grid:{display:false}, position:'right'},
+      }
+    }
+  });
+
+  // Brand breakdown
+  dChart('traffic-brand');
+  var bb = traffic.by_brand || {};
+  var bLabels = Object.keys(bb);
+  var bVals   = bLabels.map(function(k){ return +((bb[k].views||0)/1e5).toFixed(1); });
+  var bCols   = bLabels.map(function(k){
+    return k === 'BARE ANATOMY' ? 'rgba(79,142,247,.8)'
+         : k === 'Chemist at Play' ? 'rgba(62,207,142,.8)'
+         : k === 'SunScoop' ? 'rgba(245,165,36,.8)' : 'rgba(167,139,250,.7)';
+  });
+  charts['traffic-brand'] = new Chart(document.getElementById('ch-traffic-brand').getContext('2d'), {
+    type:'doughnut',
+    data:{labels:bLabels, datasets:[{data:bVals, backgroundColor:bCols, borderWidth:0}]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'right',labels:{color:'#8892a4',font:{size:10},boxWidth:10}},
+               tooltip:{callbacks:{label:function(c){return c.label+': '+c.parsed+'L views';}}}}}
+  });
+
+  // SKU table — sort by H.traffic.sort
+  var col = H.traffic.sort, desc = H.traffic.sortDesc;
+  skus.sort(function(a,b){
+    var x = a[col], y = b[col];
+    if (typeof x === 'string' || typeof y === 'string'){ x=(x||'').toString(); y=(y||'').toString(); return desc?y.localeCompare(x):x.localeCompare(y); }
+    x = x == null ? (desc?-Infinity:Infinity) : x;
+    y = y == null ? (desc?-Infinity:Infinity) : y;
+    return desc ? y-x : x-y;
+  });
+
+  document.getElementById('traffic-sku-count').textContent =
+    skus.length + ' SKUs · ' + fmtImpr(skus.reduce(function(a,s){return a+(s.views||0);},0)) + ' views';
+
+  document.getElementById('traffic-sku-body').innerHTML = skus.length === 0
+    ? '<tr><td colspan="10" class="empty">No SKUs match filter</td></tr>'
+    : skus.map(function(s){
+        var urlCell = s.url
+          ? '<a href="'+s.url+'" target="_blank" style="color:var(--text2)">'+(s.title||'—').slice(0,55)+'</a>'
+          : (s.title || '—').slice(0,55);
+        return '<tr>' +
+          '<td class="pid">'+(s.sku||'—')+'</td>' +
+          '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(s.title||'')+'">'+urlCell+'</td>' +
+          '<td>'+brandPill(s.brand)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--purple);font-weight:700">'+fmtImpr(s.views)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace">'+fmtImpr(s.clicks)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">'+(s.ctr!=null?s.ctr.toFixed(2)+'%':'—')+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace">'+fmtUnits(s.traffic_sales)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--yellow)">'+(s.cvr!=null?s.cvr.toFixed(2)+'%':'—')+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--green)">'+fmtCr(s.traffic_revenue)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace">'+(s.aov!=null?('₹'+Math.round(s.aov)):'—')+'</td>' +
+          '</tr>';
+    }).join('');
+}
+
+function renderTrafficHistorical() {
+  var hub = D.hub;
+  var hist = hub.history || {};
+  if (!hist.months || !hist.months.length) {
+    document.getElementById('traffic-kpi').innerHTML =
+      '<div class="stat-card" style="grid-column:1/-1"><div class="stat-label">NO HISTORICAL DATA</div>' +
+      '<div class="stat-value" style="font-size:12px;color:var(--text3)">Run FK_Hub_Historical.py</div></div>';
+    return;
+  }
+
+  var brand = H.traffic.brand;
+  var period = H.traffic.period;
+
+  var series = brand === 'ALL'
+    ? (hist.totals?.traffic || [])
+    : (hist.by_brand?.[brand]?.traffic || []);
+  var slice = histSlice(series, period);
+
+  var from = slice.length ? slice[0].month : '—';
+  var to   = slice.length ? slice[slice.length-1].month : '—';
+  document.getElementById('traffic-window').textContent =
+    'Window: ' + monthLabel(from) + ' → ' + monthLabel(to) + ' · ' + slice.length + ' months';
+
+  function sumF(field){ return slice.reduce(function(a,m){return a+(m[field]||0);},0); }
+  var impr   = sumF('impressions');
+  var clicks = sumF('clicks');
+  var tSales = sumF('sales');
+  var tRev   = sumF('revenue');
+  var ctr    = impr > 0 ? clicks/impr*100 : null;
+  var cvr    = impr > 0 ? tSales/impr*100 : null;
+  var aov    = tSales > 0 ? tRev/tSales : null;
+
+  var kpis = [
+    {label:'Impressions', val:fmtImpr(impr),   sub:fmtImpr(clicks)+' clicks', col:'var(--purple)'},
+    {label:'CTR',         val:ctr!=null?ctr.toFixed(2)+'%':'—', sub:'Clicks/Views', col:'var(--accent)'},
+    {label:'Traffic Sales',val:fmtUnits(tSales), sub:'units', col:'var(--green)'},
+    {label:'CVR',         val:cvr!=null?cvr.toFixed(2)+'%':'—', sub:'Sales/Views', col:'var(--yellow)'},
+    {label:'Revenue',     val:fmtCr(tRev),     sub:'₹ from traffic', col:'var(--green)'},
+    {label:'Avg / Month', val:fmtImpr(impr/slice.length), sub:slice.length+' months', col:'var(--orange)'},
+  ];
+  document.getElementById('traffic-kpi').innerHTML = kpis.map(function(k){
+    return '<div class="stat-card"><div class="stat-label">'+k.label+'</div>' +
+      '<div class="stat-value" style="color:'+k.col+';font-size:18px">'+k.val+'</div>' +
+      '<div class="stat-sub">'+k.sub+'</div></div>';
+  }).join('');
+
+  // Monthly trend — bars for impressions + line for CVR
+  dChart('traffic-trend');
+  var labels = slice.map(function(m){ return monthLabel(m.month); });
+  var imprArr = slice.map(function(m){ return +((m.impressions||0)/1e5).toFixed(1); });
+  var cvrArr  = slice.map(function(m){
+    if (m.impressions && m.sales != null) return +(m.sales/m.impressions*100).toFixed(2);
+    return null;
+  });
+  charts['traffic-trend'] = new Chart(document.getElementById('ch-traffic-trend').getContext('2d'), {
+    data:{labels:labels, datasets:[
+      {type:'bar',  label:'Impressions (L)', data:imprArr, backgroundColor:'rgba(167,139,250,.7)', borderWidth:0, yAxisID:'y'},
+      {type:'line', label:'CVR (%)',         data:cvrArr,  borderColor:'#f5a524', backgroundColor:'transparent', fill:false, tension:.3, borderWidth:2, pointRadius:3, yAxisID:'y2'},
+    ]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#8892a4',font:{size:10},boxWidth:10}}},
+      scales:{
+        x: {ticks:{color:'#4a5168',font:{size:9}}, grid:{display:false}},
+        y: {ticks:{color:'#a78bfa',font:{size:9}}, grid:{color:'rgba(255,255,255,.05)'}, position:'left'},
+        y2:{ticks:{color:'#f5a524',font:{size:9}}, grid:{display:false}, position:'right'},
+      }
+    }
+  });
+
+  // Brand stacked bars
+  dChart('traffic-brand');
+  var brandNames = ['BARE ANATOMY','Chemist at Play','SunScoop'];
+  var brandCols  = ['rgba(79,142,247,.85)','rgba(62,207,142,.85)','rgba(245,165,36,.85)'];
+  var brandDs = brandNames.map(function(b, i){
+    var bSeries = hist.by_brand?.[b]?.traffic || [];
+    var mnMap = {}; bSeries.forEach(function(r){ mnMap[r.month]=r; });
+    return {
+      label: brandShort(b),
+      data:  slice.map(function(m){ return +((mnMap[m.month]?.impressions||0)/1e5).toFixed(1); }),
+      backgroundColor: brandCols[i],
+      borderWidth:0,
+      stack:'s',
+    };
+  });
+  charts['traffic-brand'] = new Chart(document.getElementById('ch-traffic-brand').getContext('2d'), {
+    type:'bar',
+    data:{labels:labels, datasets:brandDs},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#8892a4',font:{size:10},boxWidth:10}}},
+      scales:{
+        x:{stacked:true, ticks:{color:'#4a5168',font:{size:9}}, grid:{display:false}},
+        y:{stacked:true, ticks:{color:'#4a5168',font:{size:9}}, grid:{color:'rgba(255,255,255,.05)'}},
+      }
+    }
+  });
+
+  // SKU table — aggregate views/clicks across window
+  var skuHist = hist.skus || [];
+  var windowMonths = new Set(slice.map(function(m){return m.month;}));
+  var rows = skuHist.map(function(s){
+    var t = {views:0, clicks:0, monthsActive:0};
+    Object.keys(s.months || {}).forEach(function(mo){
+      if (!windowMonths.has(mo)) return;
+      var m = s.months[mo];
+      t.views  += m.views || 0;
+      t.clicks += m.clicks || 0;
+      if ((m.views||0) > 0) t.monthsActive++;
+    });
+    return Object.assign({}, s, {
+      views: t.views, clicks: t.clicks,
+      ctr: t.views > 0 ? t.clicks/t.views*100 : null,
+      months_active: t.monthsActive,
+      // These aren't in history SKU struct — leave as null
+      traffic_sales: null, cvr: null, traffic_revenue: null, aov: null,
+    });
+  }).filter(function(s){ return (s.views||0) > 0; });
+
+  if (brand !== 'ALL') rows = rows.filter(function(s){ return s.brand === brand; });
+  var q = (document.getElementById('traffic-search')?.value || '').toLowerCase().trim();
+  if (q) rows = rows.filter(function(s){ return (s.sku||'').toLowerCase().includes(q) || (s.title||'').toLowerCase().includes(q); });
+
+  var col = H.traffic.sort, desc = H.traffic.sortDesc;
+  rows.sort(function(a,b){
+    var x = a[col], y = b[col];
+    if (typeof x === 'string' || typeof y === 'string'){ x=(x||'').toString(); y=(y||'').toString(); return desc?y.localeCompare(x):x.localeCompare(y); }
+    x = x == null ? (desc?-Infinity:Infinity) : x;
+    y = y == null ? (desc?-Infinity:Infinity) : y;
+    return desc ? y-x : x-y;
+  });
+
+  document.getElementById('traffic-sku-count').textContent =
+    rows.length + ' SKUs · ' + fmtImpr(rows.reduce(function(a,s){return a+(s.views||0);},0)) + ' views · ' + slice.length + ' months';
+
+  document.getElementById('traffic-sku-body').innerHTML = rows.length === 0
+    ? '<tr><td colspan="10" class="empty">No SKUs with traffic in this window</td></tr>'
+    : rows.map(function(s){
+        var urlCell = s.url
+          ? '<a href="'+s.url+'" target="_blank" style="color:var(--text2)">'+(s.title||'—').slice(0,55)+'</a>'
+          : (s.title || '—').slice(0,55);
+        return '<tr>' +
+          '<td class="pid">'+(s.sku||'—')+'</td>' +
+          '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(s.title||'')+'">'+urlCell+'</td>' +
+          '<td>'+brandPill(s.brand)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--purple);font-weight:700">'+fmtImpr(s.views)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace">'+fmtImpr(s.clicks)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">'+(s.ctr!=null?s.ctr.toFixed(2)+'%':'—')+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">—</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">—</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">—</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">—</td>' +
+          '</tr>';
+    }).join('');
+}
+
+// Render a specific single month from history
+function renderTrafficSingleMonth(month) {
+  var hub = D.hub;
+  var hist = hub.history || {};
+  var brand = H.traffic.brand;
+
+  var series = brand === 'ALL'
+    ? (hist.totals?.traffic || [])
+    : (hist.by_brand?.[brand]?.traffic || []);
+  var m = series.find(function(x){ return x.month === month; });
+  if (!m) {
+    document.getElementById('traffic-kpi').innerHTML =
+      '<div class="stat-card" style="grid-column:1/-1"><div class="stat-label">NO DATA</div>' +
+      '<div class="stat-value" style="font-size:12px;color:var(--text3)">No traffic data for '+month+'</div></div>';
+    return;
+  }
+
+  document.getElementById('traffic-window').textContent = 'Month: ' + monthLabel(month);
+
+  var ctr = m.impressions > 0 ? m.clicks/m.impressions*100 : null;
+  var cvr = m.impressions > 0 ? m.sales/m.impressions*100 : null;
+  var aov = m.sales > 0 ? m.revenue/m.sales : null;
+
+  var kpis = [
+    {label:'Impressions', val:fmtImpr(m.impressions),   sub:fmtImpr(m.clicks)+' clicks', col:'var(--purple)'},
+    {label:'CTR',         val:ctr!=null?ctr.toFixed(2)+'%':'—', sub:'Clicks/Views', col:'var(--accent)'},
+    {label:'Traffic Sales',val:fmtUnits(m.sales), sub:'units', col:'var(--green)'},
+    {label:'CVR',         val:cvr!=null?cvr.toFixed(2)+'%':'—', sub:'Sales/Views', col:'var(--yellow)'},
+    {label:'Revenue',     val:fmtCr(m.revenue),  sub:'₹ from traffic', col:'var(--green)'},
+    {label:'AOV',         val:aov!=null?('₹'+Math.round(aov)):'—', sub:'Revenue/Sales', col:'var(--orange)'},
+  ];
+  document.getElementById('traffic-kpi').innerHTML = kpis.map(function(k){
+    return '<div class="stat-card"><div class="stat-label">'+k.label+'</div>' +
+      '<div class="stat-value" style="color:'+k.col+';font-size:18px">'+k.val+'</div>' +
+      '<div class="stat-sub">'+k.sub+'</div></div>';
+  }).join('');
+
+  // Simple single-bar for trend, brand donut on right
+  dChart('traffic-trend');
+  charts['traffic-trend'] = new Chart(document.getElementById('ch-traffic-trend').getContext('2d'), {
+    type:'bar',
+    data:{labels:[monthLabel(month)], datasets:[
+      {label:'Impressions (L)', data:[+((m.impressions||0)/1e5).toFixed(1)], backgroundColor:'rgba(167,139,250,.7)'},
+      {label:'Clicks (K)',      data:[+((m.clicks||0)/1e3).toFixed(1)],      backgroundColor:'rgba(79,142,247,.7)'},
+    ]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#8892a4',font:{size:10},boxWidth:10}}},
+      scales:{
+        x:{ticks:{color:'#4a5168'}, grid:{display:false}},
+        y:{ticks:{color:'#4a5168'}, grid:{color:'rgba(255,255,255,.05)'}},
+      }
+    }
+  });
+
+  dChart('traffic-brand');
+  var brandNames = ['BARE ANATOMY','Chemist at Play','SunScoop'];
+  var brandCols  = ['rgba(79,142,247,.85)','rgba(62,207,142,.85)','rgba(245,165,36,.85)'];
+  var brandVals = brandNames.map(function(b){
+    var bSeries = hist.by_brand?.[b]?.traffic || [];
+    var mm = bSeries.find(function(x){ return x.month === month; });
+    return +((mm?.impressions||0)/1e5).toFixed(1);
+  });
+  charts['traffic-brand'] = new Chart(document.getElementById('ch-traffic-brand').getContext('2d'), {
+    type:'doughnut',
+    data:{labels:brandNames.map(brandShort), datasets:[{data:brandVals, backgroundColor:brandCols, borderWidth:0}]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'right',labels:{color:'#8892a4',font:{size:10},boxWidth:10}},
+               tooltip:{callbacks:{label:function(c){return c.label+': '+c.parsed+'L views';}}}}}
+  });
+
+  // SKU table for that specific month
+  var rows = (hist.skus || []).map(function(s){
+    var mData = s.months && s.months[month];
+    if (!mData) return null;
+    return Object.assign({}, s, {
+      views:  mData.views || 0,
+      clicks: mData.clicks || 0,
+      ctr:    (mData.views > 0) ? mData.clicks/mData.views*100 : null,
+      traffic_sales:   null,  // not in history SKU granularity
+      cvr:             null,
+      traffic_revenue: null,
+      aov:             null,
+    });
+  }).filter(function(s){ return s && (s.views > 0); });
+
+  if (brand !== 'ALL') rows = rows.filter(function(s){ return s.brand === brand; });
+  var q = (document.getElementById('traffic-search')?.value || '').toLowerCase().trim();
+  if (q) rows = rows.filter(function(s){ return (s.sku||'').toLowerCase().includes(q) || (s.title||'').toLowerCase().includes(q); });
+
+  var col = H.traffic.sort, desc = H.traffic.sortDesc;
+  rows.sort(function(a,b){
+    var x = a[col], y = b[col];
+    if (typeof x === 'string' || typeof y === 'string'){ x=(x||'').toString(); y=(y||'').toString(); return desc?y.localeCompare(x):x.localeCompare(y); }
+    x = x == null ? (desc?-Infinity:Infinity) : x;
+    y = y == null ? (desc?-Infinity:Infinity) : y;
+    return desc ? y-x : x-y;
+  });
+
+  document.getElementById('traffic-sku-count').textContent =
+    rows.length + ' SKUs · ' + fmtImpr(rows.reduce(function(a,s){return a+(s.views||0);},0)) + ' views';
+
+  document.getElementById('traffic-sku-body').innerHTML = rows.length === 0
+    ? '<tr><td colspan="10" class="empty">No SKU traffic for '+month+'</td></tr>'
+    : rows.map(function(s){
+        var urlCell = s.url
+          ? '<a href="'+s.url+'" target="_blank" style="color:var(--text2)">'+(s.title||'—').slice(0,55)+'</a>'
+          : (s.title || '—').slice(0,55);
+        return '<tr>' +
+          '<td class="pid">'+(s.sku||'—')+'</td>' +
+          '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(s.title||'')+'">'+urlCell+'</td>' +
+          '<td>'+brandPill(s.brand)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--purple);font-weight:700">'+fmtImpr(s.views)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace">'+fmtImpr(s.clicks)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">'+(s.ctr!=null?s.ctr.toFixed(2)+'%':'—')+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">—</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">—</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">—</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">—</td>' +
+          '</tr>';
+    }).join('');
+}
+
+// ══ POPULATE HUB DATE/MONTH SELECTORS ══════════════════════════════════════
+function populateHubDateSelectors() {
+  if (!D || !D.hub) return;
+  var hub = D.hub;
+
+  // Month list — from history if available, else just current window
+  var months = (hub.history && hub.history.months) ? hub.history.months.slice() : [];
+  // Also always ensure current window month is represented
+  var curMonth = (hub.window && hub.window.from) ? hub.window.from.slice(0, 7) : null;
+  if (curMonth && !months.includes(curMonth)) months.push(curMonth);
+  months.sort();  // ascending
+
+  // Month options (most recent first in dropdown)
+  var monthOpts = ['<option value="">All months</option>'].concat(
+    months.slice().reverse().map(function(m){ return '<option value="'+m+'">'+monthLabel(m)+'</option>'; })
+  ).join('');
+  ['sales','ads','traffic'].forEach(function(tab){
+    var sel = document.getElementById(tab+'-month-sel');
+    if (sel) sel.innerHTML = monthOpts;
+  });
+
+  // Day list — only from current window (sales.daily / traffic.daily)
+  var daysS = (hub.sales && hub.sales.daily) ? hub.sales.daily.map(function(d){return d.date;}) : [];
+  var daysT = (hub.traffic && hub.traffic.daily) ? hub.traffic.daily.map(function(d){return d.date;}) : [];
+  var dayOptS = ['<option value="">Whole period</option>'].concat(
+    daysS.slice().reverse().map(function(d){ return '<option value="'+d+'">'+fmtDate(d)+'</option>'; })
+  ).join('');
+  var dayOptT = ['<option value="">Whole period</option>'].concat(
+    daysT.slice().reverse().map(function(d){ return '<option value="'+d+'">'+fmtDate(d)+'</option>'; })
+  ).join('');
+  var sS = document.getElementById('sales-day-sel'); if (sS) sS.innerHTML = dayOptS;
+  var sT = document.getElementById('traffic-day-sel'); if (sT) sT.innerHTML = dayOptT;
+}
+
+
 </script>
 
 <script>
@@ -1507,8 +2400,9 @@ function showPage(name, btn) {
   document.getElementById('page-'+name).classList.add('active');
   btn.classList.add('active');
   // Re-render hub tabs on navigation so they always reflect latest data
-  if (name === 'sales' && D) safeRun(renderSales, 'renderSales');
-  if (name === 'ads'   && D) safeRun(renderAds,   'renderAds');
+  if (name === 'sales'   && D) safeRun(renderSales,   'renderSales');
+  if (name === 'ads'     && D) safeRun(renderAds,     'renderAds');
+  if (name === 'traffic' && D) safeRun(renderTraffic, 'renderTraffic');
 }
 
 function safeRun(fn,name){try{fn();}catch(e){console.error(name+' failed:',e);}}
@@ -1517,8 +2411,10 @@ function renderAll(){
   safeRun(renderRankings,'renderRankings');
   safeRun(renderSP,'renderSP');
   safeRun(renderRatings,'renderRatings');
+  safeRun(populateHubDateSelectors, 'populateHubDateSelectors');
   safeRun(renderSales,'renderSales');
   safeRun(renderAds,'renderAds');
+  safeRun(renderTraffic,'renderTraffic');
   setTimeout(()=>{
     safeRun(()=>buildAnalysis(D.latest.date),'buildAnalysis');
     safeRun(()=>buildRankAnalysis(D.latest.date),'buildRankAnalysis');

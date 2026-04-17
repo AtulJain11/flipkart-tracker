@@ -215,6 +215,7 @@ function checkPW(){
   <button class="nav-tab" onclick="showPage('rankings',this)">🏆 Rankings</button>
   <button class="nav-tab" onclick="showPage('sp',this)">💰 SP Compliance</button>
   <button class="nav-tab" onclick="showPage('ratings',this)">⭐ Ratings</button>
+  <button class="nav-tab" onclick="showPage('hub',this)">📈 Sales & Ads</button>
   <div class="nav-right">
     <span class="nav-meta" id="nav-meta">—</span>
     <button class="btn-sm" onclick="loadData()">↻ Refresh</button>
@@ -338,9 +339,285 @@ function checkPW(){
     <tbody id="rt-table"></tbody></table>
   </div>
 </div>
+<!-- ═══ SALES & ADS ════════════════════════════════════════════════════ -->
+<div class="page" id="page-hub">
+  <div class="filters">
+    <span class="filter-label">Period</span>
+    <button class="fbtn active" id="hub-p-7"  onclick="setHubPeriod(7,this)">7d</button>
+    <button class="fbtn"        id="hub-p-30" onclick="setHubPeriod(30,this)">30d</button>
+    <button class="fbtn"        id="hub-p-90" onclick="setHubPeriod(90,this)">All</button>
+  </div>
+
+  <!-- KPI tiles row -->
+  <div class="stat-grid" id="hub-kpi" style="grid-template-columns:repeat(auto-fill,minmax(145px,1fr))"></div>
+
+  <!-- Trend charts row -->
+  <div class="chart-grid" id="hub-charts" style="grid-template-columns:repeat(3,1fr)">
+    <div class="chart-card"><div class="chart-title">Net Sales & Gross Sales (₹)</div><div class="chart-wrap"><canvas id="ch-hub-sales"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">Impressions & CVR</div><div class="chart-wrap"><canvas id="ch-hub-traffic"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">Ad Spend & Revenue (₹)</div><div class="chart-wrap"><canvas id="ch-hub-ads"></canvas></div></div>
+  </div>
+
+  <!-- Impression sources chart + ROI trend side-by-side -->
+  <div class="chart-grid" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
+    <div class="chart-card"><div class="chart-title">Impression Sources (latest)</div><div class="chart-wrap"><canvas id="ch-hub-sources"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">ROI Trend</div><div class="chart-wrap"><canvas id="ch-hub-roi"></canvas></div></div>
+  </div>
+
+  <!-- Traffic alerts -->
+  <div class="card" id="hub-traffic-alerts" style="margin-bottom:14px">
+    <div class="card-hdr"><span class="card-title">🚨 Listings Losing Impressions / Conversion</span><span class="card-sub" id="hub-alerts-count"></span></div>
+    <table><thead><tr id="hub-alerts-hdr"></tr></thead><tbody id="hub-alerts-body"></tbody></table>
+  </div>
+
+  <!-- Campaign table -->
+  <div class="card">
+    <div class="card-hdr"><span class="card-title">📣 Campaigns — sorted by Spend</span><span class="card-sub" id="hub-camp-count"></span></div>
+    <table>
+      <thead><tr>
+        <th>Campaign</th><th>Status</th><th>Format</th>
+        <th style="text-align:right">Spend</th><th style="text-align:right">Revenue</th>
+        <th style="text-align:right">ROI</th><th style="text-align:right">Units</th>
+        <th style="text-align:right">Clicks</th>
+      </tr></thead>
+      <tbody id="hub-camp-body"></tbody>
+    </table>
+  </div>
+</div>
 
 <script>
-let D = null;
+// ══ SALES & ADS TAB ══════════════════════════════════════════════════════════
+var hubPeriod = 7;
+
+function setHubPeriod(n, btn) {
+  hubPeriod = n;
+  document.querySelectorAll('#page-hub .fbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderHub();
+}
+
+function hubSlice(arr, days) {
+  if (!arr || !arr.length) return [];
+  return arr.slice(-days);
+}
+
+function fmtCr(v) {
+  if (v == null) return '—';
+  if (v >= 1e7) return '₹' + (v/1e7).toFixed(2) + 'Cr';
+  if (v >= 1e5) return '₹' + (v/1e5).toFixed(1) + 'L';
+  if (v >= 1e3) return '₹' + (v/1e3).toFixed(1) + 'K';
+  return '₹' + Math.round(v).toLocaleString('en-IN');
+}
+function fmtUnits(v) {
+  if (v == null) return '—';
+  if (v >= 1e5) return (v/1e5).toFixed(1) + 'L';
+  if (v >= 1e3) return (v/1e3).toFixed(1) + 'K';
+  return Math.round(v).toLocaleString('en-IN');
+}
+function fmtImpr(v) {
+  if (v == null) return '—';
+  if (v >= 1e7) return (v/1e7).toFixed(2) + 'Cr';
+  if (v >= 1e5) return (v/1e5).toFixed(1) + 'L';
+  if (v >= 1e3) return (v/1e3).toFixed(1) + 'K';
+  return Math.round(v).toLocaleString('en-IN');
+}
+
+function renderHub() {
+  if (!D || !D.hub_history || !D.hub_history.length) {
+    document.getElementById('hub-kpi').innerHTML =
+      '<div class="stat-card" style="grid-column:1/-1"><div class="stat-label">No hub data yet</div><div class="stat-value" style="font-size:13px;color:var(--text3)">Run FK_Daily_Alert_v2.py to start collecting data</div></div>';
+    return;
+  }
+
+  var all = D.hub_history;
+  var slice = hubSlice(all, hubPeriod);
+  var latest = slice[slice.length - 1];
+  var prev   = slice.length > 1 ? slice[slice.length - 2] : null;
+
+  // ── KPI tiles ──────────────────────────────────────────────────────────────
+  function delta(cur, pv, key, nested) {
+    if (!pv) return '';
+    var c = nested ? (cur[nested]||{})[key] : cur[key];
+    var p = nested ? (pv[nested]||{})[key]  : pv[key];
+    if (c == null || p == null || p === 0) return '';
+    var d = ((c - p) / p * 100).toFixed(1);
+    var col = parseFloat(d) >= 0 ? 'var(--green)' : 'var(--red)';
+    var arrow = parseFloat(d) >= 0 ? '▲' : '▼';
+    return '<span style="font-size:10px;color:'+col+'">'+arrow+Math.abs(d)+'%</span>';
+  }
+
+  var s = latest.sales || {};
+  var t = latest.traffic || {};
+  var a = latest.ads || {};
+
+  var kpis = [
+    {label:'Net Sales',    val:fmtCr(s.net_sales),    sub:fmtUnits(s.net_units)+' units',   delta:delta(latest,prev,'net_sales','sales'),    col:'var(--green)'},
+    {label:'Gross Sales',  val:fmtCr(s.gross_sales),  sub:fmtUnits(s.gross_units)+' units', delta:delta(latest,prev,'gross_sales','sales'),  col:'var(--accent)'},
+    {label:'Cancellations',val:fmtCr(s.cancellations),sub:fmtUnits(s.cancellations_units)+' units', delta:delta(latest,prev,'cancellations','sales'), col:'var(--red)'},
+    {label:'Returns',      val:fmtCr(s.returns),      sub:fmtUnits(s.returns_units)+' units', delta:delta(latest,prev,'returns','sales'),   col:'var(--orange)'},
+    {label:'Impressions',  val:fmtImpr(t.impressions), sub:'CVR '+(t.conversion_rate!=null?t.conversion_rate+'%':'—'), delta:delta(latest,prev,'impressions','traffic'), col:'var(--purple)'},
+    {label:'Ad Spend',     val:fmtCr(a.total_spend),  sub:'ROI '+(a.roi!=null?a.roi+'x':'—'), delta:delta(latest,prev,'total_spend','ads'), col:'var(--red)'},
+    {label:'Ad Revenue',   val:fmtCr(a.total_revenue),sub:fmtUnits(a.total_units)+' units', delta:delta(latest,prev,'total_revenue','ads'), col:'var(--green)'},
+    {label:'TACOS',        val:(a.total_spend&&s.net_sales)?((a.total_spend/s.net_sales*100).toFixed(1)+'%'):'—', sub:'Spend/Net Sales', delta:'', col:'var(--yellow)'},
+  ];
+
+  document.getElementById('hub-kpi').innerHTML = kpis.map(k =>
+    '<div class="stat-card"><div class="stat-label">'+k.label+'</div>' +
+    '<div class="stat-value" style="color:'+k.col+';font-size:18px">'+k.val+'</div>' +
+    '<div class="stat-sub">'+k.sub+' '+k.delta+'</div></div>'
+  ).join('');
+
+  // ── Sales trend chart ──────────────────────────────────────────────────────
+  dChart('hub-sales');
+  var labels = slice.map(d => fmtDate(d.date));
+  var netArr  = slice.map(d => d.sales && d.sales.net_sales   != null ? +(d.sales.net_sales/1e5).toFixed(1)   : null);
+  var grossArr= slice.map(d => d.sales && d.sales.gross_sales != null ? +(d.sales.gross_sales/1e5).toFixed(1) : null);
+  charts['hub-sales'] = new Chart(document.getElementById('ch-hub-sales').getContext('2d'), {
+    type:'line',
+    data:{labels, datasets:[
+      {label:'Net Sales (₹L)',   data:netArr,   borderColor:'#3ecf8e', backgroundColor:'rgba(62,207,142,.1)', fill:true, tension:.4, borderWidth:2, pointRadius:3},
+      {label:'Gross Sales (₹L)', data:grossArr, borderColor:'#4f8ef7', backgroundColor:'transparent',         fill:false, tension:.4, borderWidth:1.5, pointRadius:2},
+    ]},
+    options: baseOpts({ticks:{color:'#4a5168',font:{size:9},callback:v=>'₹'+v+'L'}})
+  });
+
+  // ── Traffic trend chart ────────────────────────────────────────────────────
+  dChart('hub-traffic');
+  var imprArr = slice.map(d => d.traffic && d.traffic.impressions != null ? +(d.traffic.impressions/1e5).toFixed(1) : null);
+  var cvrArr  = slice.map(d => d.traffic ? d.traffic.conversion_rate : null);
+  charts['hub-traffic'] = new Chart(document.getElementById('ch-hub-traffic').getContext('2d'), {
+    type:'line',
+    data:{labels, datasets:[
+      {label:'Impressions (L)', data:imprArr, borderColor:'#a78bfa', backgroundColor:'rgba(167,139,250,.1)', fill:true,  tension:.4, borderWidth:2, pointRadius:3, yAxisID:'y'},
+      {label:'CVR (%)',         data:cvrArr,  borderColor:'#f5a524', backgroundColor:'transparent',          fill:false, tension:.4, borderWidth:1.5, pointRadius:2, yAxisID:'y2'},
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#8892a4',font:{size:10},boxWidth:10}}},
+      scales:{
+        x:  {ticks:{color:'#4a5168',font:{size:9}}, grid:{color:'rgba(255,255,255,.05)'}},
+        y:  {ticks:{color:'#a78bfa',font:{size:9}}, grid:{color:'rgba(255,255,255,.05)'}, position:'left'},
+        y2: {ticks:{color:'#f5a524',font:{size:9}}, grid:{display:false}, position:'right', title:{display:true,text:'CVR%',color:'#f5a524',font:{size:9}}},
+      }
+    }
+  });
+
+  // ── Ads trend chart ────────────────────────────────────────────────────────
+  dChart('hub-ads');
+  var spendArr = slice.map(d => d.ads && d.ads.total_spend   != null ? +(d.ads.total_spend/1e5).toFixed(1)   : null);
+  var revArr   = slice.map(d => d.ads && d.ads.total_revenue != null ? +(d.ads.total_revenue/1e5).toFixed(1) : null);
+  charts['hub-ads'] = new Chart(document.getElementById('ch-hub-ads').getContext('2d'), {
+    type:'line',
+    data:{labels, datasets:[
+      {label:'Ad Revenue (₹L)', data:revArr,   borderColor:'#3ecf8e', backgroundColor:'rgba(62,207,142,.1)', fill:true,  tension:.4, borderWidth:2, pointRadius:3},
+      {label:'Ad Spend (₹L)',   data:spendArr, borderColor:'#f05252', backgroundColor:'transparent',          fill:false, tension:.4, borderWidth:1.5, pointRadius:2},
+    ]},
+    options: baseOpts({ticks:{color:'#4a5168',font:{size:9},callback:v=>'₹'+v+'L'}})
+  });
+
+  // ── Impression sources donut ───────────────────────────────────────────────
+  dChart('hub-sources');
+  var src = latest.traffic || {};
+  var srcVals = [
+    src.search_results_pct, src.merchandise_pct,
+    src.recommendations_pct, src.other_sources_pct
+  ].map(v => v || 0);
+  charts['hub-sources'] = new Chart(document.getElementById('ch-hub-sources').getContext('2d'), {
+    type:'doughnut',
+    data:{
+      labels:['Search Results','Merchandise','Recommendations','Other'],
+      datasets:[{
+        data: srcVals,
+        backgroundColor:['rgba(79,142,247,.85)','rgba(245,165,36,.75)','rgba(62,207,142,.75)','rgba(255,255,255,.15)'],
+        borderWidth:0
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'right',labels:{color:'#8892a4',font:{size:10},boxWidth:10}}}
+    }
+  });
+
+  // ── ROI trend ──────────────────────────────────────────────────────────────
+  dChart('hub-roi');
+  var roiArr = slice.map(d => d.ads ? d.ads.roi : null);
+  charts['hub-roi'] = new Chart(document.getElementById('ch-hub-roi').getContext('2d'), {
+    type:'line',
+    data:{labels, datasets:[{
+      label:'ROI', data:roiArr,
+      borderColor:'#f5c842', backgroundColor:'rgba(245,200,66,.1)',
+      fill:true, tension:.4, borderWidth:2, pointRadius:3
+    }]},
+    options: baseOpts({
+      ticks:{color:'#f5c842',font:{size:9},callback:v=>v+'x'},
+      grid:{color:'rgba(255,255,255,.05)'}
+    })
+  });
+
+  // ── Traffic alerts table ───────────────────────────────────────────────────
+  var li = (latest.traffic || {}).losing_impressions || [];
+  var lc = (latest.traffic || {}).losing_conversion  || [];
+  var alertsAll = [
+    ...li.map(r => ({...r, _type:'impressions'})),
+    ...lc.map(r => ({...r, _type:'conversion'})),
+  ];
+
+  document.getElementById('hub-alerts-count').textContent =
+    li.length + ' losing impressions, ' + lc.length + ' losing conversion';
+
+  if (alertsAll.length > 0) {
+    var allCols = [...new Set(alertsAll.flatMap(r => Object.keys(r).filter(k => !k.startsWith('_'))))].slice(0,6);
+    document.getElementById('hub-alerts-hdr').innerHTML =
+      '<th>Type</th>' + allCols.map(c => '<th>'+c+'</th>').join('');
+    document.getElementById('hub-alerts-body').innerHTML = alertsAll.slice(0,20).map(r => {
+      var badge = r._type === 'impressions'
+        ? '<span style="color:var(--red);font-size:10px;font-weight:700">📉 Impr</span>'
+        : '<span style="color:var(--orange);font-size:10px;font-weight:700">⚠️ Conv</span>';
+      return '<tr><td>' + badge + '</td>' +
+        allCols.map(c => '<td>' + (r[c] || '—') + '</td>').join('') + '</tr>';
+    }).join('');
+  } else {
+    document.getElementById('hub-alerts-hdr').innerHTML = '';
+    document.getElementById('hub-alerts-body').innerHTML =
+      '<tr><td colspan="7" class="empty" style="color:var(--green)">✓ No traffic alerts</td></tr>';
+  }
+
+  // ── Campaign table ─────────────────────────────────────────────────────────
+  var camps = (latest.ads ? [] : []);
+  // Find campaign data from latest hub entry (stored at root of hub_history entry)
+  if (all.length) camps = all[all.length-1].campaigns || [];
+
+  document.getElementById('hub-camp-count').textContent =
+    camps.length + ' campaigns (latest data)' + (a.date_range ? ' · ' + a.date_range : '');
+
+  function roiBadge(v) {
+    if (v == null) return '—';
+    var col = v >= 3 ? 'var(--green)' : v >= 1.5 ? 'var(--orange)' : 'var(--red)';
+    return '<span style="color:'+col+';font-weight:700">'+v+'x</span>';
+  }
+  function statusBadge(s) {
+    if (!s) return '—';
+    var col = s === 'Live' ? 'var(--green)' : 'var(--text3)';
+    return '<span style="color:'+col+';font-size:10px;font-weight:700">'+s+'</span>';
+  }
+
+  document.getElementById('hub-camp-body').innerHTML = camps.length === 0
+    ? '<tr><td colspan="8" class="empty">No campaign data yet</td></tr>'
+    : camps.map(c => '<tr>' +
+        '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+c.name+'">'+shortT(c.name,55)+'</td>' +
+        '<td>'+statusBadge(c.status)+'</td>' +
+        '<td><span style="color:var(--text3);font-size:10px">'+( c.format||'—')+'</span></td>' +
+        '<td style="text-align:right;font-family:Courier New,monospace">'+fmtCr(c.spend)+'</td>' +
+        '<td style="text-align:right;font-family:Courier New,monospace;color:var(--green)">'+fmtCr(c.revenue)+'</td>' +
+        '<td style="text-align:right">'+roiBadge(c.roi)+'</td>' +
+        '<td style="text-align:right;color:var(--text3)">'+fmtUnits(c.units)+'</td>' +
+        '<td style="text-align:right;color:var(--text3)">'+fmtUnits(c.clicks)+'</td>' +
+      '</tr>'
+    ).join('');
+}
+</script>
+
+
 // Per-tab state
 const S = {
   ov:  {brand:'ALL', date:null},
@@ -537,6 +814,7 @@ function renderAll(){
   safeRun(renderRankings,'renderRankings');
   safeRun(renderSP,'renderSP');
   safeRun(renderRatings,'renderRatings');
+  safeRun(renderHub,'renderHub');
   setTimeout(()=>{
     safeRun(()=>buildAnalysis(D.latest.date),'buildAnalysis');
     safeRun(()=>buildRankAnalysis(D.latest.date),'buildRankAnalysis');

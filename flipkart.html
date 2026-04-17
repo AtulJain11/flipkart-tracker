@@ -423,14 +423,24 @@ function fmtImpr(v) {
 }
 
 function renderHub() {
-  if (!D || !D.hub_history || !D.hub_history.length) {
+  // Support both D.hub (FK_Hub_Processor) and D.hub_history[] (FK_Daily_Alert_v2)
+  var hubData = null;
+  if (D && D.hub && (D.hub.sales || D.hub.traffic || D.hub.ads)) {
+    // Single snapshot from FK_Hub_Processor — wrap in array for compatibility
+    hubData = [D.hub];
+  } else if (D && D.hub_history && D.hub_history.length) {
+    hubData = D.hub_history;
+  }
+  if (!hubData) {
     document.getElementById('hub-kpi').innerHTML =
-      '<div class="stat-card" style="grid-column:1/-1"><div class="stat-label">No hub data yet</div><div class="stat-value" style="font-size:13px;color:var(--text3)">Run FK_Daily_Alert_v2.py to start collecting data</div></div>';
+      '<div class="stat-card" style="grid-column:1/-1"><div class="stat-label">NO HUB DATA YET</div>' +
+      '<div class="stat-value" style="font-size:12px;color:var(--text3)">Run FK_Hub_Processor.py after downloading reports from Flipkart Hub</div></div>';
     return;
   }
 
-  var all = D.hub_history;
-  var slice = hubSlice(all, hubPeriod);
+  var all = hubData;
+  var slice = hubPeriod === 999 ? all : hubSlice(all, hubPeriod);
+  if (!slice.length) slice = all;
   var latest = slice[slice.length - 1];
   var prev   = slice.length > 1 ? slice[slice.length - 2] : null;
 
@@ -807,6 +817,8 @@ function showPage(name, btn) {
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   btn.classList.add('active');
+  // Re-render hub tab on navigation so it always reflects latest data
+  if (name === 'hub' && D) safeRun(renderHub, 'renderHub');
 }
 
 function safeRun(fn,name){try{fn();}catch(e){console.error(name+' failed:',e);}}

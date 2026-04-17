@@ -215,7 +215,8 @@ function checkPW(){
   <button class="nav-tab" onclick="showPage('rankings',this)">🏆 Rankings</button>
   <button class="nav-tab" onclick="showPage('sp',this)">💰 SP Compliance</button>
   <button class="nav-tab" onclick="showPage('ratings',this)">⭐ Ratings</button>
-  <button class="nav-tab" onclick="showPage('hub',this)">📈 Sales & Ads</button>
+  <button class="nav-tab" onclick="showPage('sales',this)">📈 Sales</button>
+  <button class="nav-tab" onclick="showPage('ads',this)">📣 Ads</button>
   <div class="nav-right">
     <span class="nav-meta" id="nav-meta">—</span>
     <button class="btn-sm" onclick="loadData()">↻ Refresh</button>
@@ -339,291 +340,430 @@ function checkPW(){
     <tbody id="rt-table"></tbody></table>
   </div>
 </div>
-<!-- ═══ SALES & ADS ════════════════════════════════════════════════════ -->
-<div class="page" id="page-hub">
+<!-- ═══ SALES TAB ══════════════════════════════════════════════════════ -->
+<div class="page" id="page-sales">
   <div class="filters">
+    <span class="filter-label">Brand</span>
+    <button class="fbtn active" onclick="setHubFilter('sales','brand','ALL',this)">All</button>
+    <button class="fbtn ba"     onclick="setHubFilter('sales','brand','BARE ANATOMY',this)">BA</button>
+    <button class="fbtn cap"    onclick="setHubFilter('sales','brand','Chemist at Play',this)">CAP</button>
+    <button class="fbtn ss"     onclick="setHubFilter('sales','brand','SunScoop',this)">SS</button>
+    <div class="fsep"></div>
     <span class="filter-label">Period</span>
-    <button class="fbtn active" id="hub-p-7"  onclick="setHubPeriod(7,this)">7d</button>
-    <button class="fbtn"        id="hub-p-30" onclick="setHubPeriod(30,this)">30d</button>
-    <button class="fbtn"        id="hub-p-90" onclick="setHubPeriod(90,this)">All</button>
+    <button class="fbtn"        onclick="setHubPeriod('sales',7,this)">7d</button>
+    <button class="fbtn"        onclick="setHubPeriod('sales',15,this)">15d</button>
+    <button class="fbtn active" onclick="setHubPeriod('sales',999,this)">All</button>
+    <div class="fsep"></div>
+    <input class="fsearch" placeholder="Search SKU / title..." id="sales-search" oninput="renderSales()">
+    <div class="fsep"></div>
+    <span id="sales-window" style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace"></span>
   </div>
 
-  <!-- KPI tiles row -->
-  <div class="stat-grid" id="hub-kpi" style="grid-template-columns:repeat(auto-fill,minmax(145px,1fr))"></div>
+  <!-- KPI tiles -->
+  <div class="stat-grid" id="sales-kpi" style="grid-template-columns:repeat(auto-fill,minmax(145px,1fr))"></div>
 
-  <!-- Trend charts row -->
-  <div class="chart-grid" id="hub-charts" style="grid-template-columns:repeat(3,1fr)">
-    <div class="chart-card"><div class="chart-title">Net Sales & Gross Sales (₹)</div><div class="chart-wrap"><canvas id="ch-hub-sales"></canvas></div></div>
-    <div class="chart-card"><div class="chart-title">Impressions & CVR</div><div class="chart-wrap"><canvas id="ch-hub-traffic"></canvas></div></div>
-    <div class="chart-card"><div class="chart-title">Ad Spend & Revenue (₹)</div><div class="chart-wrap"><canvas id="ch-hub-ads"></canvas></div></div>
+  <!-- Charts -->
+  <div class="chart-grid" style="grid-template-columns:2fr 1fr">
+    <div class="chart-card"><div class="chart-title">Net Sales & Gross Sales (₹ daily)</div><div class="chart-wrap"><canvas id="ch-sales-trend"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">Sales by Brand</div><div class="chart-wrap"><canvas id="ch-sales-brand"></canvas></div></div>
   </div>
 
-  <!-- Impression sources chart + ROI trend side-by-side -->
-  <div class="chart-grid" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
-    <div class="chart-card"><div class="chart-title">Impression Sources (latest)</div><div class="chart-wrap"><canvas id="ch-hub-sources"></canvas></div></div>
-    <div class="chart-card"><div class="chart-title">ROI Trend</div><div class="chart-wrap"><canvas id="ch-hub-roi"></canvas></div></div>
-  </div>
-
-  <!-- Traffic alerts -->
-  <div class="card" id="hub-traffic-alerts" style="margin-bottom:14px">
-    <div class="card-hdr"><span class="card-title">🚨 Listings Losing Impressions / Conversion</span><span class="card-sub" id="hub-alerts-count"></span></div>
-    <table><thead><tr id="hub-alerts-hdr"></tr></thead><tbody id="hub-alerts-body"></tbody></table>
-  </div>
-
-  <!-- Campaign table -->
+  <!-- SKU table -->
   <div class="card">
-    <div class="card-hdr"><span class="card-title">📣 Campaigns — sorted by Spend</span><span class="card-sub" id="hub-camp-count"></span></div>
+    <div class="card-hdr">
+      <span class="card-title">🧾 SKU-level Sales</span>
+      <span class="card-sub" id="sales-sku-count"></span>
+    </div>
     <table>
       <thead><tr>
-        <th>Campaign</th><th>Status</th><th>Format</th>
-        <th style="text-align:right">Spend</th><th style="text-align:right">Revenue</th>
-        <th style="text-align:right">ROI</th><th style="text-align:right">Units</th>
-        <th style="text-align:right">Clicks</th>
+        <th style="min-width:150px" onclick="sortHub('sales','sku')">SKU</th>
+        <th style="min-width:260px" onclick="sortHub('sales','title')">Product</th>
+        <th onclick="sortHub('sales','brand')">Brand</th>
+        <th style="text-align:right" onclick="sortHub('sales','mrp')">MRP</th>
+        <th style="text-align:right" onclick="sortHub('sales','sp')">SP</th>
+        <th style="text-align:right" onclick="sortHub('sales','net_sales')">Net Sales ▼</th>
+        <th style="text-align:right" onclick="sortHub('sales','net_units')">Units</th>
+        <th style="text-align:right" onclick="sortHub('sales','gmv')">GMV</th>
+        <th style="text-align:right" onclick="sortHub('sales','drr')">DRR</th>
+        <th style="text-align:right" onclick="sortHub('sales','cancel_pct')">Cancel %</th>
+        <th style="text-align:right" onclick="sortHub('sales','return_pct')">Return %</th>
       </tr></thead>
-      <tbody id="hub-camp-body"></tbody>
+      <tbody id="sales-sku-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══ ADS TAB ════════════════════════════════════════════════════════ -->
+<div class="page" id="page-ads">
+  <div class="filters">
+    <span class="filter-label">Brand</span>
+    <button class="fbtn active" onclick="setHubFilter('ads','brand','ALL',this)">All</button>
+    <button class="fbtn ba"     onclick="setHubFilter('ads','brand','BARE ANATOMY',this)">BA</button>
+    <button class="fbtn cap"    onclick="setHubFilter('ads','brand','Chemist at Play',this)">CAP</button>
+    <button class="fbtn ss"     onclick="setHubFilter('ads','brand','SunScoop',this)">SS</button>
+    <div class="fsep"></div>
+    <span class="filter-label">View</span>
+    <button class="fbtn active" id="ads-view-sku"    onclick="setAdsView('sku',this)">SKU</button>
+    <button class="fbtn"        id="ads-view-camp"   onclick="setAdsView('campaign',this)">Campaign</button>
+    <div class="fsep"></div>
+    <input class="fsearch" placeholder="Search SKU / campaign..." id="ads-search" oninput="renderAds()">
+    <div class="fsep"></div>
+    <span id="ads-window" style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace"></span>
+  </div>
+
+  <!-- KPI tiles -->
+  <div class="stat-grid" id="ads-kpi" style="grid-template-columns:repeat(auto-fill,minmax(145px,1fr))"></div>
+
+  <!-- Charts -->
+  <div class="chart-grid" style="grid-template-columns:1fr 1fr">
+    <div class="chart-card"><div class="chart-title">Ad Spend & Revenue by Brand (₹)</div><div class="chart-wrap"><canvas id="ch-ads-brand"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">ROI by Top Campaigns</div><div class="chart-wrap"><canvas id="ch-ads-roi"></canvas></div></div>
+  </div>
+
+  <!-- Table (toggles between SKU-level and Campaign-level) -->
+  <div class="card">
+    <div class="card-hdr">
+      <span class="card-title" id="ads-table-title">📣 SKU-level Ads</span>
+      <span class="card-sub" id="ads-table-count"></span>
+    </div>
+    <table>
+      <thead><tr id="ads-table-hdr"></tr></thead>
+      <tbody id="ads-table-body"></tbody>
     </table>
   </div>
 </div>
 
 <script>
-// ══ SALES & ADS TAB ══════════════════════════════════════════════════════════
-var hubPeriod = 7;  // 7, 30, or 999 (=All)
+// ══ SALES & ADS TABS ═════════════════════════════════════════════════════════
 
-function setHubPeriod(n, btn) {
-  hubPeriod = n;
-  document.querySelectorAll('#page-hub .fbtn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  renderHub();
-}
+// Per-tab state (using hub prefix to not collide with other tab state)
+var H = {
+  sales: {brand:'ALL', period:999, sort:'net_sales', sortDesc:true, search:''},
+  ads:   {brand:'ALL', view:'sku',  sort:'ad_spend', sortDesc:true, search:''},
+};
 
+// ── Formatters ───────────────────────────────────────────────────────────────
 function fmtCr(v) {
-  if (v == null || isNaN(v)) return '—';
+  if (v == null || isNaN(v) || v === 0) return '—';
   if (v >= 1e7) return '₹' + (v/1e7).toFixed(2) + 'Cr';
   if (v >= 1e5) return '₹' + (v/1e5).toFixed(1) + 'L';
   if (v >= 1e3) return '₹' + (v/1e3).toFixed(1) + 'K';
   return '₹' + Math.round(v).toLocaleString('en-IN');
 }
 function fmtUnits(v) {
-  if (v == null || isNaN(v)) return '—';
+  if (v == null || isNaN(v) || v === 0) return '—';
   if (v >= 1e5) return (v/1e5).toFixed(1) + 'L';
   if (v >= 1e3) return (v/1e3).toFixed(1) + 'K';
   return Math.round(v).toLocaleString('en-IN');
 }
 function fmtImpr(v) {
-  if (v == null || isNaN(v)) return '—';
+  if (v == null || isNaN(v) || v === 0) return '—';
   if (v >= 1e7) return (v/1e7).toFixed(2) + 'Cr';
   if (v >= 1e5) return (v/1e5).toFixed(1) + 'L';
   if (v >= 1e3) return (v/1e3).toFixed(1) + 'K';
   return Math.round(v).toLocaleString('en-IN');
 }
-
-// Sum a numeric field across an array of daily entries
-function hubSum(arr, field) {
-  if (!arr || !arr.length) return 0;
-  return arr.reduce((acc, d) => acc + (typeof d[field] === 'number' ? d[field] : 0), 0);
+function fmtPct(v, digits) {
+  if (v == null || isNaN(v)) return '—';
+  return (+v).toFixed(digits == null ? 2 : digits) + '%';
+}
+function brandShort(b) {
+  if (b === 'BARE ANATOMY') return 'BA';
+  if (b === 'Chemist at Play') return 'CAP';
+  if (b === 'SunScoop') return 'SS';
+  return b || '—';
+}
+function brandColor(b) {
+  if (b === 'BARE ANATOMY') return 'var(--ba)';
+  if (b === 'Chemist at Play') return 'var(--cap)';
+  if (b === 'SunScoop') return 'var(--ss)';
+  return 'var(--text3)';
+}
+function brandPill(b) {
+  return '<span style="color:'+brandColor(b)+';font-weight:700;font-size:11px">'+brandShort(b)+'</span>';
 }
 
-function renderHub() {
+// Hub period filter affects only sales-side aggregation since ads are window-total
+function setHubPeriod(tab, n, btn) {
+  H[tab].period = n;
+  // Toggle active among period buttons in this tab's filter bar
+  btn.closest('.filters').querySelectorAll('.fbtn').forEach(function(b){
+    if (b.textContent.trim().match(/^(7d|15d|30d|All)$/)) b.classList.remove('active');
+  });
+  btn.classList.add('active');
+  if (tab === 'sales') renderSales(); else renderAds();
+}
+
+function setHubFilter(tab, key, val, btn) {
+  H[tab][key] = val;
+  // Brand buttons are the 4 in this group — clear them
+  btn.closest('.filters').querySelectorAll('.fbtn').forEach(function(b){
+    var t = b.textContent.trim();
+    if (['All','BA','CAP','SS'].includes(t)) b.classList.remove('active');
+  });
+  btn.classList.add('active');
+  if (tab === 'sales') renderSales(); else renderAds();
+}
+
+function setAdsView(view, btn) {
+  H.ads.view = view;
+  document.getElementById('ads-view-sku').classList.remove('active');
+  document.getElementById('ads-view-camp').classList.remove('active');
+  btn.classList.add('active');
+  H.ads.sort = view === 'sku' ? 'ad_spend' : 'spend';
+  H.ads.sortDesc = true;
+  renderAds();
+}
+
+function sortHub(tab, col) {
+  if (H[tab].sort === col) H[tab].sortDesc = !H[tab].sortDesc;
+  else { H[tab].sort = col; H[tab].sortDesc = true; }
+  if (tab === 'sales') renderSales(); else renderAds();
+}
+
+// Slice a daily array to the last N days
+function hubSliceDaily(arr, n) {
+  if (!arr || !arr.length) return [];
+  return n >= 999 ? arr.slice() : arr.slice(-n);
+}
+function hubSum(arr, field) {
+  if (!arr || !arr.length) return 0;
+  return arr.reduce(function(acc, d){ return acc + (typeof d[field] === 'number' ? d[field] : 0); }, 0);
+}
+
+// ── SALES TAB ────────────────────────────────────────────────────────────────
+function renderSales() {
   if (!D || !D.hub) {
-    document.getElementById('hub-kpi').innerHTML =
+    document.getElementById('sales-kpi').innerHTML =
       '<div class="stat-card" style="grid-column:1/-1"><div class="stat-label">NO HUB DATA YET</div>' +
-      '<div class="stat-value" style="font-size:12px;color:var(--text3)">Run FK_Hub_Processor.py after downloading reports from Flipkart Hub</div></div>';
+      '<div class="stat-value" style="font-size:12px;color:var(--text3)">Run FK_Hub_Processor.py</div></div>';
     return;
   }
-
   var hub = D.hub;
   var sales = hub.sales || {};
-  var traffic = hub.traffic || {};
-  var ads = hub.ads || {};
+  var skus  = (hub.skus || []).filter(function(s){ return s.net_sales > 0 || s.gmv > 0; });
 
-  // Daily arrays (the real trend data — 15-16 points)
-  var salesDaily = sales.daily || [];
-  var trafficDaily = traffic.daily || [];
+  // Apply brand filter
+  var brand = H.sales.brand;
+  if (brand !== 'ALL') skus = skus.filter(function(s){ return s.brand === brand; });
 
-  // Slice by selected period
-  var N = hubPeriod === 999 ? 999 : hubPeriod;
-  var sliceSales   = salesDaily.slice(-N);
-  var sliceTraffic = trafficDaily.slice(-N);
+  // Search
+  var q = (H.sales.search || document.getElementById('sales-search')?.value || '').toLowerCase().trim();
+  if (q) skus = skus.filter(function(s){
+    return (s.sku||'').toLowerCase().includes(q) || (s.title||'').toLowerCase().includes(q);
+  });
 
-  // For deltas: current period vs previous period of same length
-  var prevSales   = salesDaily.length > sliceSales.length
-                    ? salesDaily.slice(-sliceSales.length*2, -sliceSales.length) : [];
-  var prevTraffic = trafficDaily.length > sliceTraffic.length
-                    ? trafficDaily.slice(-sliceTraffic.length*2, -sliceTraffic.length) : [];
+  // Period for charts/KPIs
+  var periodDays = H.sales.period;
+  var salesDaily = hubSliceDaily(sales.daily || [], periodDays);
 
-  // Period-aggregated KPIs (daily arrays are source of truth)
-  var pNetSales = hubSum(sliceSales, 'net_sales');
-  var pNetUnits = hubSum(sliceSales, 'net_units');
-  var pGmv      = hubSum(sliceSales, 'gmv');         // processor stores as 'gmv' in daily rows
-  var pGrossU   = sliceSales.reduce((a,d)=>a+(d.gross_units||d.net_units||0),0);
-  var pImpr     = hubSum(sliceTraffic, 'views');
-  var pClicks   = hubSum(sliceTraffic, 'clicks');
-  var pTrSales  = hubSum(sliceTraffic, 'sales');
-  var pCvr      = pImpr > 0 ? (pTrSales / pImpr * 100) : null;
+  // Window label
+  var win = hub.window || {};
+  document.getElementById('sales-window').textContent =
+    'Window: ' + (win.from || '—') + ' → ' + (win.to || '—');
 
-  // Prev-period
-  var prevNetSales = hubSum(prevSales, 'net_sales');
-  var prevGmv      = hubSum(prevSales, 'gmv');
-  var prevImpr     = hubSum(prevTraffic, 'views');
+  // ── KPI aggregates (over the period)
+  var pNet    = hubSum(salesDaily, 'net_sales');
+  var pNetU   = hubSum(salesDaily, 'net_units');
+  var pGmv    = hubSum(salesDaily, 'gmv');
+  var pGrossU = hubSum(salesDaily, 'gross_units');
+  var pCxl    = hubSum(salesDaily, 'cancellations');
+  var pRtn    = hubSum(salesDaily, 'returns');
+  var aov     = pNetU > 0 ? pNet / pNetU : null;
+  var nDays   = salesDaily.length || 1;
 
-  // Ads are totals for the window (no daily breakdown in processor)
-  var totalSpend   = ads.total_spend || 0;
-  var totalAdRev   = ads.total_revenue || 0;
-  var adsRoi       = ads.roi || (totalSpend > 0 ? totalAdRev / totalSpend : null);
-  var totalAdUnits = ads.total_units || 0;
-
-  // If sliceSales covers same period as ads (full range), show as-is;
-  // otherwise hint that ads are full-window
-  var adsLabelHint = sliceSales.length < salesDaily.length ? ' (full window)' : '';
-
-  function pctDelta(cur, prev) {
-    if (!prev || prev === 0) return '';
-    var d = ((cur - prev) / prev * 100);
-    if (!isFinite(d)) return '';
-    var col = d >= 0 ? 'var(--green)' : 'var(--red)';
-    var arrow = d >= 0 ? '▲' : '▼';
-    return '<span style="font-size:10px;color:'+col+'">'+arrow+Math.abs(d).toFixed(1)+'%</span>';
+  // Brand filter reduces KPIs? For simplicity KPIs reflect period window totals (all brands).
+  // When brand filter is ON, show brand-specific KPI using sales.by_brand
+  if (brand !== 'ALL' && sales.by_brand && sales.by_brand[brand]) {
+    var bb = sales.by_brand[brand];
+    pNet = bb.net_sales; pNetU = bb.net_units; pGmv = bb.gmv;
+    pGrossU = bb.gross_units; pCxl = bb.cancellations; pRtn = bb.returns;
+    aov = pNetU > 0 ? pNet / pNetU : null;
   }
 
-  // Sales/Net and GMV — cancellations & returns are totals (no daily breakdown)
-  // so show them only in "All" period, else show as full-window
-  var showFullWindow = hubPeriod === 999;
-  var pCancel    = sales.cancellations || 0;
-  var pCancelU   = sales.cancellations_units || 0;
-  var pReturns   = sales.returns || 0;
-  var pReturnsU  = sales.returns_units || 0;
-
-  var tacos = pNetSales > 0 && totalSpend > 0 ? (totalSpend / pNetSales * 100) : null;
-
   var kpis = [
-    {label:'Net Sales',     val:fmtCr(pNetSales),   sub:fmtUnits(pNetUnits)+' units',
-      delta:pctDelta(pNetSales, prevNetSales), col:'var(--green)'},
-    {label:'Gross Sales',   val:fmtCr(pGmv),        sub:fmtUnits(pGrossU)+' units',
-      delta:pctDelta(pGmv, prevGmv), col:'var(--accent)'},
-    {label:'Cancellations', val:fmtCr(pCancel),     sub:fmtUnits(pCancelU)+' units'+adsLabelHint,
-      delta:'', col:'var(--red)'},
-    {label:'Returns',       val:fmtCr(pReturns),    sub:fmtUnits(pReturnsU)+' units'+adsLabelHint,
-      delta:'', col:'var(--orange)'},
-    {label:'Impressions',   val:fmtImpr(pImpr),     sub:'CVR '+(pCvr!=null?pCvr.toFixed(2)+'%':'—'),
-      delta:pctDelta(pImpr, prevImpr), col:'var(--purple)'},
-    {label:'Ad Spend',      val:fmtCr(totalSpend),  sub:'ROI '+(adsRoi!=null?adsRoi.toFixed(2)+'x':'—')+adsLabelHint,
-      delta:'', col:'var(--red)'},
-    {label:'Ad Revenue',    val:fmtCr(totalAdRev),  sub:fmtUnits(totalAdUnits)+' units'+adsLabelHint,
-      delta:'', col:'var(--green)'},
-    {label:'TACOS',         val:(tacos!=null?tacos.toFixed(1)+'%':'—'), sub:'Spend/Net Sales', delta:'', col:'var(--yellow)'},
+    {label:'Net Sales',     val:fmtCr(pNet),   sub:fmtUnits(pNetU)+' units',           col:'var(--green)'},
+    {label:'Gross Sales',   val:fmtCr(pGmv),   sub:fmtUnits(pGrossU)+' units',         col:'var(--accent)'},
+    {label:'Cancellations', val:fmtCr(pCxl),   sub:fmtPct(pGmv>0?pCxl/pGmv*100:null)+' of gross', col:'var(--red)'},
+    {label:'Returns',       val:fmtCr(pRtn),   sub:fmtPct(pGmv>0?pRtn/pGmv*100:null)+' of gross', col:'var(--orange)'},
+    {label:'AOV',           val:aov!=null?('₹'+Math.round(aov)):'—', sub:'Net/units', col:'var(--purple)'},
+    {label:'DRR',           val:fmtCr(pNet/nDays), sub:fmtUnits(pNetU/nDays)+' /day', col:'var(--yellow)'},
   ];
+  document.getElementById('sales-kpi').innerHTML = kpis.map(function(k){
+    return '<div class="stat-card"><div class="stat-label">'+k.label+'</div>' +
+      '<div class="stat-value" style="color:'+k.col+';font-size:18px">'+k.val+'</div>' +
+      '<div class="stat-sub">'+k.sub+'</div></div>';
+  }).join('');
 
-  document.getElementById('hub-kpi').innerHTML = kpis.map(k =>
-    '<div class="stat-card"><div class="stat-label">'+k.label+'</div>' +
-    '<div class="stat-value" style="color:'+k.col+';font-size:18px">'+k.val+'</div>' +
-    '<div class="stat-sub">'+k.sub+' '+k.delta+'</div></div>'
-  ).join('');
-
-  // ── Sales trend chart ──────────────────────────────────────────────────────
-  dChart('hub-sales');
-  var salesLabels = sliceSales.map(d => fmtDate(d.date));
-  var netArr   = sliceSales.map(d => d.net_sales != null ? +(d.net_sales/1e5).toFixed(1) : null);
-  var grossArr = sliceSales.map(d => d.gmv       != null ? +(d.gmv/1e5).toFixed(1)       : null);
-  charts['hub-sales'] = new Chart(document.getElementById('ch-hub-sales').getContext('2d'), {
+  // ── Daily trend chart
+  dChart('sales-trend');
+  var labels = salesDaily.map(function(d){ return fmtDate(d.date); });
+  var netArr   = salesDaily.map(function(d){ return d.net_sales != null ? +(d.net_sales/1e5).toFixed(2) : null; });
+  var grossArr = salesDaily.map(function(d){ return d.gmv       != null ? +(d.gmv/1e5).toFixed(2)       : null; });
+  charts['sales-trend'] = new Chart(document.getElementById('ch-sales-trend').getContext('2d'), {
     type:'line',
-    data:{labels:salesLabels, datasets:[
-      {label:'Net Sales (₹L)',   data:netArr,   borderColor:'#3ecf8e', backgroundColor:'rgba(62,207,142,.1)', fill:true, tension:.35, borderWidth:2, pointRadius:3},
-      {label:'Gross Sales (₹L)', data:grossArr, borderColor:'#4f8ef7', backgroundColor:'transparent',         fill:false, tension:.35, borderWidth:1.5, pointRadius:2},
+    data:{labels:labels, datasets:[
+      {label:'Net Sales (₹L)',   data:netArr,   borderColor:'#3ecf8e', backgroundColor:'rgba(62,207,142,.12)', fill:true, tension:.35, borderWidth:2, pointRadius:3},
+      {label:'Gross Sales (₹L)', data:grossArr, borderColor:'#4f8ef7', backgroundColor:'transparent',          fill:false, tension:.35, borderWidth:1.5, pointRadius:2},
     ]},
     options: baseOpts({ticks:{color:'#4a5168',font:{size:9},callback:function(v){return '₹'+v+'L'}}})
   });
 
-  // ── Traffic trend chart ────────────────────────────────────────────────────
-  dChart('hub-traffic');
-  var tLabels = sliceTraffic.map(d => fmtDate(d.date));
-  var imprArr = sliceTraffic.map(d => d.views != null ? +(d.views/1e5).toFixed(1) : null);
-  var cvrArr  = sliceTraffic.map(d => {
-    if (d.views && d.sales != null) return +((d.sales / d.views) * 100).toFixed(2);
-    return null;
+  // ── Brand breakdown pie
+  dChart('sales-brand');
+  var bb = sales.by_brand || {};
+  var bLabels = Object.keys(bb);
+  var bVals   = bLabels.map(function(k){ return +(bb[k].net_sales/1e5).toFixed(1); });
+  var bCols   = bLabels.map(function(k){
+    return k === 'BARE ANATOMY' ? 'rgba(79,142,247,.8)'
+         : k === 'Chemist at Play' ? 'rgba(62,207,142,.8)'
+         : k === 'SunScoop' ? 'rgba(245,165,36,.8)' : 'rgba(167,139,250,.7)';
   });
-  charts['hub-traffic'] = new Chart(document.getElementById('ch-hub-traffic').getContext('2d'), {
-    type:'line',
-    data:{labels:tLabels, datasets:[
-      {label:'Impressions (L)', data:imprArr, borderColor:'#a78bfa', backgroundColor:'rgba(167,139,250,.1)', fill:true,  tension:.35, borderWidth:2, pointRadius:3, yAxisID:'y'},
-      {label:'CVR (%)',         data:cvrArr,  borderColor:'#f5a524', backgroundColor:'transparent',          fill:false, tension:.35, borderWidth:1.5, pointRadius:2, yAxisID:'y2'},
+  charts['sales-brand'] = new Chart(document.getElementById('ch-sales-brand').getContext('2d'), {
+    type:'doughnut',
+    data:{labels:bLabels, datasets:[{data:bVals, backgroundColor:bCols, borderWidth:0}]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'right',labels:{color:'#8892a4',font:{size:10},boxWidth:10}},
+               tooltip:{callbacks:{label:function(c){return c.label+': ₹'+c.parsed+'L';}}}}}
+  });
+
+  // ── SKU table
+  // Compute derived fields & sort
+  skus = skus.map(function(s){
+    var drr = nDays > 0 ? s.net_sales / nDays : 0;
+    return Object.assign({}, s, {
+      drr: drr,
+      cancel_pct: s.gmv > 0 ? (s.cancellations / s.gmv * 100) : 0,
+      return_pct: s.gmv > 0 ? (s.returns       / s.gmv * 100) : 0,
+    });
+  });
+  var col = H.sales.sort, desc = H.sales.sortDesc;
+  skus.sort(function(a,b){
+    var x = a[col], y = b[col];
+    if (typeof x === 'string' || typeof y === 'string') {
+      x = (x||'').toString(); y = (y||'').toString();
+      return desc ? y.localeCompare(x) : x.localeCompare(y);
+    }
+    x = x == null ? (desc?-Infinity:Infinity) : x;
+    y = y == null ? (desc?-Infinity:Infinity) : y;
+    return desc ? y-x : x-y;
+  });
+
+  document.getElementById('sales-sku-count').textContent =
+    skus.length + ' SKUs · Net ' + fmtCr(skus.reduce(function(a,s){return a+s.net_sales;},0));
+
+  document.getElementById('sales-sku-body').innerHTML = skus.length === 0
+    ? '<tr><td colspan="11" class="empty">No SKUs match filter</td></tr>'
+    : skus.map(function(s){
+        var urlCell = s.url
+          ? '<a href="'+s.url+'" target="_blank" style="color:var(--text2)">'+(s.title||'—').slice(0,55)+'</a>'
+          : (s.title || '—').slice(0,55);
+        var cxlCol = s.cancel_pct > 10 ? 'var(--red)' : s.cancel_pct > 5 ? 'var(--orange)' : 'var(--text2)';
+        var rtnCol = s.return_pct > 5  ? 'var(--red)' : s.return_pct > 2 ? 'var(--orange)' : 'var(--text2)';
+        return '<tr>' +
+          '<td class="pid">'+(s.sku||'—')+'</td>' +
+          '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(s.title||'')+'">'+urlCell+'</td>' +
+          '<td>'+brandPill(s.brand)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace">'+(s.mrp?'₹'+s.mrp:'—')+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace">'+(s.sp?'₹'+s.sp:'—')+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--green);font-weight:700">'+fmtCr(s.net_sales)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace">'+fmtUnits(s.net_units)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">'+fmtCr(s.gmv)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace">'+fmtCr(s.drr)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:'+cxlCol+'">'+fmtPct(s.cancel_pct, 1)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:'+rtnCol+'">'+fmtPct(s.return_pct, 1)+'</td>' +
+          '</tr>';
+    }).join('');
+}
+
+// ── ADS TAB ──────────────────────────────────────────────────────────────────
+function renderAds() {
+  if (!D || !D.hub) {
+    document.getElementById('ads-kpi').innerHTML =
+      '<div class="stat-card" style="grid-column:1/-1"><div class="stat-label">NO HUB DATA YET</div>' +
+      '<div class="stat-value" style="font-size:12px;color:var(--text3)">Run FK_Hub_Processor.py</div></div>';
+    return;
+  }
+  var hub = D.hub;
+  var ads = hub.ads || {};
+  var win = hub.window || {};
+  document.getElementById('ads-window').textContent =
+    'Window: ' + (ads.date_from || win.from || '—') + ' → ' + (ads.date_to || win.to || '—');
+
+  var brand = H.ads.brand;
+
+  // ── KPI tiles
+  var totalSpend, totalRev, totalRoi, totalUnits, totalClicks, totalViews, totalCvrDen;
+  if (brand !== 'ALL' && ads.by_brand && ads.by_brand[brand]) {
+    var bb = ads.by_brand[brand];
+    totalSpend = bb.spend; totalRev = bb.revenue; totalRoi = bb.roi;
+    totalUnits = bb.units; totalClicks = bb.clicks; totalViews = null;
+  } else {
+    totalSpend = ads.total_spend || 0;
+    totalRev   = ads.total_revenue || 0;
+    totalRoi   = ads.roi || (totalSpend > 0 ? totalRev/totalSpend : null);
+    totalUnits = ads.total_units || 0;
+    totalClicks = ads.total_clicks || 0;
+    totalViews  = ads.total_views || 0;
+  }
+  var ctr = totalViews && totalClicks ? (totalClicks/totalViews*100) : null;
+  var cpc = totalClicks > 0 ? totalSpend/totalClicks : null;
+
+  // TACOS needs sales (same window)
+  var netSales = (hub.sales && hub.sales.net_sales) || 0;
+  if (brand !== 'ALL' && hub.sales && hub.sales.by_brand && hub.sales.by_brand[brand]) {
+    netSales = hub.sales.by_brand[brand].net_sales;
+  }
+  var tacos = netSales > 0 && totalSpend > 0 ? (totalSpend / netSales * 100) : null;
+
+  var kpis = [
+    {label:'Ad Spend',    val:fmtCr(totalSpend), sub:'CPC '+(cpc!=null?'₹'+cpc.toFixed(2):'—'), col:'var(--red)'},
+    {label:'Ad Revenue',  val:fmtCr(totalRev),   sub:fmtUnits(totalUnits)+' units', col:'var(--green)'},
+    {label:'ROI',         val:totalRoi!=null?(+totalRoi).toFixed(2)+'x':'—', sub:'Revenue/Spend', col:'var(--yellow)'},
+    {label:'TACOS',       val:tacos!=null?tacos.toFixed(1)+'%':'—', sub:'Spend/Net Sales', col:'var(--orange)'},
+    {label:'Clicks',      val:fmtImpr(totalClicks), sub:(ctr!=null?'CTR '+ctr.toFixed(2)+'%':'—'), col:'var(--purple)'},
+    {label:'Ad Views',    val:fmtImpr(totalViews), sub:'Impressions served', col:'var(--accent)'},
+  ];
+  document.getElementById('ads-kpi').innerHTML = kpis.map(function(k){
+    return '<div class="stat-card"><div class="stat-label">'+k.label+'</div>' +
+      '<div class="stat-value" style="color:'+k.col+';font-size:18px">'+k.val+'</div>' +
+      '<div class="stat-sub">'+k.sub+'</div></div>';
+  }).join('');
+
+  // ── Charts
+  // Spend+Revenue by brand (grouped bars)
+  dChart('ads-brand');
+  var byBrand = ads.by_brand || {};
+  var bLabels = Object.keys(byBrand);
+  var spendArr = bLabels.map(function(k){ return +(byBrand[k].spend/1e5).toFixed(1); });
+  var revArr   = bLabels.map(function(k){ return +(byBrand[k].revenue/1e5).toFixed(1); });
+  charts['ads-brand'] = new Chart(document.getElementById('ch-ads-brand').getContext('2d'), {
+    type:'bar',
+    data:{labels:bLabels, datasets:[
+      {label:'Spend (₹L)',   data:spendArr, backgroundColor:'rgba(240,82,82,.75)'},
+      {label:'Revenue (₹L)', data:revArr,   backgroundColor:'rgba(62,207,142,.75)'},
     ]},
-    options:{
-      responsive:true, maintainAspectRatio:false,
+    options:{responsive:true, maintainAspectRatio:false,
       plugins:{legend:{labels:{color:'#8892a4',font:{size:10},boxWidth:10}}},
       scales:{
-        x:  {ticks:{color:'#4a5168',font:{size:9}}, grid:{color:'rgba(255,255,255,.05)'}},
-        y:  {ticks:{color:'#a78bfa',font:{size:9}}, grid:{color:'rgba(255,255,255,.05)'}, position:'left'},
-        y2: {ticks:{color:'#f5a524',font:{size:9}}, grid:{display:false}, position:'right', title:{display:true,text:'CVR%',color:'#f5a524',font:{size:9}}},
+        x:{ticks:{color:'#4a5168',font:{size:10}}, grid:{display:false}},
+        y:{ticks:{color:'#4a5168',font:{size:9},callback:function(v){return '₹'+v+'L'}}, grid:{color:'rgba(255,255,255,.05)'}},
       }
     }
   });
 
-  // ── Ads trend chart ────────────────────────────────────────────────────────
-  // Ads daily data isn't available; show period totals as a single horizontal bar reference
-  dChart('hub-ads');
-  var adCtx = document.getElementById('ch-hub-ads').getContext('2d');
-  charts['hub-ads'] = new Chart(adCtx, {
-    type:'bar',
-    data:{
-      labels:['Spend','Revenue'],
-      datasets:[{
-        data:[+(totalSpend/1e5).toFixed(1), +(totalAdRev/1e5).toFixed(1)],
-        backgroundColor:['rgba(240,82,82,.7)','rgba(62,207,142,.7)'],
-        borderColor:['#f05252','#3ecf8e'], borderWidth:1.5,
-      }]
-    },
-    options:{
-      responsive:true, maintainAspectRatio:false, indexAxis:'y',
-      plugins:{legend:{display:false}, tooltip:{callbacks:{label:function(c){return '₹'+c.parsed.x+'L';}}}},
-      scales:{
-        x:{ticks:{color:'#4a5168',font:{size:9},callback:function(v){return '₹'+v+'L'}}, grid:{color:'rgba(255,255,255,.05)'}},
-        y:{ticks:{color:'#8892a4',font:{size:11}}, grid:{display:false}},
-      }
-    }
-  });
-
-  // ── Impression sources donut ───────────────────────────────────────────────
-  dChart('hub-sources');
-  var srcVals = [traffic.search_results_pct, traffic.merchandise_pct,
-                 traffic.recommendations_pct, traffic.other_sources_pct];
-  var hasSrcData = srcVals.some(function(v){ return v != null && v > 0; });
-  var srcCtx = document.getElementById('ch-hub-sources').getContext('2d');
-  if (hasSrcData) {
-    charts['hub-sources'] = new Chart(srcCtx, {
-      type:'doughnut',
-      data:{
-        labels:['Search Results','Merchandise','Recommendations','Other'],
-        datasets:[{
-          data:srcVals.map(function(v){return v||0;}),
-          backgroundColor:['rgba(79,142,247,.85)','rgba(245,165,36,.75)','rgba(62,207,142,.75)','rgba(255,255,255,.15)'],
-          borderWidth:0
-        }]
-      },
-      options:{responsive:true, maintainAspectRatio:false,
-        plugins:{legend:{position:'right',labels:{color:'#8892a4',font:{size:10},boxWidth:10}}}}
-    });
-  } else {
-    // Clear canvas and show message
-    srcCtx.clearRect(0, 0, srcCtx.canvas.width, srcCtx.canvas.height);
-    srcCtx.fillStyle = '#4a5168';
-    srcCtx.font = "11px 'Courier New', monospace";
-    srcCtx.textAlign = 'center';
-    srcCtx.fillText('Impression source breakdown not in this report', srcCtx.canvas.width/2, srcCtx.canvas.height/2);
-  }
-
-  // ── ROI trend ──────────────────────────────────────────────────────────────
-  // Ads don't have daily — show daily-computed ROI proxy from traffic.revenue/ads spend isn't valid.
-  // Instead show campaign ROI distribution
-  dChart('hub-roi');
+  // Top-campaign ROI bar
+  dChart('ads-roi');
   var camps = (ads.campaigns || []).slice();
+  if (brand !== 'ALL') camps = camps.filter(function(c){ return c.brand === brand; });
   camps.sort(function(a,b){ return (b.spend||0) - (a.spend||0); });
   var top = camps.slice(0, 15);
-  charts['hub-roi'] = new Chart(document.getElementById('ch-hub-roi').getContext('2d'), {
+  charts['ads-roi'] = new Chart(document.getElementById('ch-ads-roi').getContext('2d'), {
     type:'bar',
     data:{
-      labels: top.map(function(c){ return (c.name||'').slice(0,20); }),
+      labels: top.map(function(c){ return (c.name||'').slice(0,22); }),
       datasets:[{
-        label:'ROI (x)',
+        label:'ROI',
         data: top.map(function(c){ return c.roi || 0; }),
         backgroundColor: top.map(function(c){
           var r = c.roi || 0;
@@ -632,11 +772,8 @@ function renderHub() {
         borderWidth:0
       }]
     },
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{display:false}, tooltip:{callbacks:{
-        label:function(c){ return c.parsed.y.toFixed(2)+'x'; }
-      }}},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:function(c){return c.parsed.y.toFixed(2)+'x';}}}},
       scales:{
         x:{ticks:{color:'#4a5168',font:{size:9},maxRotation:60,minRotation:45}, grid:{display:false}},
         y:{ticks:{color:'#4a5168',font:{size:9},callback:function(v){return v+'x'}}, grid:{color:'rgba(255,255,255,.05)'}},
@@ -644,68 +781,118 @@ function renderHub() {
     }
   });
 
-  // ── Traffic alerts table ───────────────────────────────────────────────────
-  var li = traffic.losing_impressions || [];
-  var lc = traffic.losing_conversion  || [];
-  var alertsAll = li.map(function(r){ r._type='impressions'; return r; })
-                   .concat(lc.map(function(r){ r._type='conversion'; return r; }));
+  // ── Table: SKU-level or Campaign-level
+  var q = (H.ads.search || document.getElementById('ads-search')?.value || '').toLowerCase().trim();
 
-  document.getElementById('hub-alerts-count').textContent =
-    li.length + ' losing impressions, ' + lc.length + ' losing conversion';
+  if (H.ads.view === 'sku') {
+    // SKU-level
+    document.getElementById('ads-table-title').textContent = '📣 SKU-level Ads';
+    var rows = (hub.skus || []).filter(function(s){ return s.ad_spend > 0; });
+    if (brand !== 'ALL') rows = rows.filter(function(s){ return s.brand === brand; });
+    if (q) rows = rows.filter(function(s){
+      return (s.sku||'').toLowerCase().includes(q) || (s.title||'').toLowerCase().includes(q);
+    });
+    // Sort
+    var col = H.ads.sort, desc = H.ads.sortDesc;
+    rows.sort(function(a,b){
+      var x = a[col], y = b[col];
+      if (typeof x === 'string' || typeof y === 'string'){ x=(x||'').toString(); y=(y||'').toString(); return desc?y.localeCompare(x):x.localeCompare(y); }
+      x = x == null ? (desc?-Infinity:Infinity) : x;
+      y = y == null ? (desc?-Infinity:Infinity) : y;
+      return desc ? y-x : x-y;
+    });
 
-  if (alertsAll.length > 0) {
-    var allCols = Array.from(new Set(alertsAll.flatMap(function(r){
-      return Object.keys(r).filter(function(k){ return !k.startsWith('_'); });
-    }))).slice(0, 6);
-    document.getElementById('hub-alerts-hdr').innerHTML =
-      '<th>Type</th>' + allCols.map(function(c){ return '<th>'+c+'</th>'; }).join('');
-    document.getElementById('hub-alerts-body').innerHTML = alertsAll.slice(0, 20).map(function(r){
-      var badge = r._type === 'impressions'
-        ? '<span style="color:var(--red);font-size:10px;font-weight:700">📉 Impr</span>'
-        : '<span style="color:var(--orange);font-size:10px;font-weight:700">⚠️ Conv</span>';
-      return '<tr><td>' + badge + '</td>' +
-        allCols.map(function(c){ return '<td>' + (r[c] != null ? r[c] : '—') + '</td>'; }).join('') + '</tr>';
-    }).join('');
+    document.getElementById('ads-table-count').textContent =
+      rows.length + ' SKUs with ads · Spend ' + fmtCr(rows.reduce(function(a,s){return a+s.ad_spend;},0));
+
+    document.getElementById('ads-table-hdr').innerHTML =
+      '<th style="min-width:150px" onclick="sortHub(\'ads\',\'sku\')">SKU</th>' +
+      '<th style="min-width:250px" onclick="sortHub(\'ads\',\'title\')">Product</th>' +
+      '<th onclick="sortHub(\'ads\',\'brand\')">Brand</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'campaign_count\')">Camps</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'ad_spend\')">Spend ▼</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'ad_revenue\')">Ad Rev</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'ad_roi\')">ROI</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'ad_units\')">Ad Units</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'ad_clicks\')">Clicks</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'net_sales\')">Net Sales</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'tacos\')">TACOS</th>';
+
+    document.getElementById('ads-table-body').innerHTML = rows.length === 0
+      ? '<tr><td colspan="11" class="empty">No SKUs match filter</td></tr>'
+      : rows.map(function(s){
+          var roiCol = s.ad_roi >= 3 ? 'var(--green)' : s.ad_roi >= 1.5 ? 'var(--orange)' : 'var(--red)';
+          var tacosVal = s.tacos;
+          var tacosCol = tacosVal > 30 ? 'var(--red)' : tacosVal > 20 ? 'var(--orange)' : 'var(--text2)';
+          var urlCell = s.url
+            ? '<a href="'+s.url+'" target="_blank" style="color:var(--text2)">'+(s.title||'—').slice(0,50)+'</a>'
+            : (s.title || '—').slice(0,50);
+          return '<tr>' +
+            '<td class="pid">'+(s.sku||'—')+'</td>' +
+            '<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(s.title||'')+'">'+urlCell+'</td>' +
+            '<td>'+brandPill(s.brand)+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">'+(s.campaign_count||0)+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace;color:var(--red)">'+fmtCr(s.ad_spend)+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace;color:var(--green)">'+fmtCr(s.ad_revenue)+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace;color:'+roiCol+';font-weight:700">'+(s.ad_roi!=null?(+s.ad_roi).toFixed(2)+'x':'—')+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace">'+fmtUnits(s.ad_units)+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">'+fmtImpr(s.ad_clicks)+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace">'+fmtCr(s.net_sales)+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace;color:'+tacosCol+'">'+(tacosVal!=null?tacosVal.toFixed(1)+'%':'—')+'</td>' +
+          '</tr>';
+      }).join('');
+
   } else {
-    document.getElementById('hub-alerts-hdr').innerHTML = '';
-    document.getElementById('hub-alerts-body').innerHTML =
-      '<tr><td colspan="7" class="empty" style="color:var(--green)">✓ No traffic alerts</td></tr>';
+    // Campaign-level
+    document.getElementById('ads-table-title').textContent = '📣 Campaign-level Ads';
+    var rows = (ads.campaigns || []).slice();
+    if (brand !== 'ALL') rows = rows.filter(function(c){ return c.brand === brand; });
+    if (q) rows = rows.filter(function(c){
+      return (c.name||'').toLowerCase().includes(q) || (c.sku||'').toLowerCase().includes(q);
+    });
+    var col = H.ads.sort;
+    // Default sort is spend desc
+    if (!['spend','revenue','roi','units','clicks','views','name','brand','sku'].includes(col)) col = 'spend';
+    var desc = H.ads.sortDesc;
+    rows.sort(function(a,b){
+      var x = a[col], y = b[col];
+      if (typeof x === 'string' || typeof y === 'string'){ x=(x||'').toString(); y=(y||'').toString(); return desc?y.localeCompare(x):x.localeCompare(y); }
+      x = x == null ? (desc?-Infinity:Infinity) : x;
+      y = y == null ? (desc?-Infinity:Infinity) : y;
+      return desc ? y-x : x-y;
+    });
+
+    document.getElementById('ads-table-count').textContent =
+      rows.length + ' campaigns · Spend ' + fmtCr(rows.reduce(function(a,c){return a+(c.spend||0);},0));
+
+    document.getElementById('ads-table-hdr').innerHTML =
+      '<th style="min-width:260px" onclick="sortHub(\'ads\',\'name\')">Campaign</th>' +
+      '<th onclick="sortHub(\'ads\',\'brand\')">Brand</th>' +
+      '<th onclick="sortHub(\'ads\',\'sku\')">SKU</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'spend\')">Spend ▼</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'revenue\')">Revenue</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'roi\')">ROI</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'units\')">Units</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'clicks\')">Clicks</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'ads\',\'views\')">Views</th>';
+
+    document.getElementById('ads-table-body').innerHTML = rows.length === 0
+      ? '<tr><td colspan="9" class="empty">No campaigns match filter</td></tr>'
+      : rows.map(function(c){
+          var roiCol = c.roi >= 3 ? 'var(--green)' : c.roi >= 1.5 ? 'var(--orange)' : 'var(--red)';
+          return '<tr>' +
+            '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(c.name||'')+'">'+(c.name||'').slice(0,60)+'</td>' +
+            '<td>'+brandPill(c.brand)+'</td>' +
+            '<td class="pid">'+(c.sku||'—')+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace;color:var(--red)">'+fmtCr(c.spend)+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace;color:var(--green)">'+fmtCr(c.revenue)+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace;color:'+roiCol+';font-weight:700">'+((+c.roi||0).toFixed(2)+'x')+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace">'+fmtUnits(c.units)+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">'+fmtImpr(c.clicks)+'</td>' +
+            '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">'+fmtImpr(c.views)+'</td>' +
+          '</tr>';
+      }).join('');
   }
-
-  // ── Campaign table ─────────────────────────────────────────────────────────
-  var campaigns = (ads.campaigns || []).slice();
-  campaigns.sort(function(a,b){ return (b.spend||0) - (a.spend||0); });
-
-  var dateRange = ads.date_from && ads.date_to ? (' · ' + ads.date_from + '–' + ads.date_to) : '';
-  document.getElementById('hub-camp-count').textContent =
-    campaigns.length + ' campaigns' + dateRange;
-
-  function roiBadge(v) {
-    if (v == null) return '—';
-    var col = v >= 3 ? 'var(--green)' : v >= 1.5 ? 'var(--orange)' : 'var(--red)';
-    return '<span style="color:'+col+';font-weight:700">'+(+v).toFixed(2)+'x</span>';
-  }
-  function brandBadge(b) {
-    if (!b) return '—';
-    var c = b === 'BARE ANATOMY' ? 'var(--ba)' : b === 'Chemist at Play' ? 'var(--cap)' : b === 'SunScoop' ? 'var(--ss)' : 'var(--text3)';
-    var short = b === 'BARE ANATOMY' ? 'BA' : b === 'Chemist at Play' ? 'CAP' : b === 'SunScoop' ? 'SS' : b;
-    return '<span style="color:'+c+';font-weight:700;font-size:11px">'+short+'</span>';
-  }
-
-  document.getElementById('hub-camp-body').innerHTML = campaigns.length === 0
-    ? '<tr><td colspan="8" class="empty">No campaign data yet</td></tr>'
-    : campaigns.map(function(c){
-        return '<tr>' +
-          '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(c.name||'')+'">'+((c.name||'').slice(0,55))+'</td>' +
-          '<td>'+brandBadge(c.brand)+'</td>' +
-          '<td><span style="color:var(--text3);font-size:10px">'+(c.format||'—')+'</span></td>' +
-          '<td style="text-align:right;font-family:Courier New,monospace">'+fmtCr(c.spend)+'</td>' +
-          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--green)">'+fmtCr(c.revenue)+'</td>' +
-          '<td style="text-align:right">'+roiBadge(c.roi)+'</td>' +
-          '<td style="text-align:right;color:var(--text3)">'+fmtUnits(c.units)+'</td>' +
-          '<td style="text-align:right;color:var(--text3)">'+fmtUnits(c.clicks)+'</td>' +
-        '</tr>';
-    }).join('');
 }
 </script>
 
@@ -899,8 +1086,9 @@ function showPage(name, btn) {
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   btn.classList.add('active');
-  // Re-render hub tab on navigation so it always reflects latest data
-  if (name === 'hub' && D) safeRun(renderHub, 'renderHub');
+  // Re-render hub tabs on navigation so they always reflect latest data
+  if (name === 'sales' && D) safeRun(renderSales, 'renderSales');
+  if (name === 'ads'   && D) safeRun(renderAds,   'renderAds');
 }
 
 function safeRun(fn,name){try{fn();}catch(e){console.error(name+' failed:',e);}}
@@ -909,7 +1097,8 @@ function renderAll(){
   safeRun(renderRankings,'renderRankings');
   safeRun(renderSP,'renderSP');
   safeRun(renderRatings,'renderRatings');
-  safeRun(renderHub,'renderHub');
+  safeRun(renderSales,'renderSales');
+  safeRun(renderAds,'renderAds');
   setTimeout(()=>{
     safeRun(()=>buildAnalysis(D.latest.date),'buildAnalysis');
     safeRun(()=>buildRankAnalysis(D.latest.date),'buildRankAnalysis');

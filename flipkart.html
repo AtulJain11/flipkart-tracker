@@ -387,7 +387,7 @@ function checkPW(){
 
 <script>
 // ══ SALES & ADS TAB ══════════════════════════════════════════════════════════
-var hubPeriod = 7;
+var hubPeriod = 7;  // 7, 30, or 999 (=All)
 
 function setHubPeriod(n, btn) {
   hubPeriod = n;
@@ -396,79 +396,121 @@ function setHubPeriod(n, btn) {
   renderHub();
 }
 
-function hubSlice(arr, days) {
-  if (!arr || !arr.length) return [];
-  return arr.slice(-days);
-}
-
 function fmtCr(v) {
-  if (v == null) return '—';
+  if (v == null || isNaN(v)) return '—';
   if (v >= 1e7) return '₹' + (v/1e7).toFixed(2) + 'Cr';
   if (v >= 1e5) return '₹' + (v/1e5).toFixed(1) + 'L';
   if (v >= 1e3) return '₹' + (v/1e3).toFixed(1) + 'K';
   return '₹' + Math.round(v).toLocaleString('en-IN');
 }
 function fmtUnits(v) {
-  if (v == null) return '—';
+  if (v == null || isNaN(v)) return '—';
   if (v >= 1e5) return (v/1e5).toFixed(1) + 'L';
   if (v >= 1e3) return (v/1e3).toFixed(1) + 'K';
   return Math.round(v).toLocaleString('en-IN');
 }
 function fmtImpr(v) {
-  if (v == null) return '—';
+  if (v == null || isNaN(v)) return '—';
   if (v >= 1e7) return (v/1e7).toFixed(2) + 'Cr';
   if (v >= 1e5) return (v/1e5).toFixed(1) + 'L';
   if (v >= 1e3) return (v/1e3).toFixed(1) + 'K';
   return Math.round(v).toLocaleString('en-IN');
 }
 
+// Sum a numeric field across an array of daily entries
+function hubSum(arr, field) {
+  if (!arr || !arr.length) return 0;
+  return arr.reduce((acc, d) => acc + (typeof d[field] === 'number' ? d[field] : 0), 0);
+}
+
 function renderHub() {
-  // Support both D.hub (FK_Hub_Processor) and D.hub_history[] (FK_Daily_Alert_v2)
-  var hubData = null;
-  if (D && D.hub && (D.hub.sales || D.hub.traffic || D.hub.ads)) {
-    // Single snapshot from FK_Hub_Processor — wrap in array for compatibility
-    hubData = [D.hub];
-  } else if (D && D.hub_history && D.hub_history.length) {
-    hubData = D.hub_history;
-  }
-  if (!hubData) {
+  if (!D || !D.hub) {
     document.getElementById('hub-kpi').innerHTML =
       '<div class="stat-card" style="grid-column:1/-1"><div class="stat-label">NO HUB DATA YET</div>' +
       '<div class="stat-value" style="font-size:12px;color:var(--text3)">Run FK_Hub_Processor.py after downloading reports from Flipkart Hub</div></div>';
     return;
   }
 
-  var all = hubData;
-  var slice = hubPeriod === 999 ? all : hubSlice(all, hubPeriod);
-  if (!slice.length) slice = all;
-  var latest = slice[slice.length - 1];
-  var prev   = slice.length > 1 ? slice[slice.length - 2] : null;
+  var hub = D.hub;
+  var sales = hub.sales || {};
+  var traffic = hub.traffic || {};
+  var ads = hub.ads || {};
 
-  // ── KPI tiles ──────────────────────────────────────────────────────────────
-  function delta(cur, pv, key, nested) {
-    if (!pv) return '';
-    var c = nested ? (cur[nested]||{})[key] : cur[key];
-    var p = nested ? (pv[nested]||{})[key]  : pv[key];
-    if (c == null || p == null || p === 0) return '';
-    var d = ((c - p) / p * 100).toFixed(1);
-    var col = parseFloat(d) >= 0 ? 'var(--green)' : 'var(--red)';
-    var arrow = parseFloat(d) >= 0 ? '▲' : '▼';
-    return '<span style="font-size:10px;color:'+col+'">'+arrow+Math.abs(d)+'%</span>';
+  // Daily arrays (the real trend data — 15-16 points)
+  var salesDaily = sales.daily || [];
+  var trafficDaily = traffic.daily || [];
+
+  // Slice by selected period
+  var N = hubPeriod === 999 ? 999 : hubPeriod;
+  var sliceSales   = salesDaily.slice(-N);
+  var sliceTraffic = trafficDaily.slice(-N);
+
+  // For deltas: current period vs previous period of same length
+  var prevSales   = salesDaily.length > sliceSales.length
+                    ? salesDaily.slice(-sliceSales.length*2, -sliceSales.length) : [];
+  var prevTraffic = trafficDaily.length > sliceTraffic.length
+                    ? trafficDaily.slice(-sliceTraffic.length*2, -sliceTraffic.length) : [];
+
+  // Period-aggregated KPIs (daily arrays are source of truth)
+  var pNetSales = hubSum(sliceSales, 'net_sales');
+  var pNetUnits = hubSum(sliceSales, 'net_units');
+  var pGmv      = hubSum(sliceSales, 'gmv');         // processor stores as 'gmv' in daily rows
+  var pGrossU   = sliceSales.reduce((a,d)=>a+(d.gross_units||d.net_units||0),0);
+  var pImpr     = hubSum(sliceTraffic, 'views');
+  var pClicks   = hubSum(sliceTraffic, 'clicks');
+  var pTrSales  = hubSum(sliceTraffic, 'sales');
+  var pCvr      = pImpr > 0 ? (pTrSales / pImpr * 100) : null;
+
+  // Prev-period
+  var prevNetSales = hubSum(prevSales, 'net_sales');
+  var prevGmv      = hubSum(prevSales, 'gmv');
+  var prevImpr     = hubSum(prevTraffic, 'views');
+
+  // Ads are totals for the window (no daily breakdown in processor)
+  var totalSpend   = ads.total_spend || 0;
+  var totalAdRev   = ads.total_revenue || 0;
+  var adsRoi       = ads.roi || (totalSpend > 0 ? totalAdRev / totalSpend : null);
+  var totalAdUnits = ads.total_units || 0;
+
+  // If sliceSales covers same period as ads (full range), show as-is;
+  // otherwise hint that ads are full-window
+  var adsLabelHint = sliceSales.length < salesDaily.length ? ' (full window)' : '';
+
+  function pctDelta(cur, prev) {
+    if (!prev || prev === 0) return '';
+    var d = ((cur - prev) / prev * 100);
+    if (!isFinite(d)) return '';
+    var col = d >= 0 ? 'var(--green)' : 'var(--red)';
+    var arrow = d >= 0 ? '▲' : '▼';
+    return '<span style="font-size:10px;color:'+col+'">'+arrow+Math.abs(d).toFixed(1)+'%</span>';
   }
 
-  var s = latest.sales || {};
-  var t = latest.traffic || {};
-  var a = latest.ads || {};
+  // Sales/Net and GMV — cancellations & returns are totals (no daily breakdown)
+  // so show them only in "All" period, else show as full-window
+  var showFullWindow = hubPeriod === 999;
+  var pCancel    = sales.cancellations || 0;
+  var pCancelU   = sales.cancellations_units || 0;
+  var pReturns   = sales.returns || 0;
+  var pReturnsU  = sales.returns_units || 0;
+
+  var tacos = pNetSales > 0 && totalSpend > 0 ? (totalSpend / pNetSales * 100) : null;
 
   var kpis = [
-    {label:'Net Sales',    val:fmtCr(s.net_sales),    sub:fmtUnits(s.net_units)+' units',   delta:delta(latest,prev,'net_sales','sales'),    col:'var(--green)'},
-    {label:'Gross Sales',  val:fmtCr(s.gross_sales),  sub:fmtUnits(s.gross_units)+' units', delta:delta(latest,prev,'gross_sales','sales'),  col:'var(--accent)'},
-    {label:'Cancellations',val:fmtCr(s.cancellations),sub:fmtUnits(s.cancellations_units)+' units', delta:delta(latest,prev,'cancellations','sales'), col:'var(--red)'},
-    {label:'Returns',      val:fmtCr(s.returns),      sub:fmtUnits(s.returns_units)+' units', delta:delta(latest,prev,'returns','sales'),   col:'var(--orange)'},
-    {label:'Impressions',  val:fmtImpr(t.impressions), sub:'CVR '+(t.conversion_rate!=null?t.conversion_rate+'%':'—'), delta:delta(latest,prev,'impressions','traffic'), col:'var(--purple)'},
-    {label:'Ad Spend',     val:fmtCr(a.total_spend),  sub:'ROI '+(a.roi!=null?a.roi+'x':'—'), delta:delta(latest,prev,'total_spend','ads'), col:'var(--red)'},
-    {label:'Ad Revenue',   val:fmtCr(a.total_revenue),sub:fmtUnits(a.total_units)+' units', delta:delta(latest,prev,'total_revenue','ads'), col:'var(--green)'},
-    {label:'TACOS',        val:(a.total_spend&&s.net_sales)?((a.total_spend/s.net_sales*100).toFixed(1)+'%'):'—', sub:'Spend/Net Sales', delta:'', col:'var(--yellow)'},
+    {label:'Net Sales',     val:fmtCr(pNetSales),   sub:fmtUnits(pNetUnits)+' units',
+      delta:pctDelta(pNetSales, prevNetSales), col:'var(--green)'},
+    {label:'Gross Sales',   val:fmtCr(pGmv),        sub:fmtUnits(pGrossU)+' units',
+      delta:pctDelta(pGmv, prevGmv), col:'var(--accent)'},
+    {label:'Cancellations', val:fmtCr(pCancel),     sub:fmtUnits(pCancelU)+' units'+adsLabelHint,
+      delta:'', col:'var(--red)'},
+    {label:'Returns',       val:fmtCr(pReturns),    sub:fmtUnits(pReturnsU)+' units'+adsLabelHint,
+      delta:'', col:'var(--orange)'},
+    {label:'Impressions',   val:fmtImpr(pImpr),     sub:'CVR '+(pCvr!=null?pCvr.toFixed(2)+'%':'—'),
+      delta:pctDelta(pImpr, prevImpr), col:'var(--purple)'},
+    {label:'Ad Spend',      val:fmtCr(totalSpend),  sub:'ROI '+(adsRoi!=null?adsRoi.toFixed(2)+'x':'—')+adsLabelHint,
+      delta:'', col:'var(--red)'},
+    {label:'Ad Revenue',    val:fmtCr(totalAdRev),  sub:fmtUnits(totalAdUnits)+' units'+adsLabelHint,
+      delta:'', col:'var(--green)'},
+    {label:'TACOS',         val:(tacos!=null?tacos.toFixed(1)+'%':'—'), sub:'Spend/Net Sales', delta:'', col:'var(--yellow)'},
   ];
 
   document.getElementById('hub-kpi').innerHTML = kpis.map(k =>
@@ -479,27 +521,31 @@ function renderHub() {
 
   // ── Sales trend chart ──────────────────────────────────────────────────────
   dChart('hub-sales');
-  var labels = slice.map(d => fmtDate(d.date));
-  var netArr  = slice.map(d => d.sales && d.sales.net_sales   != null ? +(d.sales.net_sales/1e5).toFixed(1)   : null);
-  var grossArr= slice.map(d => d.sales && d.sales.gross_sales != null ? +(d.sales.gross_sales/1e5).toFixed(1) : null);
+  var salesLabels = sliceSales.map(d => fmtDate(d.date));
+  var netArr   = sliceSales.map(d => d.net_sales != null ? +(d.net_sales/1e5).toFixed(1) : null);
+  var grossArr = sliceSales.map(d => d.gmv       != null ? +(d.gmv/1e5).toFixed(1)       : null);
   charts['hub-sales'] = new Chart(document.getElementById('ch-hub-sales').getContext('2d'), {
     type:'line',
-    data:{labels, datasets:[
-      {label:'Net Sales (₹L)',   data:netArr,   borderColor:'#3ecf8e', backgroundColor:'rgba(62,207,142,.1)', fill:true, tension:.4, borderWidth:2, pointRadius:3},
-      {label:'Gross Sales (₹L)', data:grossArr, borderColor:'#4f8ef7', backgroundColor:'transparent',         fill:false, tension:.4, borderWidth:1.5, pointRadius:2},
+    data:{labels:salesLabels, datasets:[
+      {label:'Net Sales (₹L)',   data:netArr,   borderColor:'#3ecf8e', backgroundColor:'rgba(62,207,142,.1)', fill:true, tension:.35, borderWidth:2, pointRadius:3},
+      {label:'Gross Sales (₹L)', data:grossArr, borderColor:'#4f8ef7', backgroundColor:'transparent',         fill:false, tension:.35, borderWidth:1.5, pointRadius:2},
     ]},
-    options: baseOpts({ticks:{color:'#4a5168',font:{size:9},callback:v=>'₹'+v+'L'}})
+    options: baseOpts({ticks:{color:'#4a5168',font:{size:9},callback:function(v){return '₹'+v+'L'}}})
   });
 
   // ── Traffic trend chart ────────────────────────────────────────────────────
   dChart('hub-traffic');
-  var imprArr = slice.map(d => d.traffic && d.traffic.impressions != null ? +(d.traffic.impressions/1e5).toFixed(1) : null);
-  var cvrArr  = slice.map(d => d.traffic ? d.traffic.conversion_rate : null);
+  var tLabels = sliceTraffic.map(d => fmtDate(d.date));
+  var imprArr = sliceTraffic.map(d => d.views != null ? +(d.views/1e5).toFixed(1) : null);
+  var cvrArr  = sliceTraffic.map(d => {
+    if (d.views && d.sales != null) return +((d.sales / d.views) * 100).toFixed(2);
+    return null;
+  });
   charts['hub-traffic'] = new Chart(document.getElementById('ch-hub-traffic').getContext('2d'), {
     type:'line',
-    data:{labels, datasets:[
-      {label:'Impressions (L)', data:imprArr, borderColor:'#a78bfa', backgroundColor:'rgba(167,139,250,.1)', fill:true,  tension:.4, borderWidth:2, pointRadius:3, yAxisID:'y'},
-      {label:'CVR (%)',         data:cvrArr,  borderColor:'#f5a524', backgroundColor:'transparent',          fill:false, tension:.4, borderWidth:1.5, pointRadius:2, yAxisID:'y2'},
+    data:{labels:tLabels, datasets:[
+      {label:'Impressions (L)', data:imprArr, borderColor:'#a78bfa', backgroundColor:'rgba(167,139,250,.1)', fill:true,  tension:.35, borderWidth:2, pointRadius:3, yAxisID:'y'},
+      {label:'CVR (%)',         data:cvrArr,  borderColor:'#f5a524', backgroundColor:'transparent',          fill:false, tension:.35, borderWidth:1.5, pointRadius:2, yAxisID:'y2'},
     ]},
     options:{
       responsive:true, maintainAspectRatio:false,
@@ -513,78 +559,112 @@ function renderHub() {
   });
 
   // ── Ads trend chart ────────────────────────────────────────────────────────
+  // Ads daily data isn't available; show period totals as a single horizontal bar reference
   dChart('hub-ads');
-  var spendArr = slice.map(d => d.ads && d.ads.total_spend   != null ? +(d.ads.total_spend/1e5).toFixed(1)   : null);
-  var revArr   = slice.map(d => d.ads && d.ads.total_revenue != null ? +(d.ads.total_revenue/1e5).toFixed(1) : null);
-  charts['hub-ads'] = new Chart(document.getElementById('ch-hub-ads').getContext('2d'), {
-    type:'line',
-    data:{labels, datasets:[
-      {label:'Ad Revenue (₹L)', data:revArr,   borderColor:'#3ecf8e', backgroundColor:'rgba(62,207,142,.1)', fill:true,  tension:.4, borderWidth:2, pointRadius:3},
-      {label:'Ad Spend (₹L)',   data:spendArr, borderColor:'#f05252', backgroundColor:'transparent',          fill:false, tension:.4, borderWidth:1.5, pointRadius:2},
-    ]},
-    options: baseOpts({ticks:{color:'#4a5168',font:{size:9},callback:v=>'₹'+v+'L'}})
+  var adCtx = document.getElementById('ch-hub-ads').getContext('2d');
+  charts['hub-ads'] = new Chart(adCtx, {
+    type:'bar',
+    data:{
+      labels:['Spend','Revenue'],
+      datasets:[{
+        data:[+(totalSpend/1e5).toFixed(1), +(totalAdRev/1e5).toFixed(1)],
+        backgroundColor:['rgba(240,82,82,.7)','rgba(62,207,142,.7)'],
+        borderColor:['#f05252','#3ecf8e'], borderWidth:1.5,
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, indexAxis:'y',
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:function(c){return '₹'+c.parsed.x+'L';}}}},
+      scales:{
+        x:{ticks:{color:'#4a5168',font:{size:9},callback:function(v){return '₹'+v+'L'}}, grid:{color:'rgba(255,255,255,.05)'}},
+        y:{ticks:{color:'#8892a4',font:{size:11}}, grid:{display:false}},
+      }
+    }
   });
 
   // ── Impression sources donut ───────────────────────────────────────────────
   dChart('hub-sources');
-  var src = latest.traffic || {};
-  var srcVals = [
-    src.search_results_pct, src.merchandise_pct,
-    src.recommendations_pct, src.other_sources_pct
-  ].map(v => v || 0);
-  charts['hub-sources'] = new Chart(document.getElementById('ch-hub-sources').getContext('2d'), {
-    type:'doughnut',
+  var srcVals = [traffic.search_results_pct, traffic.merchandise_pct,
+                 traffic.recommendations_pct, traffic.other_sources_pct];
+  var hasSrcData = srcVals.some(function(v){ return v != null && v > 0; });
+  var srcCtx = document.getElementById('ch-hub-sources').getContext('2d');
+  if (hasSrcData) {
+    charts['hub-sources'] = new Chart(srcCtx, {
+      type:'doughnut',
+      data:{
+        labels:['Search Results','Merchandise','Recommendations','Other'],
+        datasets:[{
+          data:srcVals.map(function(v){return v||0;}),
+          backgroundColor:['rgba(79,142,247,.85)','rgba(245,165,36,.75)','rgba(62,207,142,.75)','rgba(255,255,255,.15)'],
+          borderWidth:0
+        }]
+      },
+      options:{responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{position:'right',labels:{color:'#8892a4',font:{size:10},boxWidth:10}}}}
+    });
+  } else {
+    // Clear canvas and show message
+    srcCtx.clearRect(0, 0, srcCtx.canvas.width, srcCtx.canvas.height);
+    srcCtx.fillStyle = '#4a5168';
+    srcCtx.font = "11px 'Courier New', monospace";
+    srcCtx.textAlign = 'center';
+    srcCtx.fillText('Impression source breakdown not in this report', srcCtx.canvas.width/2, srcCtx.canvas.height/2);
+  }
+
+  // ── ROI trend ──────────────────────────────────────────────────────────────
+  // Ads don't have daily — show daily-computed ROI proxy from traffic.revenue/ads spend isn't valid.
+  // Instead show campaign ROI distribution
+  dChart('hub-roi');
+  var camps = (ads.campaigns || []).slice();
+  camps.sort(function(a,b){ return (b.spend||0) - (a.spend||0); });
+  var top = camps.slice(0, 15);
+  charts['hub-roi'] = new Chart(document.getElementById('ch-hub-roi').getContext('2d'), {
+    type:'bar',
     data:{
-      labels:['Search Results','Merchandise','Recommendations','Other'],
+      labels: top.map(function(c){ return (c.name||'').slice(0,20); }),
       datasets:[{
-        data: srcVals,
-        backgroundColor:['rgba(79,142,247,.85)','rgba(245,165,36,.75)','rgba(62,207,142,.75)','rgba(255,255,255,.15)'],
+        label:'ROI (x)',
+        data: top.map(function(c){ return c.roi || 0; }),
+        backgroundColor: top.map(function(c){
+          var r = c.roi || 0;
+          return r >= 3 ? 'rgba(62,207,142,.75)' : r >= 1.5 ? 'rgba(245,165,36,.75)' : 'rgba(240,82,82,.75)';
+        }),
         borderWidth:0
       }]
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{position:'right',labels:{color:'#8892a4',font:{size:10},boxWidth:10}}}
+      plugins:{legend:{display:false}, tooltip:{callbacks:{
+        label:function(c){ return c.parsed.y.toFixed(2)+'x'; }
+      }}},
+      scales:{
+        x:{ticks:{color:'#4a5168',font:{size:9},maxRotation:60,minRotation:45}, grid:{display:false}},
+        y:{ticks:{color:'#4a5168',font:{size:9},callback:function(v){return v+'x'}}, grid:{color:'rgba(255,255,255,.05)'}},
+      }
     }
   });
 
-  // ── ROI trend ──────────────────────────────────────────────────────────────
-  dChart('hub-roi');
-  var roiArr = slice.map(d => d.ads ? d.ads.roi : null);
-  charts['hub-roi'] = new Chart(document.getElementById('ch-hub-roi').getContext('2d'), {
-    type:'line',
-    data:{labels, datasets:[{
-      label:'ROI', data:roiArr,
-      borderColor:'#f5c842', backgroundColor:'rgba(245,200,66,.1)',
-      fill:true, tension:.4, borderWidth:2, pointRadius:3
-    }]},
-    options: baseOpts({
-      ticks:{color:'#f5c842',font:{size:9},callback:v=>v+'x'},
-      grid:{color:'rgba(255,255,255,.05)'}
-    })
-  });
-
   // ── Traffic alerts table ───────────────────────────────────────────────────
-  var li = (latest.traffic || {}).losing_impressions || [];
-  var lc = (latest.traffic || {}).losing_conversion  || [];
-  var alertsAll = [
-    ...li.map(r => ({...r, _type:'impressions'})),
-    ...lc.map(r => ({...r, _type:'conversion'})),
-  ];
+  var li = traffic.losing_impressions || [];
+  var lc = traffic.losing_conversion  || [];
+  var alertsAll = li.map(function(r){ r._type='impressions'; return r; })
+                   .concat(lc.map(function(r){ r._type='conversion'; return r; }));
 
   document.getElementById('hub-alerts-count').textContent =
     li.length + ' losing impressions, ' + lc.length + ' losing conversion';
 
   if (alertsAll.length > 0) {
-    var allCols = [...new Set(alertsAll.flatMap(r => Object.keys(r).filter(k => !k.startsWith('_'))))].slice(0,6);
+    var allCols = Array.from(new Set(alertsAll.flatMap(function(r){
+      return Object.keys(r).filter(function(k){ return !k.startsWith('_'); });
+    }))).slice(0, 6);
     document.getElementById('hub-alerts-hdr').innerHTML =
-      '<th>Type</th>' + allCols.map(c => '<th>'+c+'</th>').join('');
-    document.getElementById('hub-alerts-body').innerHTML = alertsAll.slice(0,20).map(r => {
+      '<th>Type</th>' + allCols.map(function(c){ return '<th>'+c+'</th>'; }).join('');
+    document.getElementById('hub-alerts-body').innerHTML = alertsAll.slice(0, 20).map(function(r){
       var badge = r._type === 'impressions'
         ? '<span style="color:var(--red);font-size:10px;font-weight:700">📉 Impr</span>'
         : '<span style="color:var(--orange);font-size:10px;font-weight:700">⚠️ Conv</span>';
       return '<tr><td>' + badge + '</td>' +
-        allCols.map(c => '<td>' + (r[c] || '—') + '</td>').join('') + '</tr>';
+        allCols.map(function(c){ return '<td>' + (r[c] != null ? r[c] : '—') + '</td>'; }).join('') + '</tr>';
     }).join('');
   } else {
     document.getElementById('hub-alerts-hdr').innerHTML = '';
@@ -593,37 +673,39 @@ function renderHub() {
   }
 
   // ── Campaign table ─────────────────────────────────────────────────────────
-  var camps = (latest.ads ? [] : []);
-  // Find campaign data from latest hub entry (stored at root of hub_history entry)
-  if (all.length) camps = all[all.length-1].campaigns || [];
+  var campaigns = (ads.campaigns || []).slice();
+  campaigns.sort(function(a,b){ return (b.spend||0) - (a.spend||0); });
 
+  var dateRange = ads.date_from && ads.date_to ? (' · ' + ads.date_from + '–' + ads.date_to) : '';
   document.getElementById('hub-camp-count').textContent =
-    camps.length + ' campaigns (latest data)' + (a.date_range ? ' · ' + a.date_range : '');
+    campaigns.length + ' campaigns' + dateRange;
 
   function roiBadge(v) {
     if (v == null) return '—';
     var col = v >= 3 ? 'var(--green)' : v >= 1.5 ? 'var(--orange)' : 'var(--red)';
-    return '<span style="color:'+col+';font-weight:700">'+v+'x</span>';
+    return '<span style="color:'+col+';font-weight:700">'+(+v).toFixed(2)+'x</span>';
   }
-  function statusBadge(s) {
-    if (!s) return '—';
-    var col = s === 'Live' ? 'var(--green)' : 'var(--text3)';
-    return '<span style="color:'+col+';font-size:10px;font-weight:700">'+s+'</span>';
+  function brandBadge(b) {
+    if (!b) return '—';
+    var c = b === 'BARE ANATOMY' ? 'var(--ba)' : b === 'Chemist at Play' ? 'var(--cap)' : b === 'SunScoop' ? 'var(--ss)' : 'var(--text3)';
+    var short = b === 'BARE ANATOMY' ? 'BA' : b === 'Chemist at Play' ? 'CAP' : b === 'SunScoop' ? 'SS' : b;
+    return '<span style="color:'+c+';font-weight:700;font-size:11px">'+short+'</span>';
   }
 
-  document.getElementById('hub-camp-body').innerHTML = camps.length === 0
+  document.getElementById('hub-camp-body').innerHTML = campaigns.length === 0
     ? '<tr><td colspan="8" class="empty">No campaign data yet</td></tr>'
-    : camps.map(c => '<tr>' +
-        '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+c.name+'">'+shortT(c.name,55)+'</td>' +
-        '<td>'+statusBadge(c.status)+'</td>' +
-        '<td><span style="color:var(--text3);font-size:10px">'+( c.format||'—')+'</span></td>' +
-        '<td style="text-align:right;font-family:Courier New,monospace">'+fmtCr(c.spend)+'</td>' +
-        '<td style="text-align:right;font-family:Courier New,monospace;color:var(--green)">'+fmtCr(c.revenue)+'</td>' +
-        '<td style="text-align:right">'+roiBadge(c.roi)+'</td>' +
-        '<td style="text-align:right;color:var(--text3)">'+fmtUnits(c.units)+'</td>' +
-        '<td style="text-align:right;color:var(--text3)">'+fmtUnits(c.clicks)+'</td>' +
-      '</tr>'
-    ).join('');
+    : campaigns.map(function(c){
+        return '<tr>' +
+          '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(c.name||'')+'">'+((c.name||'').slice(0,55))+'</td>' +
+          '<td>'+brandBadge(c.brand)+'</td>' +
+          '<td><span style="color:var(--text3);font-size:10px">'+(c.format||'—')+'</span></td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace">'+fmtCr(c.spend)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--green)">'+fmtCr(c.revenue)+'</td>' +
+          '<td style="text-align:right">'+roiBadge(c.roi)+'</td>' +
+          '<td style="text-align:right;color:var(--text3)">'+fmtUnits(c.units)+'</td>' +
+          '<td style="text-align:right;color:var(--text3)">'+fmtUnits(c.clicks)+'</td>' +
+        '</tr>';
+    }).join('');
 }
 </script>
 

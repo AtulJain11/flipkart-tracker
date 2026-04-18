@@ -441,6 +441,7 @@ function checkPW(){
     <div class="card-hdr">
       <span class="card-title">🧾 SKU-level Sales</span>
       <span class="card-sub" id="sales-sku-count"></span>
+      <button class="fbtn" onclick="exportTabCsv('sales')" style="margin-left:auto;font-size:10px;padding:4px 10px">⬇ CSV</button>
     </div>
     <table>
       <thead><tr>
@@ -524,6 +525,7 @@ function checkPW(){
     <div class="card-hdr">
       <span class="card-title" id="ads-table-title">📣 SKU-level Ads</span>
       <span class="card-sub" id="ads-table-count"></span>
+      <button class="fbtn" onclick="exportTabCsv('ads')" style="margin-left:auto;font-size:10px;padding:4px 10px">⬇ CSV</button>
     </div>
     <table>
       <thead><tr id="ads-table-hdr"></tr></thead>
@@ -641,6 +643,7 @@ function checkPW(){
     <div class="card-hdr">
       <span class="card-title">🧾 SKU-level Traffic</span>
       <span class="card-sub" id="traffic-sku-count"></span>
+      <button class="fbtn" onclick="exportTabCsv('traffic')" style="margin-left:auto;font-size:10px;padding:4px 10px">⬇ CSV</button>
     </div>
     <table>
       <thead><tr>
@@ -1234,6 +1237,68 @@ function rebuildTotalsFromSkusV(skus, vertical) {
   return out;
 }
 
+// Download array of objects as CSV. Columns = keys of first object (ordered).
+function downloadCsv(rows, filename) {
+  if (!rows || !rows.length) { alert('No rows to export'); return; }
+  var cols = Object.keys(rows[0]);
+  var escape = function(v) {
+    if (v == null) return '';
+    var s = String(v);
+    if (s.indexOf(',') !== -1 || s.indexOf('"') !== -1 || s.indexOf('\n') !== -1) {
+      s = '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  };
+  var lines = [cols.join(',')];
+  rows.forEach(function(r){ lines.push(cols.map(function(c){return escape(r[c]);}).join(',')); });
+  var csv = lines.join('\n');
+  var blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = filename || ('export_' + Date.now() + '.csv');
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+}
+
+// Tab-level CSV export: reads currently-rendered SKU table rows
+function exportTabCsv(tab) {
+  if (!D || !D.hub) return;
+  var hub = D.hub;
+  var brand = H[tab].brand || 'ALL';
+  var vertical = H[tab].vertical || 'ALL';
+  var curWin = resolveTimeWindow(tab);
+  var curAgg = aggregateWindow(curWin, brand);
+  var rows = Object.values(curAgg.skus);
+  if (brand !== 'ALL') rows = rows.filter(function(s){ return s.brand === brand; });
+  if (vertical !== 'ALL') rows = rows.filter(function(s){ return s.vertical === vertical; });
+  // Tab-specific filter
+  if (tab === 'sales')   rows = rows.filter(function(s){ return s.sales > 0 || s.gmv > 0; });
+  if (tab === 'ads')     rows = rows.filter(function(s){ return s.ad_spend > 0; });
+  if (tab === 'traffic') rows = rows.filter(function(s){ return (s.views||0) > 0; });
+
+  // Reduce to the most meaningful columns per tab
+  var slim = rows.map(function(s){
+    var base = {sku:s.sku, title:s.title, brand:s.brand, vertical:s.vertical||'', mrp:s.mrp||'', sp:s.sp||''};
+    if (tab === 'sales')   Object.assign(base, {
+      net_sales:s.sales, units:s.units, gmv:s.gmv, gross_units:s.gross_units,
+      cancellations:s.cxl, returns:s.rtn
+    });
+    if (tab === 'ads')     Object.assign(base, {
+      ad_spend:s.ad_spend, ad_revenue:s.ad_revenue, ad_units:s.ad_units,
+      ad_clicks:s.ad_clicks, sales:s.sales
+    });
+    if (tab === 'traffic') Object.assign(base, {
+      views:s.views, clicks:s.clicks, ctr:s.ctr, traffic_sales:s.traffic_sales,
+      cvr:s.cvr, traffic_revenue:s.traffic_revenue, aov:s.aov
+    });
+    return base;
+  });
+  var suffix = brand !== 'ALL' ? ('_' + brandShort(brand)) : '';
+  suffix += vertical !== 'ALL' ? ('_' + vertical) : '';
+  downloadCsv(slim, 'fk_' + tab + suffix + '_' + curWin.label.replace(/\s/g,'') + '.csv');
+}
+
 // Delta helper: returns {delta, pct, arrow, color, html}
 function makeDelta(cur, prev, invert) {
   // invert=true → lower is better (e.g., cancellations, TACOS)
@@ -1549,7 +1614,7 @@ function renderSales() {
           '</tr>';
     }).join('');
 
-  renderSalesAnalysis(curAgg, prevAgg, curWin, prevWin, brand);
+  renderSalesAnalysis(curAgg, prevAgg, curWin, prevWin, brand, H.sales.vertical||"ALL");
 }
 
 // ── ADS TAB ────────────────────────────────────────────────────────────────
@@ -1792,7 +1857,7 @@ function renderAds() {
       }).join('');
 
     renderAdsDailyChart(brand);
-    renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand);
+    renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand, H.ads.vertical||"ALL");
   } else {
     // Campaign view — current period only
     var camps = (hub.ads && hub.ads.campaigns) || [];
@@ -1840,7 +1905,7 @@ function renderAds() {
       }).join('');
 
     renderAdsDailyChart(brand);
-    renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand);
+    renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand, H.ads.vertical||"ALL");
   }
 }
 
@@ -2079,7 +2144,7 @@ function renderTraffic() {
           '</tr>';
     }).join('');
 
-  renderTrafficAnalysis(curAgg, prevAgg, curWin, prevWin, brand);
+  renderTrafficAnalysis(curAgg, prevAgg, curWin, prevWin, brand, H.traffic.vertical||"ALL");
 }
 
 // ══ ANALYSIS RENDERERS with COMPARISON ═════════════════════════════════════
@@ -2135,14 +2200,21 @@ function insightBlock(title, color, items) {
     '</div>';
 }
 
-function renderSalesAnalysis(curAgg, prevAgg, curWin, prevWin, brand) {
+function renderSalesAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical) {
+  vertical = vertical || 'ALL';
   var el = document.getElementById('sales-analysis');
   if (!el) return;
   _cmpEnabled = canCompareSkus(curWin, prevWin);
   var sub = document.getElementById('sales-analysis-sub');
-  if (sub) sub.textContent = curWin ? (curWin.label + (prevWin ? ' · vs ' + prevWin.label : ' · no comparison') + (!_cmpEnabled && prevWin ? ' (SKU deltas hidden — day-level)' : '')) : '';
+  if (sub) sub.textContent = curWin ? (curWin.label + (prevWin ? ' · vs ' + prevWin.label : ' · no comparison') +
+    (vertical !== 'ALL' ? ' · ' + vertical : '') +
+    (!_cmpEnabled && prevWin ? ' (SKU deltas hidden — day-level)' : '')) : '';
   var curSkus = curAgg.skus, prevSkus = prevAgg ? prevAgg.skus : {};
-  var skuArr = Object.values(curSkus).filter(function(s){ return (brand==='ALL'||s.brand===brand) && (s.sales > 0 || s.gmv > 0); });
+  var skuArr = Object.values(curSkus).filter(function(s){
+    return (brand==='ALL'||s.brand===brand) &&
+           (vertical==='ALL'||s.vertical===vertical) &&
+           (s.sales > 0 || s.gmv > 0);
+  });
   if (!skuArr.length) { el.innerHTML = '<div class="empty">No data for analysis</div>'; return; }
 
   // Enrich with cancel/return percentages and deltas
@@ -2213,14 +2285,21 @@ function renderSalesAnalysis(curAgg, prevAgg, curWin, prevWin, brand) {
   el.innerHTML = html;
 }
 
-function renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand) {
+function renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical) {
+  vertical = vertical || 'ALL';
   var el = document.getElementById('ads-analysis');
   if (!el) return;
   _cmpEnabled = canCompareSkus(curWin, prevWin);
   var sub = document.getElementById('ads-analysis-sub');
-  if (sub) sub.textContent = curWin ? (curWin.label + (prevWin ? ' · vs ' + prevWin.label : ' · no comparison') + (!_cmpEnabled && prevWin ? ' (SKU deltas hidden — day-level)' : '')) : '';
+  if (sub) sub.textContent = curWin ? (curWin.label + (prevWin ? ' · vs ' + prevWin.label : ' · no comparison') +
+    (vertical !== 'ALL' ? ' · ' + vertical : '') +
+    (!_cmpEnabled && prevWin ? ' (SKU deltas hidden — day-level)' : '')) : '';
   var curSkus = curAgg.skus, prevSkus = prevAgg ? prevAgg.skus : {};
-  var skuArr = Object.values(curSkus).filter(function(s){ return (brand==='ALL'||s.brand===brand) && s.ad_spend > 0; });
+  var skuArr = Object.values(curSkus).filter(function(s){
+    return (brand==='ALL'||s.brand===brand) &&
+           (vertical==='ALL'||s.vertical===vertical) &&
+           s.ad_spend > 0;
+  });
   if (!skuArr.length) { el.innerHTML = '<div class="empty">No data for analysis</div>'; return; }
 
   skuArr.forEach(function(s){
@@ -2305,14 +2384,21 @@ function renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand) {
   el.innerHTML = html;
 }
 
-function renderTrafficAnalysis(curAgg, prevAgg, curWin, prevWin, brand) {
+function renderTrafficAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical) {
+  vertical = vertical || 'ALL';
   var el = document.getElementById('traffic-analysis');
   if (!el) return;
   _cmpEnabled = canCompareSkus(curWin, prevWin, 'traffic');
   var sub = document.getElementById('traffic-analysis-sub');
-  if (sub) sub.textContent = curWin ? (curWin.label + (prevWin ? ' · vs ' + prevWin.label : ' · no comparison') + (!_cmpEnabled && prevWin ? ' (SKU deltas hidden — day-level)' : '')) : '';
+  if (sub) sub.textContent = curWin ? (curWin.label + (prevWin ? ' · vs ' + prevWin.label : ' · no comparison') +
+    (vertical !== 'ALL' ? ' · ' + vertical : '') +
+    (!_cmpEnabled && prevWin ? ' (SKU deltas hidden — day-level)' : '')) : '';
   var curSkus = curAgg.skus, prevSkus = prevAgg ? prevAgg.skus : {};
-  var skuArr = Object.values(curSkus).filter(function(s){ return (brand==='ALL'||s.brand===brand) && (s.views||0) > 0; });
+  var skuArr = Object.values(curSkus).filter(function(s){
+    return (brand==='ALL'||s.brand===brand) &&
+           (vertical==='ALL'||s.vertical===vertical) &&
+           (s.views||0) > 0;
+  });
   if (!skuArr.length) { el.innerHTML = '<div class="empty">No data for analysis</div>'; return; }
 
   skuArr.forEach(function(s){
@@ -3488,7 +3574,7 @@ function renderOverview() {
   document.getElementById('ov-hero-stats').innerHTML = kpis.join('');
 
   // ── CROSS-TAB INSIGHTS (above analyses, brand + window aware) ──
-  try { renderOvCrossInsights(curWin, prevWin, brand); }
+  try { renderOvCrossInsights(curWin, prevWin, brand, vertical); }
   catch (err) { console.error('renderOvCrossInsights failed:', err); }
 
   // ── ANALYSIS SECTIONS from registry ──
@@ -3684,7 +3770,8 @@ function renderOvExtras(curWin, prevWin, brandFilter) {
 }
 
 // ── Cross-tab 6-block insights grid (wired to curWin + brand filter) ───────
-function renderOvCrossInsights(curWin, prevWin, brandFilter) {
+function renderOvCrossInsights(curWin, prevWin, brandFilter, verticalFilter) {
+  verticalFilter = verticalFilter || 'ALL';
   var el = document.getElementById('ov-cross-insights');
   if (!el) return;
   var sub = document.getElementById('ov-insight-sub');
@@ -3709,6 +3796,11 @@ function renderOvCrossInsights(curWin, prevWin, brandFilter) {
   var prevAgg = prevWin ? aggregateWindow(prevWin, brandFilter) : null;
   var curSkus  = Object.values(curAgg.skus);
   var prevSkus = prevAgg ? prevAgg.skus : {};
+  // Apply vertical filter at SKU level
+  if (verticalFilter !== 'ALL') {
+    curSkus = curSkus.filter(function(s){ return s.vertical === verticalFilter; });
+    // prevSkus kept as map — filter will happen on lookup (prev[sku] still valid)
+  }
 
   // SKU-level data: sales/ads are MTD only at SKU level, but traffic has real
   // daily granularity. Day-mode: only show delta for traffic-based blocks.
@@ -3818,6 +3910,7 @@ function renderOvCrossInsights(curWin, prevWin, brandFilter) {
   el.innerHTML = html;
 
   if (sub) sub.textContent = (brandFilter === 'ALL' ? 'All brands' : brandShort(brandFilter)) +
+    (verticalFilter !== 'ALL' ? ' · ' + verticalFilter : '') +
     ' · ' + curWin.label + (prevWin ? ' · vs ' + prevWin.label : '');
 }
 
@@ -3979,10 +4072,11 @@ registerAnalysis({
   render: function(curWin, prevWin) {
     syncOvToTab('sales');
     var brand = H.ov.brand || 'ALL';
+    var vertical = H.ov.vertical || 'ALL';
     var curAgg  = aggregateWindow(curWin, brand);
     var prevAgg = prevWin ? aggregateWindow(prevWin, brand) : null;
     moveAnalysisToOverview('sales', function(){
-      renderSalesAnalysis(curAgg, prevAgg, curWin, prevWin, brand);
+      renderSalesAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical);
     });
   }
 });
@@ -3991,10 +4085,11 @@ registerAnalysis({
   render: function(curWin, prevWin) {
     syncOvToTab('ads');
     var brand = H.ov.brand || 'ALL';
+    var vertical = H.ov.vertical || 'ALL';
     var curAgg  = aggregateWindow(curWin, brand);
     var prevAgg = prevWin ? aggregateWindow(prevWin, brand) : null;
     moveAnalysisToOverview('ads', function(){
-      renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand);
+      renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical);
     });
   }
 });
@@ -4003,10 +4098,11 @@ registerAnalysis({
   render: function(curWin, prevWin) {
     syncOvToTab('traffic');
     var brand = H.ov.brand || 'ALL';
+    var vertical = H.ov.vertical || 'ALL';
     var curAgg  = aggregateWindow(curWin, brand);
     var prevAgg = prevWin ? aggregateWindow(prevWin, brand) : null;
     moveAnalysisToOverview('traffic', function(){
-      renderTrafficAnalysis(curAgg, prevAgg, curWin, prevWin, brand);
+      renderTrafficAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical);
     });
   }
 });

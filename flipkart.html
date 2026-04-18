@@ -2211,10 +2211,21 @@ function cmpSkuLine(sku, title, cur, prev, fmt, invert) {
 function canCompareSkus(curWin, prevWin, tab) {
   if (!curWin || !prevWin) return false;
   if (curWin.granularity === 'month' && prevWin.granularity === 'month') return true;
-  if (tab === 'traffic' && curWin.granularity === 'day' && prevWin.granularity === 'day') {
-    // Only if we have sku_daily data
-    return !!(D && D.hub && ((D.hub.traffic && D.hub.traffic.sku_daily && D.hub.traffic.sku_daily.length) ||
-                             (D.hub.history && D.hub.history.traffic_sku_daily && D.hub.history.traffic_sku_daily.length)));
+  if (curWin.granularity === 'day' && prevWin.granularity === 'day') {
+    // Traffic: needs traffic sku_daily
+    if (tab === 'traffic') {
+      return !!(D && D.hub && ((D.hub.traffic && D.hub.traffic.sku_daily && D.hub.traffic.sku_daily.length) ||
+                               (D.hub.history && D.hub.history.traffic_sku_daily && D.hub.history.traffic_sku_daily.length)));
+    }
+    // Sales: needs sales sku_daily (current hub.skus[*].sales_daily or hist)
+    if (tab === 'sales') {
+      if (!D || !D.hub) return false;
+      // Current month has sales_daily embedded in hub.skus
+      var curHas = (D.hub.skus || []).some(function(s){ return s.sales_daily && s.sales_daily.length; });
+      var histHas = !!(D.hub.history && D.hub.history.sales_sku_daily && D.hub.history.sales_sku_daily.length);
+      return curHas || histHas;
+    }
+    // Ads: still MTD only at SKU level — no day-mode SKU compare
   }
   return false;
 }
@@ -2233,7 +2244,7 @@ function renderSalesAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical) 
   vertical = vertical || 'ALL';
   var el = document.getElementById('sales-analysis');
   if (!el) return;
-  _cmpEnabled = canCompareSkus(curWin, prevWin);
+  _cmpEnabled = canCompareSkus(curWin, prevWin, 'sales');
   var sub = document.getElementById('sales-analysis-sub');
   if (sub) sub.textContent = curWin ? (curWin.label + (prevWin ? ' · vs ' + prevWin.label : ' · no comparison') +
     (vertical !== 'ALL' ? ' · ' + vertical : '') +
@@ -3831,12 +3842,21 @@ function renderOvCrossInsights(curWin, prevWin, brandFilter, verticalFilter) {
     // prevSkus kept as map — filter will happen on lookup (prev[sku] still valid)
   }
 
-  // SKU-level data: sales/ads are MTD only at SKU level, but traffic has real
-  // daily granularity. Day-mode: only show delta for traffic-based blocks.
-  var canShowSalesDelta = !!(curWin.granularity === 'month' && prevWin && prevWin.granularity === 'month');
-  var canShowTrafficDelta = canShowSalesDelta || !!(curWin.granularity === 'day' && prevWin && prevWin.granularity === 'day' &&
-    D.hub && ((D.hub.traffic && D.hub.traffic.sku_daily && D.hub.traffic.sku_daily.length) ||
-              (D.hub.history && D.hub.history.traffic_sku_daily && D.hub.history.traffic_sku_daily.length)));
+  // SKU-level data: we now have real per-day sales + traffic SKU granularity.
+  // Day-mode: deltas work for both sales AND traffic. Ads still MTD-only.
+  var dayModeBoth = (curWin.granularity === 'day' && prevWin && prevWin.granularity === 'day');
+  var monthModeBoth = (curWin.granularity === 'month' && prevWin && prevWin.granularity === 'month');
+
+  var canShowSalesDelta = monthModeBoth || (dayModeBoth && D.hub && (
+    ((D.hub.skus || []).some(function(s){return s.sales_daily && s.sales_daily.length;})) ||
+    (D.hub.history && D.hub.history.sales_sku_daily && D.hub.history.sales_sku_daily.length)));
+
+  var canShowTrafficDelta = monthModeBoth || (dayModeBoth && D.hub && (
+    (D.hub.traffic && D.hub.traffic.sku_daily && D.hub.traffic.sku_daily.length) ||
+    (D.hub.history && D.hub.history.traffic_sku_daily && D.hub.history.traffic_sku_daily.length)));
+
+  // Ads still MTD-only at SKU level
+  var canShowAdsDelta = monthModeBoth;
 
   function fmtV(cur, prevV, fmt, invert, canCompare) {
     var ok = canCompare !== undefined ? canCompare : canShowSalesDelta;

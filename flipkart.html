@@ -255,6 +255,9 @@ function checkPW(){
     <div class="fsep"></div>
     <button class="fbtn" onclick="clearOvTime()">Reset</button>
     <div class="fsep"></div>
+    <span class="filter-label">Vertical</span>
+    <select class="fsel" id="ov-vertical-sel" onchange="setOvVertical()"><option value="ALL">All Verticals</option></select>
+    <div class="fsep"></div>
     <span id="ov-window-lbl" style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace"></span>
   </div>
 
@@ -410,6 +413,9 @@ function checkPW(){
     <input type="date" class="fsel" id="sales-to-sel"   onchange="setHubTime('sales','custom')" style="min-width:135px">
     <button class="fbtn" onclick="clearHubTime('sales')" style="font-size:10px;padding:4px 8px">Reset</button>
     <div class="fsep"></div>
+    <span class="filter-label">Vertical</span>
+    <select class="fsel" id="sales-vertical-sel" onchange="setHubVertical('sales')"><option value="ALL">All Verticals</option></select>
+    <div class="fsep"></div>
     <input class="fsearch" placeholder="Search SKU / title..." id="sales-search" oninput="renderSales()">
     <div class="fsep"></div>
     <span id="sales-window" style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace"></span>
@@ -483,6 +489,9 @@ function checkPW(){
     <span class="filter-label">View</span>
     <button class="fbtn active" id="ads-view-sku"    onclick="setAdsView('sku',this)">SKU</button>
     <button class="fbtn"        id="ads-view-camp"   onclick="setAdsView('campaign',this)">Campaign</button>
+    <div class="fsep"></div>
+    <span class="filter-label">Vertical</span>
+    <select class="fsel" id="ads-vertical-sel" onchange="setHubVertical('ads')"><option value="ALL">All Verticals</option></select>
     <div class="fsep"></div>
     <input class="fsearch" placeholder="Search SKU / campaign..." id="ads-search" oninput="renderAds()">
     <div class="fsep"></div>
@@ -604,6 +613,9 @@ function checkPW(){
     <input type="date" class="fsel" id="traffic-to-sel"   onchange="setHubTime('traffic','custom')" style="min-width:135px">
     <button class="fbtn" onclick="clearHubTime('traffic')" style="font-size:10px;padding:4px 8px">Reset</button>
     <div class="fsep"></div>
+    <span class="filter-label">Vertical</span>
+    <select class="fsel" id="traffic-vertical-sel" onchange="setHubVertical('traffic')"><option value="ALL">All Verticals</option></select>
+    <div class="fsep"></div>
     <input class="fsearch" placeholder="Search SKU / title..." id="traffic-search" oninput="renderTraffic()">
     <div class="fsep"></div>
     <span id="traffic-window" style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace"></span>
@@ -635,6 +647,7 @@ function checkPW(){
         <th style="min-width:150px" onclick="sortHub('traffic','sku')">SKU</th>
         <th style="min-width:260px" onclick="sortHub('traffic','title')">Product</th>
         <th onclick="sortHub('traffic','brand')">Brand</th>
+        <th onclick="sortHub('traffic','vertical')">Vertical</th>
         <th style="text-align:right" onclick="sortHub('traffic','views')">Views ▼</th>
         <th style="text-align:right" onclick="sortHub('traffic','clicks')">Clicks</th>
         <th style="text-align:right" onclick="sortHub('traffic','ctr')">CTR</th>
@@ -654,11 +667,11 @@ function checkPW(){
 // Per-tab state — unified time model
 // mode: 'all' | 'day' | 'month' | 'year' | 'custom'
 var H = {
-  ov:      {brand:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:''},
-  sales:   {brand:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'net_sales', sortDesc:true, search:''},
-  ads:     {brand:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'ad_spend',  sortDesc:true, view:'sku', search:''},
-  traffic: {brand:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'views',     sortDesc:true, search:''},
-  camp:    {brand:'ALL', month:'',   view:'campaign', sort:'spend', sortDesc:true, search:'', drill:null},
+  ov:      {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:''},
+  sales:   {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'net_sales', sortDesc:true, search:''},
+  ads:     {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'ad_spend',  sortDesc:true, view:'sku', search:''},
+  traffic: {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'views',     sortDesc:true, search:''},
+  camp:    {brand:'ALL', vertical:'ALL', month:'',   view:'campaign', sort:'spend', sortDesc:true, search:'', drill:null},
 };
 
 // ── Formatters ──────────────────────────────────────────────────────────────
@@ -762,6 +775,31 @@ function setHubFilter(tab, key, val, btn) {
   });
   btn.classList.add('active');
   renderHubTab(tab);
+}
+
+// Vertical filter — populated dynamically from hub.skus[].vertical
+function setHubVertical(tab) {
+  var sel = document.getElementById(tab + '-vertical-sel');
+  if (sel) {
+    H[tab].vertical = sel.value || 'ALL';
+    renderHubTab(tab);
+  }
+}
+
+function populateHubVerticalSelector(tab) {
+  var sel = document.getElementById(tab + '-vertical-sel');
+  if (!sel || !D || !D.hub || !D.hub.skus) return;
+  var verticals = new Set();
+  D.hub.skus.forEach(function(s){
+    if (s.vertical && s.vertical !== 'nan') verticals.add(s.vertical);
+  });
+  var current = H[tab].vertical || 'ALL';
+  var html = '<option value="ALL">All Verticals</option>';
+  Array.from(verticals).sort().forEach(function(v){
+    var selected = v === current ? ' selected' : '';
+    html += '<option value="'+v+'"'+selected+'>'+v+'</option>';
+  });
+  sel.innerHTML = html;
 }
 
 function setAdsView(view, btn) {
@@ -1063,6 +1101,7 @@ function aggregateWindow(win, brand) {
       out.skus[s.sku] = {
         sku: s.sku, title: s.title, brand: s.brand, pid: s.pid, url: s.url,
         mrp: s.mrp, sp: s.sp,
+        vertical: s.vertical || '', category: s.category || '',
         sales: s.net_sales || 0, units: s.net_units || 0,
         gmv: s.gmv || 0, gross_units: s.gross_units || 0,
         cxl: s.cancellations || 0, rtn: s.returns || 0,
@@ -1128,10 +1167,17 @@ function aggregateWindow(win, brand) {
     out.totals.traffic_revenue = sumField(tR, 'revenue');
     out.totals.days        = win.months.size * 30;  // approx
 
+    // Build hub SKU lookup for vertical/category (hist.skus[] may lack these)
+    var hubBySku = {};
+    (hub.skus || []).forEach(function(s){ hubBySku[s.sku] = s; });
+
     // SKU-level roll-up
     (hist.skus || []).forEach(function(s){
       if (brand && brand !== 'ALL' && s.brand !== brand) return;
+      var hubS = hubBySku[s.sku] || {};
       var agg = {sku:s.sku, title:s.title, brand:s.brand, pid:s.pid, url:s.url, mrp:s.mrp, sp:s.sp,
+                 vertical: s.vertical || hubS.vertical || '',
+                 category: s.category || hubS.category || '',
                  sales:0, units:0, gmv:0, gross_units:0, cxl:0, rtn:0,
                  views:0, clicks:0, traffic_sales:0, traffic_revenue:0,
                  ad_spend:0, ad_revenue:0, ad_units:0, ad_clicks:0};
@@ -1158,6 +1204,33 @@ function aggregateWindow(win, brand) {
       out.skus[s.sku] = agg;
     });
   }
+  return out;
+}
+
+// Rebuild totals from a SKU map, filtered by vertical. Used when a vertical
+// filter is active and we need to recompute tab-level KPIs from the
+// SKU subset, since aggregateWindow() filters by brand but not vertical.
+function rebuildTotalsFromSkusV(skus, vertical) {
+  var out = {sales:0, units:0, gmv:0, gross_units:0, cxl:0, rtn:0,
+             spend:0, rev:0, ad_units:0, ad_clicks:0, ad_views:0,
+             views:0, clicks:0, traffic_sales:0, traffic_revenue:0, days:0};
+  Object.values(skus || {}).forEach(function(s){
+    if (vertical !== 'ALL' && s.vertical !== vertical) return;
+    out.sales += s.sales || 0;
+    out.units += s.units || 0;
+    out.gmv   += s.gmv   || 0;
+    out.gross_units += s.gross_units || 0;
+    out.cxl   += s.cxl   || 0;
+    out.rtn   += s.rtn   || 0;
+    out.spend += s.ad_spend   || 0;
+    out.rev   += s.ad_revenue || 0;
+    out.ad_units  += s.ad_units  || 0;
+    out.ad_clicks += s.ad_clicks || 0;
+    out.views  += s.views  || 0;
+    out.clicks += s.clicks || 0;
+    out.traffic_sales   += s.traffic_sales   || 0;
+    out.traffic_revenue += s.traffic_revenue || 0;
+  });
   return out;
 }
 
@@ -1208,11 +1281,18 @@ function renderSales() {
   var hub = D.hub;
   var hist = hub.history || {};
   var brand = H.sales.brand;
+  var vertical = H.sales.vertical || 'ALL';
   var curWin  = resolveTimeWindow('sales');
   var prevWin = resolvePrevWindow('sales');
 
   var curAgg  = aggregateWindow(curWin, brand);
   var prevAgg = prevWin ? aggregateWindow(prevWin, brand) : null;
+
+  // Vertical-filter: rebuild totals from SKU rows
+  if (vertical !== 'ALL') {
+    curAgg.totals  = rebuildTotalsFromSkusV(curAgg.skus, vertical);
+    if (prevAgg) prevAgg.totals = rebuildTotalsFromSkusV(prevAgg.skus, vertical);
+  }
 
   // Window label — include comparison info
   var windowLabel = 'Window: ' + curWin.label;
@@ -1386,6 +1466,8 @@ function renderSales() {
   // ── SKU table (enhanced with MRP, Disc%, Net Sales, etc)
   var skusArr = Object.values(curAgg.skus).filter(function(s){ return s.sales > 0 || s.gmv > 0; });
   if (brand !== 'ALL') skusArr = skusArr.filter(function(s){ return s.brand === brand; });
+  var vertical = H.sales.vertical || 'ALL';
+  if (vertical !== 'ALL') skusArr = skusArr.filter(function(s){ return s.vertical === vertical; });
   var q = (document.getElementById('sales-search')?.value || '').toLowerCase().trim();
   if (q) skusArr = skusArr.filter(function(s){ return (s.sku||'').toLowerCase().includes(q) || (s.title||'').toLowerCase().includes(q); });
 
@@ -1428,6 +1510,7 @@ function renderSales() {
       '<th style="min-width:150px" onclick="sortHub(\'sales\',\'sku\')">SKU</th>' +
       '<th style="min-width:240px" onclick="sortHub(\'sales\',\'title\')">Product</th>' +
       '<th onclick="sortHub(\'sales\',\'brand\')">Brand</th>' +
+      '<th onclick="sortHub(\'sales\',\'vertical\')">Vertical</th>' +
       '<th style="text-align:right" onclick="sortHub(\'sales\',\'mrp\')">MRP</th>' +
       '<th style="text-align:right" onclick="sortHub(\'sales\',\'sp\')">SP</th>' +
       '<th style="text-align:right" onclick="sortHub(\'sales\',\'disc_pct\')">Disc%</th>' +
@@ -1442,7 +1525,7 @@ function renderSales() {
   }
 
   document.getElementById('sales-sku-body').innerHTML = skusArr.length === 0
-    ? '<tr><td colspan="14" class="empty">No SKUs with sales in this window</td></tr>'
+    ? '<tr><td colspan="15" class="empty">No SKUs with sales in this window</td></tr>'
     : skusArr.map(function(s){
         var urlCell = s.url ? '<a href="'+s.url+'" target="_blank" style="color:var(--text2)">'+(s.title||'—').slice(0,50)+'</a>' : (s.title||'—').slice(0,50);
         var cxlCol = s.cancel_pct > 10 ? 'var(--red)' : s.cancel_pct > 5 ? 'var(--orange)' : 'var(--text2)';
@@ -1451,6 +1534,7 @@ function renderSales() {
           '<td class="pid">'+(s.sku||'—')+'</td>' +
           '<td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(s.title||'')+'">'+urlCell+'</td>' +
           '<td>'+brandPill(s.brand)+'</td>' +
+          '<td style="font-size:10px;color:var(--text3);white-space:nowrap">'+(s.vertical||'—')+'</td>' +
           '<td style="text-align:right;font-family:Courier New,monospace">'+(s.mrp?'₹'+s.mrp:'—')+'</td>' +
           '<td style="text-align:right;font-family:Courier New,monospace">'+(s.sp?'₹'+s.sp:'—')+'</td>' +
           '<td style="text-align:right;font-family:Courier New,monospace;color:var(--orange)">'+(s.disc_pct!=null?s.disc_pct.toFixed(1)+'%':'—')+'</td>' +
@@ -1478,10 +1562,17 @@ function renderAds() {
   var hub = D.hub;
   var hist = hub.history || {};
   var brand = H.ads.brand;
+  var vertical = H.ads.vertical || 'ALL';
   var curWin  = resolveTimeWindow('ads');
   var prevWin = resolvePrevWindow('ads');
   var curAgg  = aggregateWindow(curWin, brand);
   var prevAgg = prevWin ? aggregateWindow(prevWin, brand) : null;
+
+  // Vertical filter: rebuild totals from SKU rows
+  if (vertical !== 'ALL') {
+    curAgg.totals = rebuildTotalsFromSkusV(curAgg.skus, vertical);
+    if (prevAgg) prevAgg.totals = rebuildTotalsFromSkusV(prevAgg.skus, vertical);
+  }
 
   var windowLabel = 'Window: ' + curWin.label;
   if (prevWin) windowLabel += ' · vs ' + prevWin.label;
@@ -1647,6 +1738,8 @@ function renderAds() {
     document.getElementById('ads-table-title').textContent = '📣 SKU-level Ads';
     var rowsSkus = Object.values(curAgg.skus).filter(function(s){ return s.ad_spend > 0; });
     if (brand !== 'ALL') rowsSkus = rowsSkus.filter(function(s){ return s.brand === brand; });
+    var vertical = H.ads.vertical || 'ALL';
+    if (vertical !== 'ALL') rowsSkus = rowsSkus.filter(function(s){ return s.vertical === vertical; });
     var q = (document.getElementById('ads-search')?.value || '').toLowerCase().trim();
     if (q) rowsSkus = rowsSkus.filter(function(s){ return (s.sku||'').toLowerCase().includes(q) || (s.title||'').toLowerCase().includes(q); });
 
@@ -1671,6 +1764,7 @@ function renderAds() {
       '<th style="min-width:150px" onclick="sortHub(\'ads\',\'sku\')">SKU</th>' +
       '<th style="min-width:250px" onclick="sortHub(\'ads\',\'title\')">Product</th>' +
       '<th onclick="sortHub(\'ads\',\'brand\')">Brand</th>' +
+      '<th onclick="sortHub(\'ads\',\'vertical\')">Vertical</th>' +
       '<th style="text-align:right" onclick="sortHub(\'ads\',\'ad_spend\')">Spend ▼</th>' +
       '<th style="text-align:right" onclick="sortHub(\'ads\',\'ad_revenue\')">Ad Rev</th>' +
       '<th style="text-align:right" onclick="sortHub(\'ads\',\'ad_roi\')">ROI</th>' +
@@ -1678,7 +1772,7 @@ function renderAds() {
       '<th style="text-align:right" onclick="sortHub(\'ads\',\'net_sales\')">Sales</th>' +
       '<th style="text-align:right" onclick="sortHub(\'ads\',\'tacos\')">TACOS</th>';
     document.getElementById('ads-table-body').innerHTML = rowsSkus.length === 0
-      ? '<tr><td colspan="9" class="empty">No SKUs with ad spend</td></tr>'
+      ? '<tr><td colspan="10" class="empty">No SKUs with ad spend</td></tr>'
       : rowsSkus.map(function(s){
           var roiCol = s.ad_roi >= 3 ? 'var(--green)' : s.ad_roi >= 1.5 ? 'var(--orange)' : 'var(--red)';
           var tacosCol = s.tacos > 30 ? 'var(--red)' : s.tacos > 20 ? 'var(--orange)' : 'var(--text2)';
@@ -1687,6 +1781,7 @@ function renderAds() {
             '<td class="pid">'+(s.sku||'—')+'</td>' +
             '<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(s.title||'')+'">'+urlCell+'</td>' +
             '<td>'+brandPill(s.brand)+'</td>' +
+            '<td style="font-size:10px;color:var(--text3);white-space:nowrap">'+(s.vertical||'—')+'</td>' +
             '<td style="text-align:right;font-family:Courier New,monospace;color:var(--red)">'+fmtCr(s.ad_spend)+'</td>' +
             '<td style="text-align:right;font-family:Courier New,monospace;color:var(--green)">'+fmtCr(s.ad_revenue)+'</td>' +
             '<td style="text-align:right;font-family:Courier New,monospace;color:'+roiCol+';font-weight:700">'+(s.ad_roi!=null?(+s.ad_roi).toFixed(2)+'x':'—')+'</td>' +
@@ -1830,10 +1925,17 @@ function renderTraffic() {
   var hub = D.hub;
   var hist = hub.history || {};
   var brand = H.traffic.brand;
+  var vertical = H.traffic.vertical || 'ALL';
   var curWin  = resolveTimeWindow('traffic');
   var prevWin = resolvePrevWindow('traffic');
   var curAgg  = aggregateWindow(curWin, brand);
   var prevAgg = prevWin ? aggregateWindow(prevWin, brand) : null;
+
+  // Vertical filter: rebuild totals from SKU rows
+  if (vertical !== 'ALL') {
+    curAgg.totals = rebuildTotalsFromSkusV(curAgg.skus, vertical);
+    if (prevAgg) prevAgg.totals = rebuildTotalsFromSkusV(prevAgg.skus, vertical);
+  }
 
   var windowLabel = 'Window: ' + curWin.label;
   if (prevWin) windowLabel += ' · vs ' + prevWin.label;
@@ -1936,6 +2038,8 @@ function renderTraffic() {
   // SKU table
   var skus = Object.values(curAgg.skus).filter(function(s){ return (s.views||0) > 0; });
   if (brand !== 'ALL') skus = skus.filter(function(s){ return s.brand === brand; });
+  var vertical = H.traffic.vertical || 'ALL';
+  if (vertical !== 'ALL') skus = skus.filter(function(s){ return s.vertical === vertical; });
   var q = (document.getElementById('traffic-search')?.value || '').toLowerCase().trim();
   if (q) skus = skus.filter(function(s){ return (s.sku||'').toLowerCase().includes(q) || (s.title||'').toLowerCase().includes(q); });
 
@@ -1957,13 +2061,14 @@ function renderTraffic() {
   document.getElementById('traffic-sku-count').textContent =
     skus.length + ' SKUs · ' + fmtImpr(skus.reduce(function(a,s){return a+(s.views||0);},0)) + ' views';
   document.getElementById('traffic-sku-body').innerHTML = skus.length === 0
-    ? '<tr><td colspan="10" class="empty">No SKUs with traffic</td></tr>'
+    ? '<tr><td colspan="11" class="empty">No SKUs with traffic</td></tr>'
     : skus.map(function(s){
         var urlCell = s.url ? '<a href="'+s.url+'" target="_blank" style="color:var(--text2)">'+(s.title||'—').slice(0,55)+'</a>' : (s.title||'—').slice(0,55);
         return '<tr>' +
           '<td class="pid">'+(s.sku||'—')+'</td>' +
           '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(s.title||'')+'">'+urlCell+'</td>' +
           '<td>'+brandPill(s.brand)+'</td>' +
+          '<td style="font-size:10px;color:var(--text3);white-space:nowrap">'+(s.vertical||'—')+'</td>' +
           '<td style="text-align:right;font-family:Courier New,monospace;color:var(--purple);font-weight:700">'+fmtImpr(s.views)+'</td>' +
           '<td style="text-align:right;font-family:Courier New,monospace">'+fmtImpr(s.clicks)+'</td>' +
           '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">'+(s.ctr!=null?s.ctr.toFixed(2)+'%':'—')+'</td>' +
@@ -2462,6 +2567,8 @@ function renderAll(){
   safeRun(populateHubDateSelectors, 'populateHubDateSelectors');
   safeRun(populateOvSelectors, 'populateOvSelectors');
   safeRun(populateCampMonthSelector, 'populateCampMonthSelector');
+  // Populate vertical dropdowns for Sales/Ads/Traffic/Overview
+  safeRun(function(){ populateHubVerticalSelector('sales'); populateHubVerticalSelector('ads'); populateHubVerticalSelector('traffic'); populateOvVerticalSelector(); }, 'populateVerticals');
   safeRun(renderSales,'renderSales');
   safeRun(renderAds,'renderAds');
   safeRun(renderTraffic,'renderTraffic');
@@ -3302,6 +3409,8 @@ function syncOvToTab(tabKey) {
   t.to = o.to;
   // Propagate Overview's brand filter
   t.brand = o.brand || 'ALL';
+  // Propagate Overview's vertical filter
+  t.vertical = o.vertical || 'ALL';
   // Campaigns tab uses month only, not day/year/custom
   if (tabKey === 'camp') {
     if (o.mode === 'day' && o.day) t.month = o.day.slice(0,7);
@@ -3338,10 +3447,18 @@ function renderOverview() {
 
   // ── HERO KPI TILES (aggregate across all brands for the selected window) ──
   var brand = H.ov.brand || 'ALL';
+  var vertical = H.ov.vertical || 'ALL';
   var curAgg  = aggregateWindow(curWin, brand);
   var prevAgg = prevWin ? aggregateWindow(prevWin, brand) : null;
-  var t  = curAgg.totals;
-  var pt = prevAgg ? prevAgg.totals : null;
+
+  var t, pt;
+  if (vertical !== 'ALL') {
+    t  = rebuildTotalsFromSkusV(curAgg.skus, vertical);
+    pt = prevAgg ? rebuildTotalsFromSkusV(prevAgg.skus, vertical) : null;
+  } else {
+    t  = curAgg.totals;
+    pt = prevAgg ? prevAgg.totals : null;
+  }
   var roi   = t.spend > 0 ? t.rev/t.spend : null;
   var tacos = t.sales > 0 && t.spend > 0 ? t.spend/t.sales*100 : null;
   var cvr   = t.views > 0 ? t.clicks/t.views*100 : null;
@@ -3749,6 +3866,28 @@ function setOvBrand(brand, btn) {
   });
   if (btn) btn.classList.add('active');
   renderOverview();
+}
+
+function setOvVertical() {
+  var sel = document.getElementById('ov-vertical-sel');
+  H.ov.vertical = sel ? (sel.value || 'ALL') : 'ALL';
+  renderOverview();
+}
+
+function populateOvVerticalSelector() {
+  var sel = document.getElementById('ov-vertical-sel');
+  if (!sel || !D || !D.hub || !D.hub.skus) return;
+  var verticals = new Set();
+  D.hub.skus.forEach(function(s){
+    if (s.vertical && s.vertical !== 'nan') verticals.add(s.vertical);
+  });
+  var current = H.ov.vertical || 'ALL';
+  var html = '<option value="ALL">All Verticals</option>';
+  Array.from(verticals).sort().forEach(function(v){
+    var selected = v === current ? ' selected' : '';
+    html += '<option value="'+v+'"'+selected+'>'+v+'</option>';
+  });
+  sel.innerHTML = html;
 }
 
 // Apply the Overview default: latest day with data, else latest month.

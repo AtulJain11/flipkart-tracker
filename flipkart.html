@@ -273,6 +273,35 @@ function checkPW(){
   <!-- Analysis sections container — auto-populated from ANALYSIS_REGISTRY. -->
   <div id="ov-analyses-container"></div>
 
+  <!-- Vertical Breakdown: roll-up by product vertical, ranked by selected metric -->
+  <div class="card" style="margin-top:18px">
+    <div class="card-hdr">
+      <span class="card-title">🧭 Vertical Breakdown</span>
+      <span class="card-sub" id="ov-vertical-breakdown-sub"></span>
+      <span style="margin-left:auto;display:flex;gap:6px">
+        <button class="fbtn active" id="ovvb-sort-roi"   onclick="setOvVbSort('roi',this)">ROI</button>
+        <button class="fbtn"        id="ovvb-sort-sales" onclick="setOvVbSort('sales',this)">Sales</button>
+        <button class="fbtn"        id="ovvb-sort-spend" onclick="setOvVbSort('spend',this)">Spend</button>
+        <button class="fbtn"        id="ovvb-sort-tacos" onclick="setOvVbSort('tacos',this)">TACOS</button>
+      </span>
+    </div>
+    <table id="ov-vertical-breakdown">
+      <thead><tr>
+        <th>#</th><th style="min-width:140px">Vertical</th>
+        <th style="text-align:right">SKUs</th>
+        <th style="text-align:right">Net Sales</th>
+        <th style="text-align:right">Units</th>
+        <th style="text-align:right">Ad Spend</th>
+        <th style="text-align:right">Ad Rev</th>
+        <th style="text-align:right">ROI</th>
+        <th style="text-align:right">TACOS</th>
+        <th style="text-align:right">Views</th>
+        <th style="text-align:right">CVR</th>
+      </tr></thead>
+      <tbody id="ov-vertical-breakdown-body"></tbody>
+    </table>
+  </div>
+
   <!-- ═══ CHARTS + EXTRAS (below analyses, driven by same date+brand filter) ═══ -->
 
   <!-- Brand pills (SKU count + avg rating per brand) -->
@@ -670,7 +699,7 @@ function checkPW(){
 // Per-tab state — unified time model
 // mode: 'all' | 'day' | 'month' | 'year' | 'custom'
 var H = {
-  ov:      {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:''},
+  ov:      {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', vbSort:'roi'},
   sales:   {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'net_sales', sortDesc:true, search:''},
   ads:     {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'ad_spend',  sortDesc:true, view:'sku', search:''},
   traffic: {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'views',     sortDesc:true, search:''},
@@ -722,6 +751,76 @@ function monthLabel(m) {
   var y = m.slice(2,4), mo = m.slice(5,7);
   var names = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   return (names[parseInt(mo,10)] || mo) + "'" + y;
+}
+
+// ── Flipkart deep-link ─────────────────────────────────────────────────────
+// Preferred: url (saved in hub.skus[].url if master map has it)
+// Fallback: itm+pid with listing_id → https://www.flipkart.com/itme/p/itm?pid={pid}&lid={lid}
+// Fallback: just pid → https://www.flipkart.com/search?q={pid}
+function fkProductUrl(s) {
+  if (!s) return '';
+  if (s.url) return s.url;
+  if (s.pid && s.listing_id) return 'https://www.flipkart.com/itme/p/itm?pid=' + s.pid + '&lid=' + s.listing_id;
+  if (s.pid) return 'https://www.flipkart.com/search?q=' + s.pid;
+  return '';
+}
+
+// ── Sparkline renderer ──────────────────────────────────────────────────────
+// Returns an inline SVG showing a series of values. Used for SKU-row daily trends.
+// values = array of numeric values; the latest point is highlighted.
+function sparkline(values, opts) {
+  opts = opts || {};
+  var w = opts.width || 80, h = opts.height || 22;
+  var stroke = opts.stroke || 'var(--accent)';
+  if (!values || values.length < 2) return '<svg width="'+w+'" height="'+h+'"></svg>';
+  var min = Math.min.apply(null, values), max = Math.max.apply(null, values);
+  var range = (max - min) || 1;
+  var step = (w - 4) / (values.length - 1);
+  var pts = values.map(function(v, i){
+    var x = 2 + i * step;
+    var y = 2 + (h - 4) * (1 - (v - min) / range);
+    return x.toFixed(1) + ',' + y.toFixed(1);
+  });
+  var last = pts[pts.length - 1].split(',');
+  var title = 'Last ' + values.length + ' days · min ' + min.toLocaleString() + ' · max ' + max.toLocaleString();
+  return '<svg width="'+w+'" height="'+h+'" style="vertical-align:middle;opacity:.85"><title>'+title+'</title>' +
+    '<polyline fill="none" stroke="'+stroke+'" stroke-width="1.3" points="'+pts.join(' ')+'"/>' +
+    '<circle cx="'+last[0]+'" cy="'+last[1]+'" r="1.6" fill="'+stroke+'"/></svg>';
+}
+
+// Build a per-SKU last-N-days sales series (merges current month + history)
+function skuDailySeries(sku, days) {
+  days = days || 14;
+  if (!D || !D.hub) return [];
+  var hub = D.hub;
+  var today = new Date(), from = new Date(today);
+  from.setDate(from.getDate() - (days - 1));
+  var fromStr = from.toISOString().slice(0,10);
+  var toStr   = today.toISOString().slice(0,10);
+  var byDate = {};
+  // Current month
+  var s = (hub.skus || []).find(function(x){ return x.sku === sku; });
+  if (s && s.sales_daily) {
+    s.sales_daily.forEach(function(r){
+      if (r.date >= fromStr && r.date <= toStr) byDate[r.date] = (byDate[r.date] || 0) + (r.net_sales || 0);
+    });
+  }
+  // Historical
+  if (hub.history && hub.history.sales_sku_daily) {
+    hub.history.sales_sku_daily.forEach(function(r){
+      if (r.sku !== sku) return;
+      if (r.date >= fromStr && r.date <= toStr && byDate[r.date] == null) {
+        byDate[r.date] = r.net_sales || 0;
+      }
+    });
+  }
+  // Fill window with zeros for missing days
+  var series = [];
+  for (var d = new Date(from); d <= today; d.setDate(d.getDate()+1)) {
+    var key = d.toISOString().slice(0,10);
+    series.push(byDate[key] || 0);
+  }
+  return series;
 }
 
 // ── Dispatch ────────────────────────────────────────────────────────────────
@@ -1109,6 +1208,7 @@ function aggregateWindow(win, brand) {
       if (brand && brand !== 'ALL' && s.brand !== brand) return;
       out.skus[s.sku] = {
         sku: s.sku, title: s.title, brand: s.brand, pid: s.pid, url: s.url,
+        listing_id: s.listing_id || '',
         mrp: s.mrp, sp: s.sp,
         vertical: s.vertical || '', category: s.category || '',
         // Zero out — will be filled from sales_daily + sku_daily below
@@ -1208,6 +1308,7 @@ function aggregateWindow(win, brand) {
       if (brand && brand !== 'ALL' && s.brand !== brand) return;
       var hubS = hubBySku[s.sku] || {};
       var agg = {sku:s.sku, title:s.title, brand:s.brand, pid:s.pid, url:s.url, mrp:s.mrp, sp:s.sp,
+                 listing_id: hubS.listing_id || '',
                  vertical: s.vertical || hubS.vertical || '',
                  category: s.category || hubS.category || '',
                  sales:0, units:0, gmv:0, gross_units:0, cxl:0, rtn:0,
@@ -1615,18 +1716,27 @@ function renderSales() {
       '<th style="text-align:right" onclick="sortHub(\'sales\',\'return_pct\')">Return%</th>' +
       '<th style="text-align:right" onclick="sortHub(\'sales\',\'aov\')">AOV</th>' +
       '<th style="text-align:right" onclick="sortHub(\'sales\',\'drr_sales\')">DRR ₹</th>' +
-      '<th style="text-align:right" onclick="sortHub(\'sales\',\'drr_units\')">DRR u</th>';
+      '<th style="text-align:right" onclick="sortHub(\'sales\',\'drr_units\')">DRR u</th>' +
+      '<th style="text-align:center;min-width:90px" title="Last 14-day sales trend">14d Trend</th>';
   }
 
   document.getElementById('sales-sku-body').innerHTML = skusArr.length === 0
-    ? '<tr><td colspan="15" class="empty">No SKUs with sales in this window</td></tr>'
+    ? '<tr><td colspan="16" class="empty">No SKUs with sales in this window</td></tr>'
     : skusArr.map(function(s){
-        var urlCell = s.url ? '<a href="'+s.url+'" target="_blank" style="color:var(--text2)">'+(s.title||'—').slice(0,50)+'</a>' : (s.title||'—').slice(0,50);
+        var link = fkProductUrl(s);
+        var titleCell = link
+          ? '<a href="'+link+'" target="_blank" rel="noopener" style="color:var(--text2);text-decoration:none" title="Open on Flipkart">'+(s.title||'—').slice(0,50)+' ↗</a>'
+          : (s.title||'—').slice(0,50);
+        var skuCell = link
+          ? '<a href="'+link+'" target="_blank" rel="noopener" class="pid" style="color:var(--accent);text-decoration:none">'+(s.sku||'—')+'</a>'
+          : '<span class="pid">'+(s.sku||'—')+'</span>';
         var cxlCol = s.cancel_pct > 10 ? 'var(--red)' : s.cancel_pct > 5 ? 'var(--orange)' : 'var(--text2)';
         var rtnCol = s.return_pct > 5 ? 'var(--red)' : s.return_pct > 2 ? 'var(--orange)' : 'var(--text2)';
+        var series = skuDailySeries(s.sku, 14);
+        var spark = sparkline(series, {width:80, height:22, stroke:'var(--green)'});
         return '<tr>' +
-          '<td class="pid">'+(s.sku||'—')+'</td>' +
-          '<td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(s.title||'')+'">'+urlCell+'</td>' +
+          '<td>'+skuCell+'</td>' +
+          '<td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(s.title||'')+'">'+titleCell+'</td>' +
           '<td>'+brandPill(s.brand)+'</td>' +
           '<td style="font-size:10px;color:var(--text3);white-space:nowrap">'+(s.vertical||'—')+'</td>' +
           '<td style="text-align:right;font-family:Courier New,monospace">'+(s.mrp?'₹'+s.mrp:'—')+'</td>' +
@@ -1640,6 +1750,7 @@ function renderSales() {
           '<td style="text-align:right;font-family:Courier New,monospace">'+(s.aov!=null?'₹'+Math.round(s.aov):'—')+'</td>' +
           '<td style="text-align:right;font-family:Courier New,monospace">'+fmtCr(s.drr_sales)+'</td>' +
           '<td style="text-align:right;font-family:Courier New,monospace">'+fmtUnits(s.drr_units)+'</td>' +
+          '<td style="text-align:center">'+spark+'</td>' +
           '</tr>';
     }).join('');
 
@@ -1870,10 +1981,16 @@ function renderAds() {
       : rowsSkus.map(function(s){
           var roiCol = s.ad_roi >= 3 ? 'var(--green)' : s.ad_roi >= 1.5 ? 'var(--orange)' : 'var(--red)';
           var tacosCol = s.tacos > 30 ? 'var(--red)' : s.tacos > 20 ? 'var(--orange)' : 'var(--text2)';
-          var urlCell = s.url ? '<a href="'+s.url+'" target="_blank" style="color:var(--text2)">'+(s.title||'—').slice(0,50)+'</a>' : (s.title||'—').slice(0,50);
+          var link = fkProductUrl(s);
+          var titleCell = link
+            ? '<a href="'+link+'" target="_blank" rel="noopener" style="color:var(--text2);text-decoration:none" title="Open on Flipkart">'+(s.title||'—').slice(0,50)+' ↗</a>'
+            : (s.title||'—').slice(0,50);
+          var skuCell = link
+            ? '<a href="'+link+'" target="_blank" rel="noopener" class="pid" style="color:var(--accent);text-decoration:none">'+(s.sku||'—')+'</a>'
+            : '<span class="pid">'+(s.sku||'—')+'</span>';
           return '<tr>' +
-            '<td class="pid">'+(s.sku||'—')+'</td>' +
-            '<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(s.title||'')+'">'+urlCell+'</td>' +
+            '<td>'+skuCell+'</td>' +
+            '<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(s.title||'')+'">'+titleCell+'</td>' +
             '<td>'+brandPill(s.brand)+'</td>' +
             '<td style="font-size:10px;color:var(--text3);white-space:nowrap">'+(s.vertical||'—')+'</td>' +
             '<td style="text-align:right;font-family:Courier New,monospace;color:var(--red)">'+fmtCr(s.ad_spend)+'</td>' +
@@ -2157,10 +2274,16 @@ function renderTraffic() {
   document.getElementById('traffic-sku-body').innerHTML = skus.length === 0
     ? '<tr><td colspan="11" class="empty">No SKUs with traffic</td></tr>'
     : skus.map(function(s){
-        var urlCell = s.url ? '<a href="'+s.url+'" target="_blank" style="color:var(--text2)">'+(s.title||'—').slice(0,55)+'</a>' : (s.title||'—').slice(0,55);
+        var link = fkProductUrl(s);
+        var titleCell = link
+          ? '<a href="'+link+'" target="_blank" rel="noopener" style="color:var(--text2);text-decoration:none" title="Open on Flipkart">'+(s.title||'—').slice(0,55)+' ↗</a>'
+          : (s.title||'—').slice(0,55);
+        var skuCell = link
+          ? '<a href="'+link+'" target="_blank" rel="noopener" class="pid" style="color:var(--accent);text-decoration:none">'+(s.sku||'—')+'</a>'
+          : '<span class="pid">'+(s.sku||'—')+'</span>';
         return '<tr>' +
-          '<td class="pid">'+(s.sku||'—')+'</td>' +
-          '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(s.title||'')+'">'+urlCell+'</td>' +
+          '<td>'+skuCell+'</td>' +
+          '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(s.title||'')+'">'+titleCell+'</td>' +
           '<td>'+brandPill(s.brand)+'</td>' +
           '<td style="font-size:10px;color:var(--text3);white-space:nowrap">'+(s.vertical||'—')+'</td>' +
           '<td style="text-align:right;font-family:Courier New,monospace;color:var(--purple);font-weight:700">'+fmtImpr(s.views)+'</td>' +
@@ -3652,6 +3775,9 @@ function renderOverview() {
   // ── EXTRAS (charts + brand pills + cross-tab insights grid + Top 20 table) ──
   try { renderOvExtras(curWin, prevWin, brand); }
   catch (err) { console.error('renderOvExtras failed:', err); }
+
+  try { renderOvVerticalBreakdown(); }
+  catch (err) { console.error('renderOvVerticalBreakdown failed:', err); }
 }
 
 // ── Overview EXTRAS section (below analyses) ───────────────────────────────
@@ -4030,6 +4156,98 @@ function populateOvVerticalSelector() {
     html += '<option value="'+v+'"'+selected+'>'+v+'</option>';
   });
   sel.innerHTML = html;
+}
+
+// ── Overview: Vertical Breakdown card ───────────────────────────────────────
+function setOvVbSort(metric, btn) {
+  H.ov.vbSort = metric;
+  ['ovvb-sort-roi','ovvb-sort-sales','ovvb-sort-spend','ovvb-sort-tacos'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.classList.remove('active');
+  });
+  if (btn) btn.classList.add('active');
+  // Re-render only the breakdown card, not entire Overview.
+  try { renderOvVerticalBreakdown(); } catch(e){ console.error('Vertical breakdown render failed:', e); }
+}
+
+// Renders the Vertical Breakdown table from curAgg.skus at the currently
+// selected Overview window + brand. If a vertical filter is active on OV,
+// we still show ALL verticals (this card exists to compare verticals).
+function renderOvVerticalBreakdown() {
+  var body = document.getElementById('ov-vertical-breakdown-body');
+  var sub  = document.getElementById('ov-vertical-breakdown-sub');
+  if (!body) return;
+  if (!D || !D.hub) { body.innerHTML = '<tr><td colspan="11" class="empty">No data</td></tr>'; return; }
+
+  var brand = H.ov.brand || 'ALL';
+  var curWin = resolveTimeWindow('ov');
+  if (!curWin) { body.innerHTML = '<tr><td colspan="11" class="empty">No window</td></tr>'; return; }
+  var curAgg = aggregateWindow(curWin, brand);
+
+  // Group SKUs by vertical
+  var groups = {};  // vertical -> aggregates
+  Object.values(curAgg.skus).forEach(function(s){
+    var v = s.vertical || '(Unknown)';
+    if (!groups[v]) groups[v] = {
+      vertical: v, skus: 0,
+      sales: 0, units: 0, spend: 0, rev: 0, ad_units: 0,
+      views: 0, clicks: 0, traffic_sales: 0
+    };
+    var g = groups[v];
+    // Only count SKUs with any activity this window
+    var active = (s.sales > 0) || (s.ad_spend > 0) || ((s.views || 0) > 0);
+    if (active) g.skus += 1;
+    g.sales += s.sales || 0;
+    g.units += s.units || 0;
+    g.spend += s.ad_spend || 0;
+    g.rev   += s.ad_revenue || 0;
+    g.ad_units += s.ad_units || 0;
+    g.views += s.views || 0;
+    g.clicks+= s.clicks || 0;
+    g.traffic_sales += s.traffic_sales || 0;
+  });
+  // Derive ratios
+  Object.values(groups).forEach(function(g){
+    g.roi   = g.spend > 0 ? g.rev / g.spend : null;
+    g.tacos = g.sales > 0 && g.spend > 0 ? g.spend / g.sales * 100 : null;
+    g.cvr   = g.views > 0 ? g.traffic_sales / g.views * 100 : null;
+  });
+
+  // Sort by selected metric (desc, nulls last)
+  var metric = H.ov.vbSort || 'roi';
+  var invert = (metric === 'tacos');  // TACOS: lower = better → asc sort
+  var rows = Object.values(groups).filter(function(g){ return g.skus > 0 || g.sales > 0 || g.spend > 0; });
+  rows.sort(function(a, b) {
+    var av = a[metric], bv = b[metric];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    return invert ? (av - bv) : (bv - av);
+  });
+
+  if (sub) {
+    sub.textContent = (brand === 'ALL' ? 'All brands' : brandShort(brand)) +
+      ' · ' + curWin.label + ' · ' + rows.length + ' verticals · sorted by ' + metric.toUpperCase();
+  }
+
+  if (!rows.length) { body.innerHTML = '<tr><td colspan="11" class="empty">No verticals with activity in this window</td></tr>'; return; }
+
+  body.innerHTML = rows.map(function(g, i){
+    var roiCol = g.roi == null ? 'var(--text3)' : g.roi >= 3 ? 'var(--green)' : g.roi >= 1.5 ? 'var(--orange)' : 'var(--red)';
+    var tacosCol = g.tacos == null ? 'var(--text3)' : g.tacos > 30 ? 'var(--red)' : g.tacos > 20 ? 'var(--orange)' : 'var(--text2)';
+    return '<tr>' +
+      '<td style="color:var(--text3);font-family:Courier New,monospace">'+(i+1)+'</td>' +
+      '<td style="font-weight:600">'+g.vertical+'</td>' +
+      '<td style="text-align:right;font-family:Courier New,monospace">'+g.skus+'</td>' +
+      '<td style="text-align:right;font-family:Courier New,monospace;color:var(--green);font-weight:700">'+fmtCr(g.sales)+'</td>' +
+      '<td style="text-align:right;font-family:Courier New,monospace">'+fmtUnits(g.units)+'</td>' +
+      '<td style="text-align:right;font-family:Courier New,monospace;color:var(--red)">'+fmtCr(g.spend)+'</td>' +
+      '<td style="text-align:right;font-family:Courier New,monospace;color:var(--green)">'+fmtCr(g.rev)+'</td>' +
+      '<td style="text-align:right;font-family:Courier New,monospace;color:'+roiCol+';font-weight:700">'+(g.roi!=null?g.roi.toFixed(2)+'x':'—')+'</td>' +
+      '<td style="text-align:right;font-family:Courier New,monospace;color:'+tacosCol+'">'+(g.tacos!=null?g.tacos.toFixed(1)+'%':'—')+'</td>' +
+      '<td style="text-align:right;font-family:Courier New,monospace;color:var(--purple)">'+fmtImpr(g.views)+'</td>' +
+      '<td style="text-align:right;font-family:Courier New,monospace;color:var(--yellow)">'+(g.cvr!=null?g.cvr.toFixed(2)+'%':'—')+'</td>' +
+      '</tr>';
+  }).join('');
 }
 
 // Apply the Overview default: latest day with data, else latest month.

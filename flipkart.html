@@ -220,6 +220,7 @@ function checkPW(){
   <button class="nav-tab" onclick="showPage('sales',this)">📈 Sales</button>
   <button class="nav-tab" onclick="showPage('traffic',this)">🔍 Traffic</button>
   <button class="nav-tab" onclick="showPage('ads',this)">📣 Ads</button>
+  <button class="nav-tab" onclick="showPage('placement',this)">📍 Placement</button>
   <button class="nav-tab" onclick="showPage('campaigns',this)">🎯 Campaigns</button>
   <button class="nav-tab" onclick="showPage('rankings',this)">🏆 Rankings</button>
   <button class="nav-tab" onclick="showPage('sp',this)">💰 SP Compliance</button>
@@ -622,6 +623,112 @@ function checkPW(){
   </div>
 </div>
 
+<!-- ═══ ADS PLACEMENT TAB ═════════════════════════════════════════════ -->
+<div class="page" id="page-placement">
+  <div class="filters">
+    <span class="filter-label">Brand</span>
+    <button class="fbtn active" id="pl-brand-all" onclick="setPlacementBrand('ALL',this)">All</button>
+    <button class="fbtn ba"     id="pl-brand-ba"  onclick="setPlacementBrand('BARE ANATOMY',this)">BA</button>
+    <button class="fbtn cap"    id="pl-brand-cap" onclick="setPlacementBrand('Chemist at Play',this)">CAP</button>
+    <button class="fbtn ss"     id="pl-brand-ss"  onclick="setPlacementBrand('SunScoop',this)">SS</button>
+    <div class="fsep"></div>
+    <span class="filter-label">Placement</span>
+    <select class="fsel" id="pl-type-sel" onchange="setPlacementType()"><option value="ALL">All Placements</option></select>
+    <div class="fsep"></div>
+    <span id="pl-window-lbl" style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace"></span>
+  </div>
+
+  <!-- Hero KPI tiles for placement summary -->
+  <div class="stat-grid" id="placement-kpi" style="grid-template-columns:repeat(auto-fill,minmax(145px,1fr))"></div>
+
+  <!-- Charts: Spend share + ROI comparison by placement -->
+  <div class="chart-grid" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
+    <div class="chart-card"><div class="chart-title">Ad Spend Share · by Placement</div><div class="chart-wrap"><canvas id="ch-pl-spend"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">ROI · by Placement</div><div class="chart-wrap"><canvas id="ch-pl-roi"></canvas></div></div>
+  </div>
+
+  <!-- Placement summary table -->
+  <div class="card" style="margin-bottom:18px">
+    <div class="card-hdr">
+      <span class="card-title">📍 Placement Summary</span>
+      <span class="card-sub" id="pl-summary-sub"></span>
+    </div>
+    <table>
+      <thead><tr>
+        <th style="min-width:220px">Placement Type</th>
+        <th style="text-align:right">Spend</th>
+        <th style="text-align:right">Direct Rev</th>
+        <th style="text-align:right">Indirect Rev</th>
+        <th style="text-align:right">Total Rev</th>
+        <th style="text-align:right">ROI</th>
+        <th style="text-align:right">Views</th>
+        <th style="text-align:right">Clicks</th>
+        <th style="text-align:right">CTR</th>
+        <th style="text-align:right">Units</th>
+        <th style="text-align:right">CVR</th>
+        <th style="text-align:right">CPC</th>
+      </tr></thead>
+      <tbody id="pl-summary-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Placement × Brand heatmap-style table -->
+  <div class="card" style="margin-bottom:18px">
+    <div class="card-hdr">
+      <span class="card-title">🎨 Placement × Brand</span>
+      <span class="card-sub">Spend and ROI by placement broken down by brand</span>
+    </div>
+    <table>
+      <thead><tr>
+        <th style="min-width:220px">Placement Type</th>
+        <th>Brand</th>
+        <th style="text-align:right">Spend</th>
+        <th style="text-align:right">Total Rev</th>
+        <th style="text-align:right">ROI</th>
+        <th style="text-align:right">Units</th>
+        <th style="text-align:right">Views</th>
+        <th style="text-align:right">CTR</th>
+        <th style="text-align:right">CVR</th>
+        <th style="text-align:right">CPC</th>
+      </tr></thead>
+      <tbody id="pl-brand-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Placement × Campaign drill-down -->
+  <div class="card">
+    <div class="card-hdr">
+      <span class="card-title">🎯 Campaigns in Placement</span>
+      <span class="card-sub" id="pl-camp-sub">(Select a placement type to filter)</span>
+      <button class="fbtn" onclick="exportPlacementCampsCsv()" style="margin-left:auto;font-size:10px;padding:4px 10px">⬇ CSV</button>
+    </div>
+    <table>
+      <thead><tr>
+        <th style="min-width:220px">Placement</th>
+        <th style="min-width:280px">Campaign</th>
+        <th>Brand</th>
+        <th style="text-align:right">Spend ▼</th>
+        <th style="text-align:right">Total Rev</th>
+        <th style="text-align:right">ROI</th>
+        <th style="text-align:right">Units</th>
+        <th style="text-align:right">Views</th>
+        <th style="text-align:right">CTR</th>
+        <th style="text-align:right">CVR</th>
+      </tr></thead>
+      <tbody id="pl-camp-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Insights card -->
+  <div class="card" style="margin-top:14px">
+    <div class="card-hdr">
+      <span class="card-title">💡 Placement Insights</span>
+      <span class="card-sub" id="pl-insights-sub"></span>
+    </div>
+    <div id="pl-insights" style="padding:12px"></div>
+  </div>
+</div>
+
 <!-- ═══ TRAFFIC TAB ════════════════════════════════════════════════════ -->
 <div class="page" id="page-traffic">
   <div class="filters">
@@ -704,6 +811,7 @@ var H = {
   ads:     {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'ad_spend',  sortDesc:true, view:'sku', search:''},
   traffic: {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'views',     sortDesc:true, search:''},
   camp:    {brand:'ALL', vertical:'ALL', month:'',   view:'campaign', sort:'spend', sortDesc:true, search:'', drill:null},
+  placement: {brand:'ALL', type:'ALL', sort:'spend', sortDesc:true},
 };
 
 // ── Formatters ──────────────────────────────────────────────────────────────
@@ -2804,6 +2912,7 @@ function showPage(name, btn) {
   if (name === 'ads'     && D) safeRun(renderAds,     'renderAds');
   if (name === 'traffic' && D) safeRun(renderTraffic, 'renderTraffic');
   if (name === 'campaigns' && D) safeRun(renderCampaigns, 'renderCampaigns');
+  if (name === 'placement' && D) safeRun(renderPlacement, 'renderPlacement');
 }
 
 function safeRun(fn,name){try{fn();}catch(e){console.error(name+' failed:',e);}}
@@ -2815,12 +2924,14 @@ function renderAll(){
   safeRun(populateHubDateSelectors, 'populateHubDateSelectors');
   safeRun(populateOvSelectors, 'populateOvSelectors');
   safeRun(populateCampMonthSelector, 'populateCampMonthSelector');
+  safeRun(populatePlacementTypeSelector, 'populatePlacementTypeSelector');
   // Populate vertical dropdowns for Sales/Ads/Traffic/Overview
   safeRun(function(){ populateHubVerticalSelector('sales'); populateHubVerticalSelector('ads'); populateHubVerticalSelector('traffic'); populateOvVerticalSelector(); }, 'populateVerticals');
   safeRun(renderSales,'renderSales');
   safeRun(renderAds,'renderAds');
   safeRun(renderTraffic,'renderTraffic');
   safeRun(renderCampaigns,'renderCampaigns');
+  safeRun(renderPlacement,'renderPlacement');
   // Re-render Overview now that tab data is ready (registry-driven analyses
   // need all the per-tab render functions to exist first)
   safeRun(renderOverview,'renderOverview-final');
@@ -2975,6 +3086,355 @@ function _prevMonth(month) {
   var m = parseInt(month.slice(5,7), 10);
   m--; if (m === 0) { m = 12; y--; }
   return y + '-' + (m<10?'0':'') + m;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ADS PLACEMENT TAB
+// ═══════════════════════════════════════════════════════════════════════════
+
+function setPlacementBrand(brand, btn) {
+  H.placement.brand = brand;
+  ['pl-brand-all','pl-brand-ba','pl-brand-cap','pl-brand-ss'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.classList.remove('active');
+  });
+  if (btn) btn.classList.add('active');
+  renderPlacement();
+}
+
+function setPlacementType() {
+  var sel = document.getElementById('pl-type-sel');
+  H.placement.type = sel ? (sel.value || 'ALL') : 'ALL';
+  renderPlacement();
+}
+
+function populatePlacementTypeSelector() {
+  var sel = document.getElementById('pl-type-sel');
+  if (!sel || !D || !D.hub || !D.hub.ads) return;
+  var placements = D.hub.ads.placements || [];
+  var current = H.placement.type || 'ALL';
+  var html = '<option value="ALL">All Placements</option>';
+  placements.forEach(function(p){
+    var selected = p.type === current ? ' selected' : '';
+    html += '<option value="'+p.type+'"'+selected+'>'+p.type+'</option>';
+  });
+  sel.innerHTML = html;
+}
+
+function exportPlacementCampsCsv() {
+  if (!D || !D.hub || !D.hub.ads) return;
+  var rows = (D.hub.ads.placement_by_campaign || []).slice();
+  var brand = H.placement.brand || 'ALL';
+  var type = H.placement.type || 'ALL';
+  if (brand !== 'ALL') rows = rows.filter(function(r){ return r.brand === brand; });
+  if (type !== 'ALL')  rows = rows.filter(function(r){ return r.type === type; });
+  var slim = rows.map(function(r){
+    return {
+      placement: r.type, campaign: r.campaign_name, brand: r.brand,
+      spend: r.spend, total_revenue: r.total_revenue, direct_revenue: r.direct_revenue,
+      indirect_revenue: r.indirect_revenue, roi: r.roi, units: r.total_units,
+      views: r.views, clicks: r.clicks, ctr: r.ctr, cvr: r.cvr, cpc: r.cpc
+    };
+  });
+  var suffix = (brand !== 'ALL' ? '_' + brandShort(brand) : '') + (type !== 'ALL' ? '_' + type.replace(/\s+/g,'') : '');
+  downloadCsv(slim, 'fk_placement_campaigns' + suffix + '.csv');
+}
+
+function renderPlacement() {
+  if (!D || !D.hub || !D.hub.ads) {
+    document.getElementById('placement-kpi').innerHTML =
+      '<div class="stat-card" style="grid-column:1/-1"><div class="stat-label">NO ADS DATA</div></div>';
+    return;
+  }
+  var ads = D.hub.ads;
+  var brand = H.placement.brand || 'ALL';
+  var typeFilter = H.placement.type || 'ALL';
+
+  // Window label — MTD always (placement data is current month only)
+  var from = ads.date_from || '', to = ads.date_to || '';
+  var lbl = document.getElementById('pl-window-lbl');
+  if (lbl) lbl.textContent = from && to ? ('MTD · ' + from + ' → ' + to) : '';
+
+  // ── Compute KPI totals ──
+  var placements = ads.placements || [];
+  var byBrand    = ads.placement_by_brand || [];
+  var byCamp     = ads.placement_by_campaign || [];
+
+  // Filter rows: if brand != ALL use placement_by_brand rows; else use placements
+  var filteredRows;
+  if (brand === 'ALL') {
+    filteredRows = placements.slice();
+  } else {
+    filteredRows = byBrand.filter(function(r){ return r.brand === brand; });
+  }
+  if (typeFilter !== 'ALL') {
+    filteredRows = filteredRows.filter(function(r){ return r.type === typeFilter; });
+  }
+
+  // Aggregate totals from filtered rows
+  var t = {spend:0, direct_rev:0, indirect_rev:0, total_rev:0, views:0, clicks:0, units:0, direct_units:0, indirect_units:0};
+  filteredRows.forEach(function(r){
+    t.spend        += r.spend || 0;
+    t.direct_rev   += r.direct_revenue || 0;
+    t.indirect_rev += r.indirect_revenue || 0;
+    t.total_rev    += r.total_revenue || 0;
+    t.views        += r.views || 0;
+    t.clicks       += r.clicks || 0;
+    t.units        += r.total_units || 0;
+    t.direct_units += r.direct_units || 0;
+    t.indirect_units += r.indirect_units || 0;
+  });
+  var roi   = t.spend > 0 ? t.total_rev / t.spend : null;
+  var ctr   = t.views > 0 ? t.clicks / t.views * 100 : null;
+  var cvr   = t.views > 0 ? t.units / t.views * 100 : null;
+  var cpc   = t.clicks > 0 ? t.spend / t.clicks : null;
+  var haloPct = t.units > 0 ? t.indirect_units / t.units * 100 : null;
+
+  function pKpi(label, val, sub, color) {
+    return '<div class="stat-card"><div class="stat-label">'+label+'</div>' +
+      '<div class="stat-value" style="color:'+color+';font-size:17px">'+val+'</div>' +
+      '<div class="stat-sub">'+sub+'</div></div>';
+  }
+  document.getElementById('placement-kpi').innerHTML = [
+    pKpi('Ad Spend',       fmtCr(t.spend),        filteredRows.length + ' placement rows', 'var(--red)'),
+    pKpi('Total Revenue',  fmtCr(t.total_rev),    'Direct + Indirect',                    'var(--green)'),
+    pKpi('Direct Rev',     fmtCr(t.direct_rev),   t.total_rev>0?(t.direct_rev/t.total_rev*100).toFixed(0)+'% of total':'—', 'var(--green)'),
+    pKpi('Indirect Rev',   fmtCr(t.indirect_rev), t.total_rev>0?(t.indirect_rev/t.total_rev*100).toFixed(0)+'% of total':'—', 'var(--accent)'),
+    pKpi('ROI',            roi!=null?roi.toFixed(2)+'x':'—', 'Rev / Spend',                 'var(--yellow)'),
+    pKpi('Views',          fmtImpr(t.views),      ctr!=null?'CTR '+ctr.toFixed(2)+'%':'—',  'var(--purple)'),
+    pKpi('Clicks',         fmtImpr(t.clicks),     cpc!=null?'CPC ₹'+cpc.toFixed(2):'—',     'var(--text2)'),
+    pKpi('Units',          fmtUnits(t.units),     haloPct!=null?'Halo '+haloPct.toFixed(0)+'%':'—', 'var(--accent)'),
+  ].join('');
+
+  // ── Charts ──
+  // Spend share donut (always shows all placement types for filtered brand,
+  // even if a placement type is selected — to preserve context)
+  var chartRows;
+  if (brand === 'ALL') {
+    chartRows = placements.slice();
+  } else {
+    // Aggregate placement_by_brand rows for the selected brand
+    var agg = {};
+    byBrand.filter(function(r){return r.brand === brand;}).forEach(function(r){
+      agg[r.type] = {
+        type: r.type,
+        spend: r.spend || 0,
+        total_revenue: r.total_revenue || 0,
+      };
+    });
+    chartRows = Object.values(agg).sort(function(a,b){return b.spend - a.spend;});
+  }
+
+  dChart('pl-spend');
+  var cvsSpend = document.getElementById('ch-pl-spend');
+  if (cvsSpend) {
+    var colors = ['#4f8ef7','#3ecf8e','#f5a524','#a855f7','#f04b4b','#06b6d4'];
+    charts['pl-spend'] = new Chart(cvsSpend.getContext('2d'), {
+      type:'doughnut',
+      data:{
+        labels: chartRows.map(function(r){ return r.type.replace(' Listings Page',''); }),
+        datasets:[{data: chartRows.map(function(r){ return +((r.spend||0)/1e5).toFixed(1); }), backgroundColor: colors.slice(0, chartRows.length), borderWidth:0}]
+      },
+      options:{responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{position:'right', labels:{color:'#8892a4',font:{size:10},boxWidth:10}},
+                 tooltip:{callbacks:{label:function(ctx){ return ctx.label+': ₹'+ctx.parsed+'L';}}}}
+      }
+    });
+  }
+
+  dChart('pl-roi');
+  var cvsRoi = document.getElementById('ch-pl-roi');
+  if (cvsRoi) {
+    var sorted = chartRows.slice().sort(function(a,b){
+      var ar = a.spend > 0 ? a.total_revenue / a.spend : 0;
+      var br = b.spend > 0 ? b.total_revenue / b.spend : 0;
+      return br - ar;
+    });
+    charts['pl-roi'] = new Chart(cvsRoi.getContext('2d'), {
+      type:'bar',
+      data:{
+        labels: sorted.map(function(r){ return r.type.replace(' Listings Page',''); }),
+        datasets:[{
+          label:'ROI (x)',
+          data: sorted.map(function(r){ return r.spend > 0 ? +(r.total_revenue/r.spend).toFixed(2) : 0; }),
+          backgroundColor:'rgba(245,200,66,.75)',
+          borderColor:'#f5c842', borderWidth:1,
+        }]
+      },
+      options:{responsive:true, maintainAspectRatio:false, indexAxis:'y',
+        plugins:{legend:{display:false}, tooltip:{callbacks:{label:function(ctx){return ctx.parsed.x.toFixed(2)+'x';}}}},
+        scales:{
+          x:{ticks:{color:'#4a5168',font:{size:9},callback:function(v){return v+'x';}}, grid:{color:'rgba(255,255,255,.05)'}},
+          y:{ticks:{color:'#4a5168',font:{size:10}}, grid:{display:false}}
+        }
+      }
+    });
+  }
+
+  // ── Summary table (placements × current brand filter) ──
+  var summaryRows;
+  if (brand === 'ALL') {
+    summaryRows = placements.slice();
+  } else {
+    var aggMap = {};
+    byBrand.filter(function(r){return r.brand === brand;}).forEach(function(r){ aggMap[r.type] = r; });
+    summaryRows = placements.map(function(p){
+      return aggMap[p.type] || {type:p.type, spend:0, direct_revenue:0, indirect_revenue:0,
+                                 total_revenue:0, views:0, clicks:0, total_units:0,
+                                 ctr:null, cvr:null, cpc:null, roi:null};
+    });
+  }
+  if (typeFilter !== 'ALL') summaryRows = summaryRows.filter(function(r){return r.type === typeFilter;});
+  summaryRows.sort(function(a,b){ return (b.spend||0) - (a.spend||0); });
+
+  document.getElementById('pl-summary-sub').textContent =
+    (brand === 'ALL' ? 'All brands' : brandShort(brand)) + ' · ' + summaryRows.length + ' rows';
+
+  document.getElementById('pl-summary-body').innerHTML = !summaryRows.length
+    ? '<tr><td colspan="12" class="empty">No placement data</td></tr>'
+    : summaryRows.map(function(r){
+        var roiCol = r.roi == null ? 'var(--text3)' : r.roi >= 3 ? 'var(--green)' : r.roi >= 1.5 ? 'var(--orange)' : 'var(--red)';
+        return '<tr>' +
+          '<td style="font-weight:600">'+r.type+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--red)">'+fmtCr(r.spend)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--green)">'+fmtCr(r.direct_revenue)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--accent)">'+fmtCr(r.indirect_revenue)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--green);font-weight:700">'+fmtCr(r.total_revenue)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:'+roiCol+';font-weight:700">'+(r.roi!=null?r.roi.toFixed(2)+'x':'—')+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--purple)">'+fmtImpr(r.views)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace">'+fmtImpr(r.clicks)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">'+(r.ctr!=null?r.ctr.toFixed(2)+'%':'—')+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace">'+fmtUnits(r.total_units)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--yellow)">'+(r.cvr!=null?r.cvr.toFixed(2)+'%':'—')+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace">'+(r.cpc!=null?'₹'+r.cpc.toFixed(2):'—')+'</td>' +
+          '</tr>';
+    }).join('');
+
+  // ── Placement × Brand table ──
+  var pbRows = byBrand.slice();
+  if (brand !== 'ALL') pbRows = pbRows.filter(function(r){return r.brand === brand;});
+  if (typeFilter !== 'ALL') pbRows = pbRows.filter(function(r){return r.type === typeFilter;});
+  pbRows.sort(function(a,b){
+    if (a.type !== b.type) return a.type.localeCompare(b.type);
+    return (b.spend||0) - (a.spend||0);
+  });
+
+  document.getElementById('pl-brand-body').innerHTML = !pbRows.length
+    ? '<tr><td colspan="10" class="empty">No data</td></tr>'
+    : pbRows.map(function(r){
+        var roiCol = r.roi == null ? 'var(--text3)' : r.roi >= 3 ? 'var(--green)' : r.roi >= 1.5 ? 'var(--orange)' : 'var(--red)';
+        return '<tr>' +
+          '<td style="font-size:11px">'+r.type+'</td>' +
+          '<td>'+brandPill(r.brand)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--red)">'+fmtCr(r.spend)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--green);font-weight:700">'+fmtCr(r.total_revenue)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:'+roiCol+';font-weight:700">'+(r.roi!=null?r.roi.toFixed(2)+'x':'—')+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace">'+fmtUnits(r.total_units)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--purple)">'+fmtImpr(r.views)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">'+(r.ctr!=null?r.ctr.toFixed(2)+'%':'—')+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--yellow)">'+(r.cvr!=null?r.cvr.toFixed(2)+'%':'—')+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace">'+(r.cpc!=null?'₹'+r.cpc.toFixed(2):'—')+'</td>' +
+          '</tr>';
+    }).join('');
+
+  // ── Placement × Campaign (drill) ──
+  var pcRows = byCamp.slice();
+  if (brand !== 'ALL') pcRows = pcRows.filter(function(r){return r.brand === brand;});
+  if (typeFilter !== 'ALL') pcRows = pcRows.filter(function(r){return r.type === typeFilter;});
+  pcRows.sort(function(a,b){ return (b.spend||0) - (a.spend||0); });
+  var pcTop = pcRows.slice(0, 50);  // cap at top-50 by spend
+
+  document.getElementById('pl-camp-sub').textContent =
+    pcRows.length + ' campaign×placement rows' + (pcTop.length < pcRows.length ? ' (showing top 50)' : '');
+
+  document.getElementById('pl-camp-body').innerHTML = !pcTop.length
+    ? '<tr><td colspan="10" class="empty">No campaigns match filter</td></tr>'
+    : pcTop.map(function(r){
+        var roiCol = r.roi == null ? 'var(--text3)' : r.roi >= 3 ? 'var(--green)' : r.roi >= 1.5 ? 'var(--orange)' : 'var(--red)';
+        return '<tr>' +
+          '<td style="font-size:10px;color:var(--text3)">'+r.type.replace(' Listings Page','')+'</td>' +
+          '<td style="font-family:Courier New,monospace;font-size:11px" title="'+r.campaign_name+'">'+(r.campaign_name||'').slice(0,60)+'</td>' +
+          '<td>'+brandPill(r.brand)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--red)">'+fmtCr(r.spend)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--green)">'+fmtCr(r.total_revenue)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:'+roiCol+';font-weight:700">'+(r.roi!=null?r.roi.toFixed(2)+'x':'—')+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace">'+fmtUnits(r.total_units)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--purple)">'+fmtImpr(r.views)+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">'+(r.ctr!=null?r.ctr.toFixed(2)+'%':'—')+'</td>' +
+          '<td style="text-align:right;font-family:Courier New,monospace;color:var(--yellow)">'+(r.cvr!=null?r.cvr.toFixed(2)+'%':'—')+'</td>' +
+          '</tr>';
+    }).join('');
+
+  // ── Insights ──
+  renderPlacementInsights(placements, byBrand, byCamp, brand, typeFilter, t);
+}
+
+function renderPlacementInsights(placements, byBrand, byCamp, brand, typeFilter, totals) {
+  var el = document.getElementById('pl-insights');
+  var sub = document.getElementById('pl-insights-sub');
+  if (!el) return;
+  if (sub) sub.textContent = (brand === 'ALL' ? 'All brands' : brandShort(brand)) + (typeFilter !== 'ALL' ? ' · ' + typeFilter : '');
+
+  var chunks = [];
+
+  // Block 1: Best ROI placements (for current brand)
+  var rowsForBrand;
+  if (brand === 'ALL') rowsForBrand = placements;
+  else rowsForBrand = byBrand.filter(function(r){return r.brand === brand;});
+
+  var scored = rowsForBrand.filter(function(r){return (r.spend||0) > 5000;});
+  if (scored.length) {
+    var byRoi = scored.slice().sort(function(a,b){return (b.roi||0) - (a.roi||0);});
+    chunks.push(insightBlock('🚀 Best ROI Placements (spend > ₹5K)', 'var(--green)',
+      byRoi.slice(0,3).map(function(r){
+        return '<strong>'+r.type+'</strong> — ROI '+(r.roi!=null?r.roi.toFixed(2)+'x':'—') +
+          ' <span style="color:var(--text3)">· Spend '+fmtCr(r.spend)+' · Rev '+fmtCr(r.total_revenue)+'</span>';
+      })
+    ));
+    var worst = scored.slice().sort(function(a,b){return (a.roi||999)-(b.roi||999);});
+    chunks.push(insightBlock('⚠️ Worst ROI Placements (spend > ₹5K)', 'var(--red)',
+      worst.slice(0,3).map(function(r){
+        return '<strong>'+r.type+'</strong> — ROI '+(r.roi!=null?r.roi.toFixed(2)+'x':'—') +
+          ' <span style="color:var(--text3)">· Spend '+fmtCr(r.spend)+'</span>';
+      })
+    ));
+  }
+
+  // Block 3: Spend concentration — top placement as % of total
+  if (rowsForBrand.length && totals.spend > 0) {
+    var topBySpend = rowsForBrand.slice().sort(function(a,b){return (b.spend||0)-(a.spend||0);});
+    var concentrated = topBySpend.slice(0,3).map(function(r){
+      var pct = (r.spend||0) / totals.spend * 100;
+      return '<strong>'+r.type+'</strong> — '+pct.toFixed(0)+'% of spend <span style="color:var(--text3)">('+fmtCr(r.spend)+')</span>';
+    });
+    chunks.push(insightBlock('💰 Spend Concentration', 'var(--accent)', concentrated));
+  }
+
+  // Block 4: Highest CVR (which placements actually convert)
+  var cvrScored = rowsForBrand.filter(function(r){return (r.views||0) > 10000 && r.cvr!=null;});
+  if (cvrScored.length) {
+    var byCvr = cvrScored.slice().sort(function(a,b){return b.cvr - a.cvr;});
+    chunks.push(insightBlock('🎯 Highest CVR (views > 10K)', 'var(--yellow)',
+      byCvr.slice(0,3).map(function(r){
+        return '<strong>'+r.type+'</strong> — CVR '+r.cvr.toFixed(2)+'% <span style="color:var(--text3)">· '+fmtImpr(r.views)+' views · '+fmtUnits(r.total_units)+' units</span>';
+      })
+    ));
+  }
+
+  // Block 5: Top campaigns by spend in current filter
+  var topCamps = (byCamp || []).filter(function(r){
+    return (brand === 'ALL' || r.brand === brand) && (typeFilter === 'ALL' || r.type === typeFilter);
+  }).sort(function(a,b){return (b.spend||0)-(a.spend||0);}).slice(0,5);
+  if (topCamps.length) {
+    chunks.push(insightBlock('🔝 Top 5 Campaign × Placement (by spend)', 'var(--red)',
+      topCamps.map(function(r){
+        return '<strong>'+(r.campaign_name||'').slice(0,35)+'</strong> @ '+r.type.replace(' Listings Page','') +
+          ' <span style="color:var(--text3)">'+fmtCr(r.spend)+' · ROI '+(r.roi!=null?r.roi.toFixed(2)+'x':'—')+'</span>';
+      })
+    ));
+  }
+
+  el.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px">' +
+    chunks.map(function(c){return '<div>'+c+'</div>';}).join('') + '</div>';
 }
 
 // ── Main renderer ──────────────────────────────────────────────────────────

@@ -261,6 +261,12 @@ function checkPW(){
   <!-- HEADLINE KPI TILES (cross-tab hero metrics) -->
   <div class="stat-grid" id="ov-hero-stats" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr));margin-bottom:18px"></div>
 
+  <!-- Cross-tab 6-block Insights grid (ABOVE analyses) -->
+  <div class="card" style="margin-bottom:18px">
+    <div class="card-hdr"><span class="card-title">💡 Cross-Tab Insights</span><span class="card-sub" id="ov-insight-sub"></span></div>
+    <div id="ov-cross-insights" style="padding:12px"></div>
+  </div>
+
   <!-- Analysis sections container — auto-populated from ANALYSIS_REGISTRY. -->
   <div id="ov-analyses-container"></div>
 
@@ -268,12 +274,6 @@ function checkPW(){
 
   <!-- Brand pills (SKU count + avg rating per brand) -->
   <div class="brand-pills" id="ov-pills" style="margin-top:18px"></div>
-
-  <!-- Cross-tab 6-block Insights grid -->
-  <div class="card" style="margin-bottom:14px">
-    <div class="card-hdr"><span class="card-title">💡 Cross-Tab Insights</span><span class="card-sub" id="ov-insight-sub"></span></div>
-    <div id="ov-cross-insights" style="padding:12px"></div>
-  </div>
 
   <!-- Charts: 12-month Sales/Ads trend + Brand share donut -->
   <div class="chart-grid" style="grid-template-columns:2fr 1fr;margin-bottom:14px">
@@ -497,8 +497,8 @@ function checkPW(){
 
   <!-- Charts -->
   <div class="chart-grid" style="grid-template-columns:1fr 1fr">
-    <div class="chart-card"><div class="chart-title">Ad Spend & Revenue by Brand (₹)</div><div class="chart-wrap"><canvas id="ch-ads-brand"></canvas></div></div>
-    <div class="chart-card"><div class="chart-title">ROI by Top Campaigns</div><div class="chart-wrap"><canvas id="ch-ads-roi"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">Ad Spend · Revenue · ROI (trend)</div><div class="chart-wrap"><canvas id="ch-ads-brand"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">Ad Spend Share by Brand</div><div class="chart-wrap"><canvas id="ch-ads-roi"></canvas></div></div>
   </div>
 
   <!-- Daily spend trend (last 30 days) -->
@@ -1038,6 +1038,9 @@ function aggregateWindow(win, brand) {
         gmv: s.gmv || 0, gross_units: s.gross_units || 0,
         cxl: s.cancellations || 0, rtn: s.returns || 0,
         views: s.views || 0, clicks: s.clicks || 0,
+        traffic_sales:   s.traffic_sales || 0,
+        traffic_revenue: s.traffic_revenue || 0,
+        ctr: s.ctr, cvr: s.cvr, aov: s.aov,
         ad_spend: s.ad_spend || 0, ad_revenue: s.ad_revenue || 0,
         ad_units: s.ad_units || 0, ad_clicks: s.ad_clicks || 0,
       };
@@ -1072,7 +1075,8 @@ function aggregateWindow(win, brand) {
       if (brand && brand !== 'ALL' && s.brand !== brand) return;
       var agg = {sku:s.sku, title:s.title, brand:s.brand, pid:s.pid, url:s.url, mrp:s.mrp, sp:s.sp,
                  sales:0, units:0, gmv:0, gross_units:0, cxl:0, rtn:0,
-                 views:0, clicks:0, ad_spend:0, ad_revenue:0, ad_units:0, ad_clicks:0};
+                 views:0, clicks:0, traffic_sales:0, traffic_revenue:0,
+                 ad_spend:0, ad_revenue:0, ad_units:0, ad_clicks:0};
       Object.keys(s.months || {}).forEach(function(mo){
         if (!win.months.has(mo)) return;
         var m = s.months[mo];
@@ -1083,10 +1087,16 @@ function aggregateWindow(win, brand) {
         agg.rtn   += m.returns || 0;
         agg.views += m.views || 0;
         agg.clicks+= m.clicks || 0;
+        agg.traffic_sales   += m.traffic_sales || 0;
+        agg.traffic_revenue += m.traffic_revenue || 0;
         agg.ad_spend   += m.ad_spend || 0;
         agg.ad_revenue += m.ad_revenue || 0;
         agg.ad_units   += m.ad_units || 0;
       });
+      // Derived: ctr / cvr / aov
+      agg.ctr = agg.views > 0 ? agg.clicks/agg.views*100 : null;
+      agg.cvr = agg.views > 0 && agg.traffic_sales > 0 ? agg.traffic_sales/agg.views*100 : null;
+      agg.aov = agg.traffic_sales > 0 ? agg.traffic_revenue/agg.traffic_sales : null;
       out.skus[s.sku] = agg;
     });
   }
@@ -1162,10 +1172,29 @@ function renderSales() {
     if (s.mrp && s.gross_units) mrpXUnits += s.mrp * s.gross_units;
   });
   // MRP (total) = Σ(final_sale_units × MRP) — total MRP-equivalent revenue of units sold
+  // IMPORTANT: curAgg.skus[].units is MTD when granularity='day' (we don't have
+  // SKU-by-day breakdown in fk_data.json). Scale to the window using ratio of
+  // window units to MTD units, so the MRP tile moves with the date filter.
+  var mtdSkuUnits = 0, mtdSkuGrossUnits = 0;
+  Object.values(curAgg.skus).forEach(function(s){
+    mtdSkuUnits      += s.units || 0;
+    mtdSkuGrossUnits += s.gross_units || 0;
+  });
+  var unitRatio  = (curWin.granularity === 'day' && mtdSkuUnits > 0)      ? (t.units       / mtdSkuUnits)      : 1;
+  var grossRatio = (curWin.granularity === 'day' && mtdSkuGrossUnits > 0) ? (t.gross_units / mtdSkuGrossUnits) : 1;
+
   var totalMrp = 0;
   Object.values(curAgg.skus).forEach(function(s){
     if (s.mrp && s.units) totalMrp += s.mrp * s.units;
   });
+  totalMrp = totalMrp * unitRatio;  // Scale to window
+
+  // Discount: (MRP_total − Net Sales) / MRP_total  [user-requested formula]
+  // Where Net Sales here means the realized sales revenue (GST-inclusive)
+  var discPct = (totalMrp > 0) ? ((totalMrp - t.sales) / totalMrp * 100) : null;
+
+  // Also compute the "realized" discount off gross for legacy use (not shown)
+  mrpXUnits = mrpXUnits * grossRatio;  // Scale denominator too
   var realizedDisc = (mrpXUnits > 0 && gmv > 0) ? ((mrpXUnits - gmv) / mrpXUnits * 100) : null;
 
   var units = t.units;
@@ -1177,7 +1206,7 @@ function renderSales() {
   var drrUnits = t.units / nDays;
 
   // Prev equivalents
-  var pSales=0, pNet=0, pUnits=0, pCancelPct=null, pReturnPct=null, pAov=null, pDrrSales=null, pDrrUnits=null, pDisc=null, pTotalMrp=null;
+  var pSales=0, pNet=0, pUnits=0, pCancelPct=null, pReturnPct=null, pAov=null, pDrrSales=null, pDrrUnits=null, pDisc=null, pDiscPct=null, pTotalMrp=null;
   if (p) {
     pSales = p.sales; pNet = p.sales/1.18; pUnits = p.units;
     pCancelPct = p.gmv > 0 ? p.cxl/p.gmv*100 : null;
@@ -1192,12 +1221,17 @@ function renderSales() {
       if (s.mrp && s.gross_units) pMrpXU += s.mrp * s.gross_units;
     });
     pDisc = (pMrpXU > 0 && p.gmv > 0) ? ((pMrpXU - p.gmv) / pMrpXU * 100) : null;
-    // Prev total MRP = Σ(prev final_sale_units × MRP)
+    // Prev total MRP + discount-v2 (MRP − Net) / MRP
     pTotalMrp = 0;
+    var pMtdU = 0;
     Object.values(prevAgg.skus).forEach(function(s){
       if (s.mrp && s.units) pTotalMrp += s.mrp * s.units;
+      pMtdU += s.units || 0;
     });
+    var pUnitRatio = (prevWin.granularity === 'day' && pMtdU > 0) ? (p.units / pMtdU) : 1;
+    pTotalMrp = pTotalMrp * pUnitRatio;
     if (pTotalMrp === 0) pTotalMrp = null;
+    pDiscPct = (pTotalMrp && pTotalMrp > 0) ? ((pTotalMrp - p.sales) / pTotalMrp * 100) : null;
   }
 
   function kpiTile(label, val, sub, color, delta) {
@@ -1211,12 +1245,10 @@ function renderSales() {
     kpiTile('MRP (total)',     totalMrp>0?fmtCr(totalMrp):'—', 'Σ(units × MRP)', 'var(--text2)', p && pTotalMrp ? makeDelta(totalMrp, pTotalMrp) : null),
     kpiTile('Sales',           fmtCr(sales),         fmtUnits(units)+' units', 'var(--green)',  p ? makeDelta(sales, pSales) : null),
     kpiTile('Net Sales',       fmtCr(netExGst),      'ex-GST (÷1.18)',          'var(--green)',  p ? makeDelta(netExGst, pNet) : null),
-    kpiTile('Disc %',          realizedDisc!=null?realizedDisc.toFixed(1)+'%':'—', 'realized', 'var(--orange)', p && pDisc!=null ? makeDelta(realizedDisc, pDisc, true) : null),
+    kpiTile('Disc %',          discPct!=null?discPct.toFixed(1)+'%':'—', '(MRP − Net) / MRP', 'var(--orange)', p && pDiscPct!=null ? makeDelta(discPct, pDiscPct, true) : null),
     kpiTile('Units',           fmtUnits(units),      'final sale',              'var(--accent)', p ? makeDelta(units, pUnits) : null),
     kpiTile('Cancellations',   fmtCr(t.cxl),         fmtPct(cancelPct,1)+' of gross', 'var(--red)', p ? makeDelta(t.cxl, p.cxl, true) : null),
-    kpiTile('Cancel %',        cancelPct!=null?cancelPct.toFixed(1)+'%':'—', 'of gross GMV', 'var(--red)', p && pCancelPct!=null ? makeDelta(cancelPct, pCancelPct, true) : null),
     kpiTile('Returns',         fmtCr(t.rtn),         fmtPct(returnPct,1)+' of gross', 'var(--orange)', p ? makeDelta(t.rtn, p.rtn, true) : null),
-    kpiTile('Return %',        returnPct!=null?returnPct.toFixed(2)+'%':'—', 'of gross GMV', 'var(--orange)', p && pReturnPct!=null ? makeDelta(returnPct, pReturnPct, true) : null),
     kpiTile('AOV',             aov!=null?'₹'+Math.round(aov):'—', 'Sales/Units', 'var(--purple)', p && pAov ? makeDelta(aov, pAov) : null),
     kpiTile('DRR ₹',           fmtCr(drrSales),      'per day',                 'var(--yellow)', p ? makeDelta(drrSales, pDrrSales) : null),
     kpiTile('DRR units',       fmtUnits(drrUnits),   'per day',                 'var(--yellow)', p ? makeDelta(drrUnits, pDrrUnits) : null),
@@ -1224,14 +1256,25 @@ function renderSales() {
   document.getElementById('sales-kpi').innerHTML = kpis.join('');
 
   // ── Trend chart
+  // For single-month windows (Month filter OR single-month Custom), prefer daily
+  // granularity so users see a trend curve, not a single aggregated bar.
   var chartLabels=[], chartSales=[], chartGmv=[];
-  if (curWin.granularity === 'day') {
+  var useDaily = (curWin.granularity === 'day') ||
+                 (curWin.months && curWin.months.size === 1 && (hub.sales && hub.sales.daily && hub.sales.daily.length));
+  if (useDaily) {
     var dailyAll = (hub.sales && hub.sales.daily) ? hub.sales.daily : [];
-    var rows = dailyAll.filter(function(d){
-      if (curWin.singleDay) return d.date === curWin.singleDay;
-      if (curWin.dayRange)  return d.date >= curWin.dayRange[0] && d.date <= curWin.dayRange[1];
-      return false;
-    });
+    var rows;
+    if (curWin.granularity === 'day') {
+      rows = dailyAll.filter(function(d){
+        if (curWin.singleDay) return d.date === curWin.singleDay;
+        if (curWin.dayRange)  return d.date >= curWin.dayRange[0] && d.date <= curWin.dayRange[1];
+        return false;
+      });
+    } else {
+      // Month filter with 1 month → filter daily rows to that month
+      var singleMonth = Array.from(curWin.months)[0];
+      rows = dailyAll.filter(function(d){ return d.date.slice(0,7) === singleMonth; });
+    }
     chartLabels = rows.map(function(d){ return fmtDate(d.date); });
     chartSales  = rows.map(function(d){ return +((d.net_sales||0)/1e5).toFixed(2); });
     chartGmv    = rows.map(function(d){ return +((d.gmv||0)/1e5).toFixed(2); });
@@ -1246,7 +1289,7 @@ function renderSales() {
   dChart('sales-trend');
   if (chartLabels.length === 0) chartLabels = ['—'];
   charts['sales-trend'] = new Chart(document.getElementById('ch-sales-trend').getContext('2d'), {
-    type: curWin.granularity === 'day' ? 'line' : 'bar',
+    type: useDaily ? 'line' : 'bar',
     data:{labels:chartLabels, datasets:[
       {label:'Gross (₹L)', data:chartGmv,   backgroundColor:'rgba(79,142,247,.55)', borderColor:'#4f8ef7', borderWidth:1.5, fill:false, tension:.35, pointRadius:2, order:2},
       {label:'Sales (₹L)', data:chartSales, backgroundColor:'rgba(62,207,142,.85)', borderColor:'#3ecf8e', borderWidth:2,   fill:false, tension:.35, pointRadius:3, order:1},
@@ -1414,8 +1457,13 @@ function renderAds() {
   document.getElementById('ads-kpi').innerHTML = kpis.join('');
 
   // Chart: spend+revenue bars + ROI line
+  // For single-month windows, use daily data so the chart shows trend within month.
   var chartLabels=[], chartSpend=[], chartRev=[], chartRoi=[];
-  if (curWin.granularity === 'day') {
+  var hasAdsDaily = (hub.history && hub.history.daily && hub.history.daily.all_days && hub.history.daily.all_days.length) ||
+                    (hub.daily && hub.daily.days && hub.daily.days.length);
+  var useAdsDaily = (curWin.granularity === 'day') ||
+                    (curWin.months && curWin.months.size === 1 && hasAdsDaily);
+  if (useAdsDaily) {
     // Merge current-month daily + historical all_days
     var dailyAll = [];
     if (hub.history && hub.history.daily && hub.history.daily.all_days) {
@@ -1426,11 +1474,17 @@ function renderAds() {
       dailyAll = dailyAll.filter(function(d){ return !seen.has(d.date); });
       hub.daily.days.forEach(function(d){ dailyAll.push(d); });
     }
-    var rows = dailyAll.filter(function(d){
-      if (curWin.singleDay) return d.date === curWin.singleDay;
-      if (curWin.dayRange)  return d.date >= curWin.dayRange[0] && d.date <= curWin.dayRange[1];
-      return false;
-    });
+    var rows;
+    if (curWin.granularity === 'day') {
+      rows = dailyAll.filter(function(d){
+        if (curWin.singleDay) return d.date === curWin.singleDay;
+        if (curWin.dayRange)  return d.date >= curWin.dayRange[0] && d.date <= curWin.dayRange[1];
+        return false;
+      });
+    } else {
+      var singleMonthA = Array.from(curWin.months)[0];
+      rows = dailyAll.filter(function(d){ return d.date.slice(0,7) === singleMonthA; });
+    }
     // Extract by-brand values when a brand filter is active
     function bVal(d, field) {
       if (brand === 'ALL') return d[field] || 0;
@@ -1738,15 +1792,23 @@ function renderTraffic() {
   ];
   document.getElementById('traffic-kpi').innerHTML = kpis.join('');
 
-  // Trend chart
+  // Trend chart — for single-month windows, use daily data to show within-month trend
   var chartLabels=[], chartImpr=[], chartCvr=[];
-  if (curWin.granularity === 'day') {
+  var useTrafDaily = (curWin.granularity === 'day') ||
+                     (curWin.months && curWin.months.size === 1 && hub.traffic && hub.traffic.daily && hub.traffic.daily.length);
+  if (useTrafDaily) {
     var dailyAll = (hub.traffic && hub.traffic.daily) ? hub.traffic.daily : [];
-    var rows = dailyAll.filter(function(d){
-      if (curWin.singleDay) return d.date === curWin.singleDay;
-      if (curWin.dayRange)  return d.date >= curWin.dayRange[0] && d.date <= curWin.dayRange[1];
-      return false;
-    });
+    var rows;
+    if (curWin.granularity === 'day') {
+      rows = dailyAll.filter(function(d){
+        if (curWin.singleDay) return d.date === curWin.singleDay;
+        if (curWin.dayRange)  return d.date >= curWin.dayRange[0] && d.date <= curWin.dayRange[1];
+        return false;
+      });
+    } else {
+      var singleMonthT = Array.from(curWin.months)[0];
+      rows = dailyAll.filter(function(d){ return d.date.slice(0,7) === singleMonthT; });
+    }
     chartLabels = rows.map(function(d){ return fmtDate(d.date); });
     chartImpr   = rows.map(function(d){ return +((d.views||0)/1e5).toFixed(1); });
     chartCvr    = rows.map(function(d){ return d.views > 0 ? +(d.sales/d.views*100).toFixed(2) : 0; });
@@ -1762,7 +1824,7 @@ function renderTraffic() {
   if (chartLabels.length === 0) chartLabels = ['—'];
   charts['traffic-trend'] = new Chart(document.getElementById('ch-traffic-trend').getContext('2d'), {
     data:{labels:chartLabels, datasets:[
-      {type:curWin.granularity==='day'?'line':'bar',  label:'Impressions (L)', data:chartImpr, backgroundColor:'rgba(167,139,250,.7)', borderColor:'#a78bfa', borderWidth:1.5, tension:.35, pointRadius:2, yAxisID:'y', fill:false},
+      {type:useTrafDaily?'line':'bar',  label:'Impressions (L)', data:chartImpr, backgroundColor:'rgba(167,139,250,.7)', borderColor:'#a78bfa', borderWidth:1.5, tension:.35, pointRadius:2, yAxisID:'y', fill:false},
       {type:'line', label:'CVR (%)', data:chartCvr, borderColor:'#f5a524', backgroundColor:'transparent', fill:false, tension:.35, borderWidth:1.5, pointRadius:2, yAxisID:'y2'},
     ]},
     options:{responsive:true, maintainAspectRatio:false,
@@ -1803,11 +1865,8 @@ function renderTraffic() {
 
   skus.forEach(function(s){
     s.ctr = s.views > 0 ? s.clicks/s.views*100 : null;
-    // Monthly-aggregated SKUs don't have traffic_sales/revenue at SKU level — fall back
-    s.traffic_sales = s.traffic_sales || null;
-    s.cvr = (s.traffic_sales != null && s.views > 0) ? s.traffic_sales/s.views*100 : null;
-    s.traffic_revenue = s.traffic_revenue || null;
-    s.aov = (s.traffic_revenue != null && s.traffic_sales > 0) ? s.traffic_revenue/s.traffic_sales : null;
+    s.cvr = (s.traffic_sales > 0 && s.views > 0) ? s.traffic_sales/s.views*100 : null;
+    s.aov = (s.traffic_sales > 0 && s.traffic_revenue > 0) ? s.traffic_revenue/s.traffic_sales : null;
   });
 
   var col = H.traffic.sort, desc = H.traffic.sortDesc;
@@ -1854,17 +1913,43 @@ function deltaArrow(pct, invert) {
   var arr = pct >= 0 ? '▲' : '▼';
   return ' <span style="color:'+col+';font-size:10px">'+arr+Math.abs(pct).toFixed(1)+'%</span>';
 }
+// Module-level flag: whether SKU-level comparison is meaningful for the
+// current render pass. Set by each *Analysis render function before calling
+// cmpSkuLine. Default: true (legacy behavior).
+var _cmpEnabled = true;
+
 function cmpSkuLine(sku, title, cur, prev, fmt, invert) {
-  var cv = fmt(cur), pv = fmt(prev);
+  var cv = fmt(cur);
+  if (!_cmpEnabled || prev == null) {
+    return '<code>'+sku+'</code> — <strong>'+cv+'</strong>';
+  }
+  var pv = fmt(prev);
   var d = deltaPct(cur, prev);
   return '<code>'+sku+'</code> — <strong>'+cv+'</strong> <span style="color:var(--text3)">(vs '+pv+')</span>'+deltaArrow(d, invert);
+}
+
+// Whether the tab's per-SKU comparison is meaningful given the window granularity.
+// fk_data.json has SKU-level monthly data, so day-vs-day SKU deltas are meaningless.
+function canCompareSkus(curWin, prevWin) {
+  return !!(curWin && prevWin && curWin.granularity === 'month' && prevWin.granularity === 'month');
+}
+
+// Standard insight block used across all *Analysis render functions.
+// Shape: (title, color, items[]) → HTML <div> with headline + bullet items.
+function insightBlock(title, color, items) {
+  if (!items || !items.length) items = ['<span style="color:var(--text3)">No data</span>'];
+  return '<div style="font-size:11px;font-weight:700;color:'+color+';margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">'+title+'</div>' +
+    '<div style="font-size:12px;color:var(--text2);line-height:1.7">' +
+    items.map(function(it){return '• '+it;}).join('<br>') +
+    '</div>';
 }
 
 function renderSalesAnalysis(curAgg, prevAgg, curWin, prevWin, brand) {
   var el = document.getElementById('sales-analysis');
   if (!el) return;
+  _cmpEnabled = canCompareSkus(curWin, prevWin);
   var sub = document.getElementById('sales-analysis-sub');
-  if (sub) sub.textContent = curWin ? (curWin.label + (prevWin ? ' · vs ' + prevWin.label : ' · no comparison')) : '';
+  if (sub) sub.textContent = curWin ? (curWin.label + (prevWin ? ' · vs ' + prevWin.label : ' · no comparison') + (!_cmpEnabled && prevWin ? ' (SKU deltas hidden — day-level)' : '')) : '';
   var curSkus = curAgg.skus, prevSkus = prevAgg ? prevAgg.skus : {};
   var skuArr = Object.values(curSkus).filter(function(s){ return (brand==='ALL'||s.brand===brand) && (s.sales > 0 || s.gmv > 0); });
   if (!skuArr.length) { el.innerHTML = '<div class="empty">No data for analysis</div>'; return; }
@@ -1940,8 +2025,9 @@ function renderSalesAnalysis(curAgg, prevAgg, curWin, prevWin, brand) {
 function renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand) {
   var el = document.getElementById('ads-analysis');
   if (!el) return;
+  _cmpEnabled = canCompareSkus(curWin, prevWin);
   var sub = document.getElementById('ads-analysis-sub');
-  if (sub) sub.textContent = curWin ? (curWin.label + (prevWin ? ' · vs ' + prevWin.label : ' · no comparison')) : '';
+  if (sub) sub.textContent = curWin ? (curWin.label + (prevWin ? ' · vs ' + prevWin.label : ' · no comparison') + (!_cmpEnabled && prevWin ? ' (SKU deltas hidden — day-level)' : '')) : '';
   var curSkus = curAgg.skus, prevSkus = prevAgg ? prevAgg.skus : {};
   var skuArr = Object.values(curSkus).filter(function(s){ return (brand==='ALL'||s.brand===brand) && s.ad_spend > 0; });
   if (!skuArr.length) { el.innerHTML = '<div class="empty">No data for analysis</div>'; return; }
@@ -2031,8 +2117,9 @@ function renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand) {
 function renderTrafficAnalysis(curAgg, prevAgg, curWin, prevWin, brand) {
   var el = document.getElementById('traffic-analysis');
   if (!el) return;
+  _cmpEnabled = canCompareSkus(curWin, prevWin);
   var sub = document.getElementById('traffic-analysis-sub');
-  if (sub) sub.textContent = curWin ? (curWin.label + (prevWin ? ' · vs ' + prevWin.label : ' · no comparison')) : '';
+  if (sub) sub.textContent = curWin ? (curWin.label + (prevWin ? ' · vs ' + prevWin.label : ' · no comparison') + (!_cmpEnabled && prevWin ? ' (SKU deltas hidden — day-level)' : '')) : '';
   var curSkus = curAgg.skus, prevSkus = prevAgg ? prevAgg.skus : {};
   var skuArr = Object.values(curSkus).filter(function(s){ return (brand==='ALL'||s.brand===brand) && (s.views||0) > 0; });
   if (!skuArr.length) { el.innerHTML = '<div class="empty">No data for analysis</div>'; return; }
@@ -3014,13 +3101,17 @@ function renderCampAnalysis(cur, prev, month) {
       var pct = (curV - prevV) / Math.abs(prevV) * 100;
       var up = pct >= 0;
       var good = invert ? !up : up;
-      delta = ' <span style="color:'+(good?'var(--green)':'var(--red)')+';font-size:10px">'+(up?'▲':'▼')+Math.abs(pct).toFixed(0)+'%</span>';
+      delta = ' <span style="color:'+(good?'var(--green)':'var(--red)')+';font-size:10px;font-weight:600">'+(up?'▲':'▼')+Math.abs(pct).toFixed(0)+'%</span>';
     }
-    return '<div style="padding:3px 0"><span style="color:var(--text3);font-size:10px">'+name+'</span> — '+cv+' <span style="color:var(--text3);font-size:10px">(vs '+pv+')</span>'+delta+'</div>';
+    return '<div style="padding:3px 0;font-size:12px;line-height:1.5">' +
+      '<span style="color:var(--text2);font-family:\'Courier New\',monospace;font-size:11px">'+name+'</span>' +
+      ' — <span style="color:var(--text);font-weight:600">'+cv+'</span>' +
+      ' <span style="color:var(--text3);font-size:10px">(vs '+pv+')</span>' + delta +
+      '</div>';
   }
   function card(title, color, itemsHtml) {
     return '<div style="background:var(--bg2);padding:10px 12px;border-radius:6px;border-left:3px solid '+color+'">' +
-      '<div style="color:'+color+';font-weight:600;font-size:11px;margin-bottom:6px">'+title+'</div>'+itemsHtml+'</div>';
+      '<div style="color:'+color+';font-weight:700;font-size:11px;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">'+title+'</div>'+itemsHtml+'</div>';
   }
 
   // Top 5 spenders
@@ -3035,23 +3126,26 @@ function renderCampAnalysis(cur, prev, month) {
     .sort(function(a,b){return (a.roi||99)-(b.roi||99);}).slice(0,5);
   var h2 = worstRoi.map(function(c){
     var p = prevOf(c.id);
-    return cmpLine(c.name.slice(0,36) + ' (ROI '+c.roi.toFixed(2)+'x)', c.spend, p ? p.spend : null, fmtCr, true);
+    return cmpLine(c.name.slice(0,32) + ' (ROI ' + c.roi.toFixed(2) + 'x)', c.spend, p ? p.spend : null, fmtCr, true);
   }).join('');
   if (!h2) h2 = '<div class="empty">No low-ROI campaigns with significant spend</div>';
 
-  // Best ROI (spend > ₹20K)
+  // Best ROI (spend > ₹20K) — compare ROI to prev
   var bestRoi = cur.campaigns.filter(function(c){ return c.spend > 20000 && c.roi != null; })
     .sort(function(a,b){return (b.roi||0)-(a.roi||0);}).slice(0,5);
   var h3 = bestRoi.map(function(c){
-    return cmpLine(c.name.slice(0,36) + ' (ROI '+c.roi.toFixed(2)+'x)', c.revenue, null, fmtCr, false);
+    var p = prevOf(c.id);
+    return cmpLine(c.name.slice(0,36), c.roi, p && p.roi != null ? p.roi : null,
+      function(v){return v!=null ? v.toFixed(2)+'x' : '—';}, false);
   }).join('');
   if (!h3) h3 = '<div class="empty">—</div>';
 
-  // New this month (not seen in prev)
+  // New this month (not seen in prev) — no prev comparison
   var newThis = cur.campaigns.filter(function(c){ return !prev.campaigns.find(function(p){ return p.id === c.id; }); })
     .sort(function(a,b){return b.spend-a.spend;}).slice(0,5);
   var h4 = newThis.map(function(c){
-    return '<div style="padding:3px 0"><b>'+c.name.slice(0,36)+'</b> — '+fmtCr(c.spend)+' · ROI '+(c.roi!=null?c.roi.toFixed(2)+'x':'—')+'</div>';
+    return cmpLine(c.name.slice(0,32) + ' · ROI ' + (c.roi!=null?c.roi.toFixed(2)+'x':'—'),
+      c.spend, null, fmtCr, true);
   }).join('');
   if (!h4) h4 = '<div class="empty">No new campaigns</div>';
 
@@ -3068,11 +3162,12 @@ function renderCampAnalysis(cur, prev, month) {
   }).join('');
   if (!h5) h5 = '<div class="empty">No significant decliners</div>';
 
-  // High TACOS alert (spend > 20K, ROI < 2x)
+  // High TACOS alert (spend > 20K, ROI < 2x) — show spend w/ vs-prev
   var highTacos = cur.campaigns.filter(function(c){ return c.spend > 20000 && c.roi != null && c.roi < 2; })
     .sort(function(a,b){return b.spend-a.spend;}).slice(0,5);
   var h6 = highTacos.map(function(c){
-    return '<div style="padding:3px 0"><b>'+c.name.slice(0,36)+'</b> — '+fmtCr(c.spend)+' at ROI '+c.roi.toFixed(2)+'x</div>';
+    var p = prevOf(c.id);
+    return cmpLine(c.name.slice(0,32) + ' (ROI ' + c.roi.toFixed(2) + 'x)', c.spend, p ? p.spend : null, fmtCr, true);
   }).join('');
   if (!h6) h6 = '<div class="empty">No alerts</div>';
 
@@ -3189,6 +3284,10 @@ function renderOverview() {
   ];
   document.getElementById('ov-hero-stats').innerHTML = kpis.join('');
 
+  // ── CROSS-TAB INSIGHTS (above analyses, brand + window aware) ──
+  try { renderOvCrossInsights(curWin, prevWin, brand); }
+  catch (err) { console.error('renderOvCrossInsights failed:', err); }
+
   // ── ANALYSIS SECTIONS from registry ──
   var container = document.getElementById('ov-analyses-container');
   if (!container) return;
@@ -3250,8 +3349,8 @@ function renderOvExtras(curWin, prevWin, brandFilter) {
   var pillsEl = document.getElementById('ov-pills');
   if (pillsEl) pillsEl.innerHTML = pillHtml;
 
-  // ── Cross-tab 6-block Insights grid ──
-  renderOvCrossInsights(curWin, prevWin, brandFilter);
+  // Cross-tab insights are rendered ABOVE analyses by renderOverview() —
+  // do not re-render here.
 
   // ── 12-Month Trend chart (brand-aware) ──
   dChart('ov-trend');
@@ -3408,7 +3507,15 @@ function renderOvCrossInsights(curWin, prevWin, brandFilter) {
   var curSkus  = Object.values(curAgg.skus);
   var prevSkus = prevAgg ? prevAgg.skus : {};
 
+  // SKU-level data in fk_data.json is MTD, not per-day. So day-window SKU
+  // comparisons are meaningless (both cur and prev show MTD = identical).
+  // Only show deltas when the comparison is at month granularity.
+  var canShowSkuDelta = (curWin.granularity === 'month' && prevWin && prevWin.granularity === 'month');
+
   function fmtV(cur, prevV, fmt, invert) {
+    if (!canShowSkuDelta) {
+      return '<strong>'+fmt(cur)+'</strong>';
+    }
     var pct = dPct(cur, prevV);
     return '<strong>'+fmt(cur)+'</strong> <span style="color:var(--text3)">(vs '+fmt(prevV||0)+')</span>' + dArr(pct, invert);
   }

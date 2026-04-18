@@ -1026,9 +1026,9 @@ function aggregateWindow(win, brand) {
     out.totals.traffic_sales   = sumField(trafR, 'sales');
     out.totals.traffic_revenue = sumField(trafR, 'revenue');
 
-    // SKU-level: within current window we use hub.skus[] which is already aggregated to window
-    // For day-granularity, we don't have SKU-by-day breakdown, so we return the hub.skus as-is
-    // with a note this is window-level, not exact day.
+    // SKU-level: start from MTD snapshot (hub.skus[]) which has sales/ad fields.
+    // For traffic views/clicks/sales/revenue we override with real per-day data
+    // from hub.traffic.sku_daily (current month) + hub.history.traffic_sku_daily.
     (hub.skus || []).forEach(function(s){
       if (brand && brand !== 'ALL' && s.brand !== brand) return;
       out.skus[s.sku] = {
@@ -1037,13 +1037,42 @@ function aggregateWindow(win, brand) {
         sales: s.net_sales || 0, units: s.net_units || 0,
         gmv: s.gmv || 0, gross_units: s.gross_units || 0,
         cxl: s.cancellations || 0, rtn: s.returns || 0,
-        views: s.views || 0, clicks: s.clicks || 0,
-        traffic_sales:   s.traffic_sales || 0,
-        traffic_revenue: s.traffic_revenue || 0,
-        ctr: s.ctr, cvr: s.cvr, aov: s.aov,
+        // Traffic: zero out — will be filled from sku_daily below
+        views: 0, clicks: 0, traffic_sales: 0, traffic_revenue: 0,
+        ctr: null, cvr: null, aov: null,
         ad_spend: s.ad_spend || 0, ad_revenue: s.ad_revenue || 0,
         ad_units: s.ad_units || 0, ad_clicks: s.ad_clicks || 0,
       };
+    });
+    // Merge traffic sku_daily (current + historical) for this window
+    var trafSkuDaily = [];
+    if (hub.traffic && hub.traffic.sku_daily) trafSkuDaily = trafSkuDaily.concat(hub.traffic.sku_daily);
+    if (hub.history && hub.history.traffic_sku_daily) {
+      var seenCur = new Set((hub.traffic && hub.traffic.sku_daily || []).map(function(r){return r.sku+'|'+r.date;}));
+      hub.history.traffic_sku_daily.forEach(function(r){
+        if (!seenCur.has(r.sku+'|'+r.date)) trafSkuDaily.push(r);
+      });
+    }
+    // Filter to window
+    var inWindow = function(d){
+      if (win.singleDay) return d === win.singleDay;
+      if (win.dayRange)  return d >= win.dayRange[0] && d <= win.dayRange[1];
+      return false;
+    };
+    trafSkuDaily.forEach(function(r){
+      if (!inWindow(r.date)) return;
+      var cur = out.skus[r.sku];
+      if (!cur) return;  // SKU missing from hub.skus (brand filter excluded it)
+      cur.views          += r.views   || 0;
+      cur.clicks         += r.clicks  || 0;
+      cur.traffic_sales  += r.sales   || 0;
+      cur.traffic_revenue+= r.revenue || 0;
+    });
+    // Re-derive CTR/CVR/AOV
+    Object.values(out.skus).forEach(function(cur){
+      cur.ctr = cur.views > 0 ? cur.clicks/cur.views*100 : null;
+      cur.cvr = cur.views > 0 ? cur.traffic_sales/cur.views*100 : null;
+      cur.aov = cur.traffic_sales > 0 ? cur.traffic_revenue/cur.traffic_sales : null;
     });
   } else {
     // Monthly from history
@@ -1446,11 +1475,25 @@ function renderAds() {
       '<div class="stat-sub">'+sub+'</div></div>';
   }
 
+  // Halo metrics from FSN (monthly grain — always shows MTD for current month)
+  var fsn = (hub.fsn || {});
+  var haloPct = fsn.halo_pct;
+  var indirectU = fsn.total_indirect_units || 0;
+  var totalUnitsFsn = fsn.total_units || 0;
+  // Brand-filtered halo if brand !== ALL
+  if (brand !== 'ALL' && fsn.by_brand && fsn.by_brand[brand]) {
+    var bb = fsn.by_brand[brand];
+    indirectU = bb.indirect_units || 0;
+    totalUnitsFsn = bb.units || 0;
+    haloPct = totalUnitsFsn > 0 ? +(indirectU / totalUnitsFsn * 100).toFixed(1) : null;
+  }
+
   var kpis = [
     kpiTile('Ad Spend',    fmtCr(t.spend),    'CPC '+(cpc!=null?'₹'+cpc.toFixed(2):'—'), 'var(--red)',   p ? makeDelta(t.spend, p.spend, true) : null),
     kpiTile('Ad Revenue',  fmtCr(t.rev),      fmtUnits(t.ad_units)+' units', 'var(--green)', p ? makeDelta(t.rev, p.rev) : null),
     kpiTile('ROI',         roi!=null?roi.toFixed(2)+'x':'—', 'Rev/Spend', 'var(--yellow)', p && pRoi!=null ? makeDelta(roi, pRoi) : null),
     kpiTile('TACOS',       tacos!=null?tacos.toFixed(1)+'%':'—', 'Spend/Sales', 'var(--orange)', p && pTacos!=null ? makeDelta(tacos, pTacos, true) : null),
+    kpiTile('Halo %',      haloPct!=null?haloPct.toFixed(1)+'%':'—', fmtUnits(indirectU)+' indirect units', 'var(--purple)', null),
     kpiTile('Clicks',      fmtImpr(t.ad_clicks), ctr!=null?'CTR '+ctr.toFixed(2)+'%':'—', 'var(--purple)', p ? makeDelta(t.ad_clicks, p.ad_clicks) : null),
     kpiTile('Views',       fmtImpr(t.ad_views), 'Ad impressions', 'var(--accent)', p ? makeDelta(t.ad_views, p.ad_views) : null),
   ];
@@ -1929,9 +1972,19 @@ function cmpSkuLine(sku, title, cur, prev, fmt, invert) {
 }
 
 // Whether the tab's per-SKU comparison is meaningful given the window granularity.
-// fk_data.json has SKU-level monthly data, so day-vs-day SKU deltas are meaningless.
-function canCompareSkus(curWin, prevWin) {
-  return !!(curWin && prevWin && curWin.granularity === 'month' && prevWin.granularity === 'month');
+// - Month vs Month: always meaningful (hist.skus[*].months has per-month data)
+// - Day vs Day: meaningful for traffic metrics (hub.traffic.sku_daily exists),
+//   NOT meaningful for sales/ads metrics (only MTD totals at SKU level).
+// Pass tab='traffic' to override the day-mode lockout.
+function canCompareSkus(curWin, prevWin, tab) {
+  if (!curWin || !prevWin) return false;
+  if (curWin.granularity === 'month' && prevWin.granularity === 'month') return true;
+  if (tab === 'traffic' && curWin.granularity === 'day' && prevWin.granularity === 'day') {
+    // Only if we have sku_daily data
+    return !!(D && D.hub && ((D.hub.traffic && D.hub.traffic.sku_daily && D.hub.traffic.sku_daily.length) ||
+                             (D.hub.history && D.hub.history.traffic_sku_daily && D.hub.history.traffic_sku_daily.length)));
+  }
+  return false;
 }
 
 // Standard insight block used across all *Analysis render functions.
@@ -2117,7 +2170,7 @@ function renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand) {
 function renderTrafficAnalysis(curAgg, prevAgg, curWin, prevWin, brand) {
   var el = document.getElementById('traffic-analysis');
   if (!el) return;
-  _cmpEnabled = canCompareSkus(curWin, prevWin);
+  _cmpEnabled = canCompareSkus(curWin, prevWin, 'traffic');
   var sub = document.getElementById('traffic-analysis-sub');
   if (sub) sub.textContent = curWin ? (curWin.label + (prevWin ? ' · vs ' + prevWin.label : ' · no comparison') + (!_cmpEnabled && prevWin ? ' (SKU deltas hidden — day-level)' : '')) : '';
   var curSkus = curAgg.skus, prevSkus = prevAgg ? prevAgg.skus : {};
@@ -3507,13 +3560,16 @@ function renderOvCrossInsights(curWin, prevWin, brandFilter) {
   var curSkus  = Object.values(curAgg.skus);
   var prevSkus = prevAgg ? prevAgg.skus : {};
 
-  // SKU-level data in fk_data.json is MTD, not per-day. So day-window SKU
-  // comparisons are meaningless (both cur and prev show MTD = identical).
-  // Only show deltas when the comparison is at month granularity.
-  var canShowSkuDelta = (curWin.granularity === 'month' && prevWin && prevWin.granularity === 'month');
+  // SKU-level data: sales/ads are MTD only at SKU level, but traffic has real
+  // daily granularity. Day-mode: only show delta for traffic-based blocks.
+  var canShowSalesDelta = !!(curWin.granularity === 'month' && prevWin && prevWin.granularity === 'month');
+  var canShowTrafficDelta = canShowSalesDelta || !!(curWin.granularity === 'day' && prevWin && prevWin.granularity === 'day' &&
+    D.hub && ((D.hub.traffic && D.hub.traffic.sku_daily && D.hub.traffic.sku_daily.length) ||
+              (D.hub.history && D.hub.history.traffic_sku_daily && D.hub.history.traffic_sku_daily.length)));
 
-  function fmtV(cur, prevV, fmt, invert) {
-    if (!canShowSkuDelta) {
+  function fmtV(cur, prevV, fmt, invert, canCompare) {
+    var ok = canCompare !== undefined ? canCompare : canShowSalesDelta;
+    if (!ok) {
       return '<strong>'+fmt(cur)+'</strong>';
     }
     var pct = dPct(cur, prevV);

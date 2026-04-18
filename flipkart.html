@@ -1015,9 +1015,13 @@ function aggregateWindow(win, brand) {
   if (!win) return out;
 
   if (win.granularity === 'day') {
-    // Sales daily rows
-    var dailyAll = (hub.sales && hub.sales.daily) ? hub.sales.daily : [];
-    var rows = dailyAll.filter(function(d){
+    // Sales daily rows — merge current month (hub.sales.daily) + history (hub.history.sales_daily)
+    var salesDailyAll = (hub.sales && hub.sales.daily) ? hub.sales.daily.slice() : [];
+    if (hub.history && hub.history.sales_daily) {
+      var seenSD = new Set(salesDailyAll.map(function(d){return d.date;}));
+      hub.history.sales_daily.forEach(function(d){ if (!seenSD.has(d.date)) salesDailyAll.push(d); });
+    }
+    var rows = salesDailyAll.filter(function(d){
       if (win.singleDay) return d.date === win.singleDay;
       if (win.dayRange)  return d.date >= win.dayRange[0] && d.date <= win.dayRange[1];
       return false;
@@ -1096,24 +1100,55 @@ function aggregateWindow(win, brand) {
       out.totals.traffic_revenue = rv;
     }
 
-    // SKU-level: start from MTD snapshot (hub.skus[]) which has sales/ad fields.
-    // For traffic views/clicks/sales/revenue we override with real per-day data
-    // from hub.traffic.sku_daily (current month) + hub.history.traffic_sku_daily.
+    // SKU-level: start from MTD snapshot (hub.skus[]) which has ad fields.
+    // For SALES (net_sales/units/gmv) we override with real per-day data from
+    // hub.skus[*].sales_daily (current month only — historical months share
+    // monthly SKU totals from hist.skus).
+    // For TRAFFIC we override with hub.traffic.sku_daily + history.
     (hub.skus || []).forEach(function(s){
       if (brand && brand !== 'ALL' && s.brand !== brand) return;
       out.skus[s.sku] = {
         sku: s.sku, title: s.title, brand: s.brand, pid: s.pid, url: s.url,
         mrp: s.mrp, sp: s.sp,
         vertical: s.vertical || '', category: s.category || '',
-        sales: s.net_sales || 0, units: s.net_units || 0,
-        gmv: s.gmv || 0, gross_units: s.gross_units || 0,
-        cxl: s.cancellations || 0, rtn: s.returns || 0,
-        // Traffic: zero out — will be filled from sku_daily below
+        // Zero out — will be filled from sales_daily + sku_daily below
+        sales: 0, units: 0, gmv: 0, gross_units: 0, cxl: 0, rtn: 0,
         views: 0, clicks: 0, traffic_sales: 0, traffic_revenue: 0,
         ctr: null, cvr: null, aov: null,
         ad_spend: s.ad_spend || 0, ad_revenue: s.ad_revenue || 0,
         ad_units: s.ad_units || 0, ad_clicks: s.ad_clicks || 0,
+        // Keep reference to full SKU for any per-day lookup
+        _sales_daily: s.sales_daily || [],
       };
+    });
+    // Merge per-SKU per-day SALES: current month uses hub.skus[*].sales_daily,
+    // historical months use hub.history.sales_sku_daily (flat array).
+    var inWindow = function(d){
+      if (win.singleDay) return d === win.singleDay;
+      if (win.dayRange)  return d >= win.dayRange[0] && d <= win.dayRange[1];
+      return false;
+    };
+
+    // 1) Current-month per-SKU per-day (from hub.skus[*].sales_daily)
+    Object.values(out.skus).forEach(function(cur){
+      (cur._sales_daily || []).forEach(function(r){
+        if (!inWindow(r.date)) return;
+        cur.sales += r.net_sales || 0;
+        cur.units += r.net_units || 0;
+        cur.gmv   += r.gmv || 0;
+      });
+      delete cur._sales_daily;
+    });
+
+    // 2) Historical per-SKU per-day (from hub.history.sales_sku_daily)
+    var histSalesSkuDaily = (hub.history && hub.history.sales_sku_daily) ? hub.history.sales_sku_daily : [];
+    histSalesSkuDaily.forEach(function(r){
+      if (!inWindow(r.date)) return;
+      var cur = out.skus[r.sku];
+      if (!cur) return;  // SKU excluded by brand filter
+      cur.sales += r.net_sales || 0;
+      cur.units += r.net_units || 0;
+      cur.gmv   += r.gmv || 0;
     });
     // Merge traffic sku_daily (current + historical) for this window
     var trafSkuDaily = [];
@@ -1124,12 +1159,6 @@ function aggregateWindow(win, brand) {
         if (!seenCur.has(r.sku+'|'+r.date)) trafSkuDaily.push(r);
       });
     }
-    // Filter to window
-    var inWindow = function(d){
-      if (win.singleDay) return d === win.singleDay;
-      if (win.dayRange)  return d >= win.dayRange[0] && d <= win.dayRange[1];
-      return false;
-    };
     trafSkuDaily.forEach(function(r){
       if (!inWindow(r.date)) return;
       var cur = out.skus[r.sku];

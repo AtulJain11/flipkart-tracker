@@ -220,6 +220,7 @@ function checkPW(){
   <button class="nav-tab" onclick="showPage('sales',this)">📈 Sales</button>
   <button class="nav-tab" onclick="showPage('traffic',this)">🔍 Traffic</button>
   <button class="nav-tab" onclick="showPage('ads',this)">📣 Ads</button>
+  <button class="nav-tab" onclick="showPage('campaigns',this)">🎯 Campaigns</button>
   <button class="nav-tab" onclick="showPage('rankings',this)">🏆 Rankings</button>
   <button class="nav-tab" onclick="showPage('sp',this)">💰 SP Compliance</button>
   <button class="nav-tab" onclick="showPage('ratings',this)">⭐ Ratings</button>
@@ -495,6 +496,65 @@ function checkPW(){
   </div>
 </div>
 
+<!-- ═══ CAMPAIGNS TAB (FSN-powered) ══════════════════════════════════════ -->
+<div class="page" id="page-campaigns">
+  <div class="filters">
+    <span class="filter-label">Brand</span>
+    <button class="fbtn active" onclick="setHubFilter('camp','brand','ALL',this)">All</button>
+    <button class="fbtn ba"     onclick="setHubFilter('camp','brand','BARE ANATOMY',this)">BA</button>
+    <button class="fbtn cap"    onclick="setHubFilter('camp','brand','Chemist at Play',this)">CAP</button>
+    <button class="fbtn ss"     onclick="setHubFilter('camp','brand','SunScoop',this)">SS</button>
+    <div class="fsep"></div>
+    <span class="filter-label">Month</span>
+    <select class="fsel" id="camp-month-sel" onchange="setCampMonth()"></select>
+    <div class="fsep"></div>
+    <span class="filter-label">View</span>
+    <button class="fbtn active" id="camp-view-camp"    onclick="setCampView('campaign',this)">Campaigns</button>
+    <button class="fbtn"        id="camp-view-ag"      onclick="setCampView('adgroup',this)">AdGroups</button>
+    <button class="fbtn"        id="camp-view-sku"     onclick="setCampView('sku',this)">SKUs</button>
+    <div class="fsep"></div>
+    <input class="fsearch" placeholder="Search campaign / adgroup / SKU..." id="camp-search" oninput="renderCampaigns()">
+    <div class="fsep"></div>
+    <span id="camp-window" style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace"></span>
+  </div>
+
+  <!-- KPI tiles -->
+  <div class="stat-grid" id="camp-kpi" style="grid-template-columns:repeat(auto-fill,minmax(145px,1fr))"></div>
+
+  <!-- Charts -->
+  <div class="chart-grid" style="grid-template-columns:2fr 1fr">
+    <div class="chart-card"><div class="chart-title">Monthly Spend · ROI · TACOS (FSN, 13 months)</div><div class="chart-wrap"><canvas id="ch-camp-trend"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">Spend by Brand</div><div class="chart-wrap"><canvas id="ch-camp-brand"></canvas></div></div>
+  </div>
+
+  <!-- Dynamic table (switches between campaign/adgroup/sku views) -->
+  <div class="card">
+    <div class="card-hdr">
+      <span class="card-title" id="camp-table-title">🎯 Campaigns</span>
+      <span class="card-sub" id="camp-table-count"></span>
+    </div>
+    <table>
+      <thead><tr id="camp-table-hdr"></tr></thead>
+      <tbody id="camp-table-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Drill-down card (shown on row click) -->
+  <div class="card" id="camp-drill-card" style="display:none">
+    <div class="card-hdr">
+      <span class="card-title" id="camp-drill-title">Drill-down</span>
+      <button class="btn-sm" onclick="clearCampDrill()" style="margin-left:auto">✕ Close</button>
+    </div>
+    <div id="camp-drill-body" style="padding:12px"></div>
+  </div>
+
+  <!-- Analysis card -->
+  <div class="card">
+    <div class="card-hdr"><span class="card-title">💡 Campaign Insights</span></div>
+    <div id="camp-analysis" style="padding:12px"></div>
+  </div>
+</div>
+
 <!-- ═══ TRAFFIC TAB ════════════════════════════════════════════════════ -->
 <div class="page" id="page-traffic">
   <div class="filters">
@@ -570,6 +630,7 @@ var H = {
   sales:   {brand:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'net_sales', sortDesc:true, search:''},
   ads:     {brand:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'ad_spend',  sortDesc:true, view:'sku', search:''},
   traffic: {brand:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'views',     sortDesc:true, search:''},
+  camp:    {brand:'ALL', month:'',   view:'campaign', sort:'spend', sortDesc:true, search:'', drill:null},
 };
 
 // ── Formatters ──────────────────────────────────────────────────────────────
@@ -624,6 +685,7 @@ function renderHubTab(tab) {
   if (tab === 'sales')   renderSales();
   else if (tab === 'ads') renderAds();
   else if (tab === 'traffic') renderTraffic();
+  else if (tab === 'camp') renderCampaigns();
 }
 
 // ── Time filter handlers ────────────────────────────────────────────────────
@@ -1049,13 +1111,11 @@ function renderSales() {
   Object.values(curAgg.skus).forEach(function(s){
     if (s.mrp && s.gross_units) mrpXUnits += s.mrp * s.gross_units;
   });
-  // Fallback: for day granularity we may not have per-sku gross_units. Use GMV/Units*(1+avg_disc) unknown.
-  // Just use weighted avg MRP from skus that have sales in the window:
-  var wtdMrp = 0, wtdN = 0;
+  // MRP (total) = Σ(final_sale_units × MRP) — total MRP-equivalent revenue of units sold
+  var totalMrp = 0;
   Object.values(curAgg.skus).forEach(function(s){
-    if (s.mrp && s.units) { wtdMrp += s.mrp * s.units; wtdN += s.units; }
+    if (s.mrp && s.units) totalMrp += s.mrp * s.units;
   });
-  wtdMrp = wtdN > 0 ? wtdMrp / wtdN : null;
   var realizedDisc = (mrpXUnits > 0 && gmv > 0) ? ((mrpXUnits - gmv) / mrpXUnits * 100) : null;
 
   var units = t.units;
@@ -1067,7 +1127,7 @@ function renderSales() {
   var drrUnits = t.units / nDays;
 
   // Prev equivalents
-  var pSales=0, pNet=0, pUnits=0, pCancelPct=null, pReturnPct=null, pAov=null, pDrrSales=null, pDrrUnits=null, pDisc=null;
+  var pSales=0, pNet=0, pUnits=0, pCancelPct=null, pReturnPct=null, pAov=null, pDrrSales=null, pDrrUnits=null, pDisc=null, pTotalMrp=null;
   if (p) {
     pSales = p.sales; pNet = p.sales/1.18; pUnits = p.units;
     pCancelPct = p.gmv > 0 ? p.cxl/p.gmv*100 : null;
@@ -1082,6 +1142,12 @@ function renderSales() {
       if (s.mrp && s.gross_units) pMrpXU += s.mrp * s.gross_units;
     });
     pDisc = (pMrpXU > 0 && p.gmv > 0) ? ((pMrpXU - p.gmv) / pMrpXU * 100) : null;
+    // Prev total MRP = Σ(prev final_sale_units × MRP)
+    pTotalMrp = 0;
+    Object.values(prevAgg.skus).forEach(function(s){
+      if (s.mrp && s.units) pTotalMrp += s.mrp * s.units;
+    });
+    if (pTotalMrp === 0) pTotalMrp = null;
   }
 
   function kpiTile(label, val, sub, color, delta) {
@@ -1092,7 +1158,7 @@ function renderSales() {
   }
 
   var kpis = [
-    kpiTile('MRP (avg)',       wtdMrp!=null?'₹'+Math.round(wtdMrp):'—',   'wtd by units', 'var(--text2)', null),
+    kpiTile('MRP (total)',     totalMrp>0?fmtCr(totalMrp):'—', 'Σ(units × MRP)', 'var(--text2)', p && pTotalMrp ? makeDelta(totalMrp, pTotalMrp) : null),
     kpiTile('Sales',           fmtCr(sales),         fmtUnits(units)+' units', 'var(--green)',  p ? makeDelta(sales, pSales) : null),
     kpiTile('Net Sales',       fmtCr(netExGst),      'ex-GST (÷1.18)',          'var(--green)',  p ? makeDelta(netExGst, pNet) : null),
     kpiTile('Disc %',          realizedDisc!=null?realizedDisc.toFixed(1)+'%':'—', 'realized', 'var(--orange)', p && pDisc!=null ? makeDelta(realizedDisc, pDisc, true) : null),
@@ -1762,6 +1828,38 @@ function renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand) {
     ) + '</div>';
   }
 
+  // FSN Top Campaigns (campaign-level from Consolidated FSN Report — more accurate than PPR)
+  var fsn = (D.hub && D.hub.fsn) ? D.hub.fsn : null;
+  if (fsn && fsn.campaigns && fsn.campaigns.length) {
+    var fsnCamps = fsn.campaigns.filter(function(c){ return brand === 'ALL' || c.brand === brand; });
+    if (fsnCamps.length) {
+      // Top by spend
+      var topC = fsnCamps.slice().sort(function(a,b){return b.spend-a.spend;}).slice(0,5);
+      html += '<div>' + insightBlock('🎯 Top Campaigns (FSN · current month)', 'var(--accent)',
+        topC.map(function(c){
+          return '<div style="padding:3px 0;font-size:11px;cursor:pointer" onclick="gotoCampDrill(\''+escHtml(c.id)+'\')" title="Open in Campaigns tab">' +
+            '<b>'+escHtml(c.name.slice(0,32))+'</b> · ' +
+            '<span style="color:var(--red)">'+fmtCr(c.spend)+'</span> · ' +
+            '<span style="color:var(--accent)">'+(c.roi!=null?c.roi.toFixed(2)+'x':'—')+'</span></div>';
+        }).join('')
+      ) + '</div>';
+
+      // Worst ROI campaigns (spend > ₹50K)
+      var worstC = fsnCamps.filter(function(c){ return c.spend > 50000 && c.roi != null; })
+        .sort(function(a,b){return a.roi-b.roi;}).slice(0,5);
+      if (worstC.length) {
+        html += '<div>' + insightBlock('⚠️ Worst ROI Campaigns (FSN, ≥₹50K)', 'var(--red)',
+          worstC.map(function(c){
+            return '<div style="padding:3px 0;font-size:11px;cursor:pointer" onclick="gotoCampDrill(\''+escHtml(c.id)+'\')" title="Open in Campaigns tab">' +
+              '<b>'+escHtml(c.name.slice(0,32))+'</b> · ' +
+              fmtCr(c.spend)+' · ' +
+              '<span style="color:var(--red)">'+c.roi.toFixed(2)+'x</span></div>';
+          }).join('')
+        ) + '</div>';
+      }
+    }
+  }
+
   html += '</div>';
   el.innerHTML = html;
 }
@@ -1814,6 +1912,7 @@ function renderTrafficAnalysis(curAgg, prevAgg, curWin, prevWin, brand) {
   html += '</div>';
   el.innerHTML = html;
 }
+
 
 
 </script>
@@ -2012,6 +2111,7 @@ function showPage(name, btn) {
   if (name === 'sales'   && D) safeRun(renderSales,   'renderSales');
   if (name === 'ads'     && D) safeRun(renderAds,     'renderAds');
   if (name === 'traffic' && D) safeRun(renderTraffic, 'renderTraffic');
+  if (name === 'campaigns' && D) safeRun(renderCampaigns, 'renderCampaigns');
 }
 
 function safeRun(fn,name){try{fn();}catch(e){console.error(name+' failed:',e);}}
@@ -2021,9 +2121,11 @@ function renderAll(){
   safeRun(renderSP,'renderSP');
   safeRun(renderRatings,'renderRatings');
   safeRun(populateHubDateSelectors, 'populateHubDateSelectors');
+  safeRun(populateCampMonthSelector, 'populateCampMonthSelector');
   safeRun(renderSales,'renderSales');
   safeRun(renderAds,'renderAds');
   safeRun(renderTraffic,'renderTraffic');
+  safeRun(renderCampaigns,'renderCampaigns');
   setTimeout(()=>{
     safeRun(()=>buildAnalysis(D.latest.date),'buildAnalysis');
     safeRun(()=>buildRankAnalysis(D.latest.date),'buildRankAnalysis');
@@ -2031,6 +2133,714 @@ function renderAll(){
     safeRun(()=>buildRatingAnalysis(D.latest.date),'buildRatingAnalysis');
   },100);
 }
+
+// ══ CAMPAIGNS TAB (FSN-powered) ═════════════════════════════════════════
+// Data: D.hub.fsn (current month) + D.hub.history.fsn (13 months)
+// Shape: fsn.campaigns[]: [{id,name,brand,spend,revenue,roi,units,views,clicks,sku_count,adgroup_count,skus[]}]
+//        fsn.adgroups[]:  [{key,campaign_id,campaign_name,adgroup_name,brand,spend,revenue,roi,units,skus[]}]
+//        fsn.skus[]:      [{sku,title,brand,spend,revenue,roi,units,direct_units,indirect_units,campaigns[]}]
+//        history.fsn.totals[]: [{month,spend,revenue,roi,tacos,by_brand}, ...]
+//        history.fsn.campaigns[].months.{YYYY-MM} = per-month stats
+
+function _fsn() {
+  if (!D || !D.hub) return null;
+  return D.hub.history && D.hub.history.fsn ? D.hub.history.fsn : null;
+}
+
+function populateCampMonthSelector() {
+  var sel = document.getElementById('camp-month-sel');
+  if (!sel) return;
+  var fsn = _fsn();
+  if (!fsn || !fsn.months || !fsn.months.length) {
+    sel.innerHTML = '<option value="">No FSN data</option>';
+    return;
+  }
+  var months = fsn.months.slice().sort().reverse();  // latest first
+  sel.innerHTML = months.map(function(m){
+    return '<option value="'+m+'">'+monthLabel(m)+'</option>';
+  }).join('');
+  // Default to latest
+  if (!H.camp.month || months.indexOf(H.camp.month) === -1) {
+    H.camp.month = months[0];
+  }
+  sel.value = H.camp.month;
+}
+
+function setCampMonth() {
+  H.camp.month = document.getElementById('camp-month-sel').value;
+  H.camp.drill = null;
+  renderCampaigns();
+}
+
+function setCampView(view, btn) {
+  H.camp.view = view;
+  document.getElementById('camp-view-camp').classList.remove('active');
+  document.getElementById('camp-view-ag').classList.remove('active');
+  document.getElementById('camp-view-sku').classList.remove('active');
+  btn.classList.add('active');
+  // Smart default sort
+  H.camp.sort = 'spend';
+  H.camp.sortDesc = true;
+  H.camp.drill = null;
+  renderCampaigns();
+}
+
+function sortCamp(col) {
+  if (H.camp.sort === col) H.camp.sortDesc = !H.camp.sortDesc;
+  else { H.camp.sort = col; H.camp.sortDesc = true; }
+  renderCampaigns();
+}
+
+function clearCampDrill() {
+  H.camp.drill = null;
+  document.getElementById('camp-drill-card').style.display = 'none';
+}
+
+// Build arrays for selected month, filtered by brand
+function _campMonthData(month, brand) {
+  var fsn = _fsn();
+  if (!fsn) return {campaigns:[], adgroups:[], skus:[], totals:null};
+
+  // Filter campaigns that have data in the selected month
+  var campaigns = fsn.campaigns.filter(function(c){ return c.months && c.months[month]; })
+    .map(function(c){
+      var m = c.months[month];
+      return {
+        id: c.id, name: c.name, brand: c.brand,
+        spend: m.spend, revenue: m.revenue, roi: m.roi,
+        units: m.units, clicks: m.clicks, views: m.views,
+        ctr: m.ctr, cvr: m.cvr,
+        sku_count: m.sku_count, adgroup_count: m.adgroup_count,
+        skus: m.skus || [], adgroups: m.adgroups || [],
+      };
+    });
+
+  var adgroups = fsn.adgroups.filter(function(a){ return a.months && a.months[month]; })
+    .map(function(a){
+      var m = a.months[month];
+      return {
+        key: a.key, campaign_id: a.campaign_id, campaign_name: a.campaign_name,
+        adgroup_id: a.adgroup_id, adgroup_name: a.adgroup_name, brand: a.brand,
+        spend: m.spend, revenue: m.revenue, roi: m.roi,
+        units: m.units, clicks: m.clicks, views: m.views,
+        sku_count: m.sku_count, skus: m.skus || [],
+      };
+    });
+
+  var skus = fsn.skus.filter(function(s){ return s.months && s.months[month]; })
+    .map(function(s){
+      var m = s.months[month];
+      return {
+        sku: s.sku, title: s.title, brand: s.brand,
+        spend: m.spend, revenue: m.revenue, roi: m.roi,
+        units: m.units, direct_units: m.direct_units, indirect_units: m.indirect_units,
+        clicks: m.clicks, views: m.views, cvr: m.cvr,
+        campaign_count: m.campaign_count, adgroup_count: m.adgroup_count,
+      };
+    });
+
+  // Brand filter
+  if (brand && brand !== 'ALL') {
+    campaigns = campaigns.filter(function(c){ return c.brand === brand; });
+    adgroups  = adgroups.filter(function(a){ return a.brand === brand; });
+    skus      = skus.filter(function(s){ return s.brand === brand; });
+  }
+
+  // Monthly totals (take from totals series + brand filter if applicable)
+  var totRec = (fsn.totals || []).find(function(t){ return t.month === month; });
+  var totals = null;
+  if (totRec) {
+    if (brand && brand !== 'ALL' && totRec.by_brand && totRec.by_brand[brand]) {
+      var bb = totRec.by_brand[brand];
+      totals = {
+        spend: bb.spend, revenue: bb.revenue, roi: bb.roi,
+        units: bb.units, clicks: bb.clicks, views: bb.views,
+        net_sales: bb.net_sales || 0,
+        tacos:     bb.tacos,
+      };
+    } else {
+      totals = {
+        spend: totRec.spend, revenue: totRec.revenue, roi: totRec.roi,
+        units: totRec.units, clicks: totRec.clicks, views: totRec.views,
+        net_sales: totRec.net_sales || 0,
+        tacos:     totRec.tacos,
+      };
+    }
+  }
+  return {campaigns:campaigns, adgroups:adgroups, skus:skus, totals:totals};
+}
+
+// Previous month string (for deltas)
+function _prevMonth(month) {
+  if (!month) return null;
+  var y = parseInt(month.slice(0,4), 10);
+  var m = parseInt(month.slice(5,7), 10);
+  m--; if (m === 0) { m = 12; y--; }
+  return y + '-' + (m<10?'0':'') + m;
+}
+
+// ── Main renderer ──────────────────────────────────────────────────────────
+function renderCampaigns() {
+  if (!D || !D.hub) {
+    document.getElementById('camp-kpi').innerHTML =
+      '<div class="stat-card" style="grid-column:1/-1"><div class="stat-label">NO DATA</div></div>';
+    return;
+  }
+  var fsn = _fsn();
+  if (!fsn || !fsn.months || !fsn.months.length) {
+    document.getElementById('camp-kpi').innerHTML =
+      '<div class="stat-card" style="grid-column:1/-1"><div class="stat-label">NO FSN DATA YET</div><div class="stat-sub">Run FK_Hub_Historical.py to build FSN history</div></div>';
+    document.getElementById('camp-table-body').innerHTML = '';
+    return;
+  }
+
+  // Make sure month is populated (in case this fires before populateCampMonthSelector)
+  if (!H.camp.month) H.camp.month = fsn.months[fsn.months.length - 1];
+  var month = H.camp.month;
+  var prevMonth = _prevMonth(month);
+  var brand = H.camp.brand;
+
+  var cur  = _campMonthData(month, brand);
+  var prev = prevMonth ? _campMonthData(prevMonth, brand) : {campaigns:[], adgroups:[], skus:[], totals:null};
+
+  // Window label
+  document.getElementById('camp-window').textContent =
+    monthLabel(month) + (brand !== 'ALL' ? ' · '+brandShort(brand) : '') + ' · ' + cur.campaigns.length + ' campaigns';
+
+  // ── KPI tiles ──
+  var t  = cur.totals  || {spend:0,revenue:0,roi:0,units:0,clicks:0,views:0,net_sales:0,tacos:null};
+  var pt = prev.totals || null;
+  var tacos = t.tacos;         // brand-level when brand filter active, else overall
+  var pTacos = pt ? pt.tacos : null;
+  var netSales = t.net_sales || 0;
+  var pNetSales = pt ? (pt.net_sales || 0) : 0;
+
+  function kpi(label, val, sub, color, delta) {
+    var deltaHtml = delta ? delta.html : '';
+    return '<div class="stat-card"><div class="stat-label">'+label+'</div>' +
+      '<div class="stat-value" style="color:'+color+';font-size:17px">'+val+deltaHtml+'</div>' +
+      '<div class="stat-sub">'+sub+'</div></div>';
+  }
+  function makeDeltaLocal(cur, prev, invert) {
+    if (prev == null || prev === 0 || cur == null) return null;
+    var pct = (cur - prev) / Math.abs(prev) * 100;
+    var up = pct >= 0;
+    var good = invert ? !up : up;
+    var color = good ? 'var(--green)' : 'var(--red)';
+    var arrow = up ? '▲' : '▼';
+    return {pct: pct, html: ' <span style="font-size:10px;color:'+color+';margin-left:4px;font-weight:600">'+arrow+Math.abs(pct).toFixed(1)+'%</span>'};
+  }
+  var tacosSub = netSales > 0 ? 'Spend / Net Sales' : 'no sales data';
+  var kpis = [
+    kpi('Spend',      fmtCr(t.spend),    monthLabel(month),            'var(--red)',    pt ? makeDeltaLocal(t.spend,   pt.spend, true) : null),
+    kpi('Revenue',    fmtCr(t.revenue),  'Direct + Indirect (ad)',     'var(--green)',  pt ? makeDeltaLocal(t.revenue, pt.revenue) : null),
+    kpi('Net Sales',  netSales>0?fmtCr(netSales):'—', 'org + ad (ex-GST)', 'var(--green)', pt ? makeDeltaLocal(netSales, pNetSales) : null),
+    kpi('ROI',        (t.roi||0).toFixed(2)+'x', 'ad Revenue / Spend',  'var(--accent)', pt ? makeDeltaLocal(t.roi||0, pt.roi||0) : null),
+    kpi('TACOS',      tacos!=null?tacos.toFixed(2)+'%':'—', tacosSub,  'var(--orange)', pTacos!=null && tacos!=null ? makeDeltaLocal(tacos, pTacos, true) : null),
+    kpi('Units',      fmtUnits(t.units), 'Direct + Indirect',          'var(--text2)',  pt ? makeDeltaLocal(t.units,   pt.units) : null),
+    kpi('Views',      fmtImpr(t.views),  'Impressions',                'var(--text2)',  pt ? makeDeltaLocal(t.views,   pt.views) : null),
+    kpi('Campaigns',  cur.campaigns.length, 'active this month',       'var(--yellow)', pt ? makeDeltaLocal(cur.campaigns.length, prev.campaigns.length) : null),
+    kpi('AdGroups',   cur.adgroups.length,  'active this month',       'var(--yellow)', pt ? makeDeltaLocal(cur.adgroups.length,  prev.adgroups.length)  : null),
+    kpi('SKUs',       cur.skus.length,      'with ad activity',        'var(--purple)', pt ? makeDeltaLocal(cur.skus.length,      prev.skus.length)      : null),
+  ];
+  document.getElementById('camp-kpi').innerHTML = kpis.join('');
+
+  // ── Charts ──
+  renderCampCharts(fsn, brand);
+
+  // ── Table ──
+  renderCampTable(cur, prev, month);
+
+  // ── Analysis ──
+  renderCampAnalysis(cur, prev, month);
+}
+
+// ── Charts: monthly trend (spend+ROI overlay) + brand doughnut ─────────────
+var _chCampTrend, _chCampBrand;
+function renderCampCharts(fsn, brand) {
+  // Trend: all months, spend bars + ROI line
+  var months = fsn.months.slice().sort();
+  var series = months.map(function(m){
+    var rec = (fsn.totals || []).find(function(t){ return t.month === m; });
+    if (!rec) return {spend:0, roi:0, tacos:null};
+    if (brand && brand !== 'ALL' && rec.by_brand && rec.by_brand[brand]) {
+      var bb = rec.by_brand[brand];
+      return {spend: bb.spend, roi: bb.roi, tacos: bb.tacos};
+    }
+    return {spend: rec.spend, roi: rec.roi, tacos: rec.tacos};
+  });
+  var labels = months.map(monthLabel);
+
+  var ctx1 = document.getElementById('ch-camp-trend');
+  if (_chCampTrend) _chCampTrend.destroy();
+  _chCampTrend = new Chart(ctx1, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {label:'Spend (₹L)', type:'bar', data: series.map(function(s){return (s.spend/1e5).toFixed(1);}),
+         backgroundColor:'rgba(220,53,69,0.55)', borderColor:'rgba(220,53,69,1)', borderWidth:1, yAxisID:'y'},
+        {label:'ROI (x)', type:'line', data: series.map(function(s){return s.roi;}),
+         borderColor:'rgba(0,212,255,1)', backgroundColor:'rgba(0,212,255,0.15)', fill:false, tension:0.2,
+         pointRadius:3, pointBackgroundColor:'rgba(0,212,255,1)', yAxisID:'y1'},
+        {label:'TACOS (%)', type:'line', data: series.map(function(s){return s.tacos;}),
+         borderColor:'rgba(255,171,71,1)', backgroundColor:'rgba(255,171,71,0.10)', fill:false, tension:0.2,
+         pointRadius:3, pointBackgroundColor:'rgba(255,171,71,1)', borderDash:[4,3], yAxisID:'y2', spanGaps:true},
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins: {legend:{labels:{color:'#8892a4',font:{size:10}}}},
+      scales: {
+        x: {ticks:{color:'#8892a4',font:{size:9}}, grid:{color:'rgba(255,255,255,0.03)'}},
+        y: {position:'left', ticks:{color:'#8892a4',font:{size:10}}, grid:{color:'rgba(255,255,255,0.03)'}, title:{display:true,text:'Spend (₹L)',color:'#8892a4',font:{size:10}}},
+        y1:{position:'right', ticks:{color:'#8892a4',font:{size:10}}, grid:{display:false}, title:{display:true,text:'ROI (x)',color:'#8892a4',font:{size:10}}, beginAtZero:true},
+        y2:{position:'right', display:false, beginAtZero:true},
+      }
+    }
+  });
+
+  // Brand doughnut (current month)
+  var month = H.camp.month;
+  var curRec = (fsn.totals || []).find(function(t){ return t.month === month; });
+  var brands = ['BARE ANATOMY','Chemist at Play','SunScoop'];
+  var bData = brands.map(function(b){
+    return curRec && curRec.by_brand && curRec.by_brand[b] ? (curRec.by_brand[b].spend / 1e5).toFixed(1) : 0;
+  });
+  var ctx2 = document.getElementById('ch-camp-brand');
+  if (_chCampBrand) _chCampBrand.destroy();
+  _chCampBrand = new Chart(ctx2, {
+    type: 'doughnut',
+    data: {
+      labels: brands.map(brandShort),
+      datasets: [{data: bData,
+        backgroundColor: ['rgba(102,204,255,0.8)','rgba(255,171,71,0.8)','rgba(255,221,51,0.8)'],
+        borderColor: '#0f1216', borderWidth:2}]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false, cutout:'60%',
+      plugins: {
+        legend:{position:'right',labels:{color:'#8892a4',font:{size:10},boxWidth:10}},
+        tooltip:{callbacks:{label:function(c){return c.label+': ₹'+c.parsed+'L';}}}
+      }
+    }
+  });
+}
+
+// ── Table: 3 view modes (Campaigns / AdGroups / SKUs) ──────────────────────
+function renderCampTable(cur, prev, month) {
+  var view = H.camp.view;
+  var q = (document.getElementById('camp-search')?.value || '').toLowerCase().trim();
+  var col = H.camp.sort, desc = H.camp.sortDesc;
+  var hdr = document.getElementById('camp-table-hdr');
+  var body = document.getElementById('camp-table-body');
+  var title = document.getElementById('camp-table-title');
+  var count = document.getElementById('camp-table-count');
+
+  // Build prev-lookup for deltas
+  function buildLookup(arr, keyFn) {
+    var m = {};
+    arr.forEach(function(x){ m[keyFn(x)] = x; });
+    return m;
+  }
+
+  var rows, prevMap, labels, sortable;
+  if (view === 'campaign') {
+    title.innerHTML = '🎯 Campaigns <span style="color:var(--text3);font-weight:400;font-size:11px;margin-left:8px">click row to see AdGroups →</span>';
+    rows = cur.campaigns.slice();
+    prevMap = buildLookup(prev.campaigns, function(c){ return c.id; });
+    sortable = ['name','brand','spend','revenue','roi','units','views','cvr','sku_count','adgroup_count'];
+  } else if (view === 'adgroup') {
+    title.innerHTML = '📂 AdGroups <span style="color:var(--text3);font-weight:400;font-size:11px;margin-left:8px">click row to see SKUs →</span>';
+    rows = cur.adgroups.slice();
+    prevMap = buildLookup(prev.adgroups, function(a){ return a.key; });
+    sortable = ['adgroup_name','campaign_name','brand','spend','revenue','roi','units','views','sku_count'];
+  } else {
+    title.innerHTML = '📦 SKUs';
+    rows = cur.skus.slice();
+    prevMap = buildLookup(prev.skus, function(s){ return s.sku; });
+    sortable = ['sku','title','brand','spend','revenue','roi','units','direct_units','indirect_units','cvr','campaign_count'];
+  }
+
+  // Search filter
+  if (q) {
+    rows = rows.filter(function(r){
+      var blob = '';
+      if (view === 'campaign') blob = (r.name||'')+' '+(r.brand||'');
+      else if (view === 'adgroup') blob = (r.adgroup_name||'')+' '+(r.campaign_name||'')+' '+(r.brand||'');
+      else blob = (r.sku||'')+' '+(r.title||'')+' '+(r.brand||'');
+      return blob.toLowerCase().includes(q);
+    });
+  }
+  // Sort
+  if (sortable.indexOf(col) === -1) col = 'spend';
+  rows.sort(function(a,b){
+    var x = a[col], y = b[col];
+    if (typeof x === 'string' || typeof y === 'string') {
+      x=(x||'').toString(); y=(y||'').toString();
+      return desc ? y.localeCompare(x) : x.localeCompare(y);
+    }
+    x = x == null ? (desc?-Infinity:Infinity) : x;
+    y = y == null ? (desc?-Infinity:Infinity) : y;
+    return desc ? y-x : x-y;
+  });
+
+  // Headers
+  function th(id, label, right) {
+    var ind = col === id ? (desc?' ▼':' ▲') : '';
+    return '<th '+(right?'style="text-align:right"':'')+' onclick="sortCamp(\''+id+'\')">'+label+ind+'</th>';
+  }
+  if (view === 'campaign') {
+    hdr.innerHTML =
+      th('name', 'Campaign') +
+      th('brand', 'Brand') +
+      th('spend', 'Spend', true) +
+      th('revenue', 'Revenue', true) +
+      th('roi', 'ROI', true) +
+      th('units', 'Units', true) +
+      th('views', 'Views', true) +
+      th('cvr', 'CVR', true) +
+      th('adgroup_count', 'AGs', true) +
+      th('sku_count', 'SKUs', true);
+  } else if (view === 'adgroup') {
+    hdr.innerHTML =
+      th('adgroup_name', 'AdGroup') +
+      th('campaign_name', 'Campaign') +
+      th('brand', 'Brand') +
+      th('spend', 'Spend', true) +
+      th('revenue', 'Revenue', true) +
+      th('roi', 'ROI', true) +
+      th('units', 'Units', true) +
+      th('views', 'Views', true) +
+      th('sku_count', 'SKUs', true);
+  } else {
+    hdr.innerHTML =
+      th('sku', 'SKU') +
+      th('title', 'Product') +
+      th('brand', 'Brand') +
+      th('spend', 'Spend', true) +
+      th('revenue', 'Revenue', true) +
+      th('roi', 'ROI', true) +
+      th('units', 'Units', true) +
+      th('direct_units', 'Direct', true) +
+      th('indirect_units', 'Indirect', true) +
+      th('cvr', 'CVR', true) +
+      th('campaign_count', 'Camps', true);
+  }
+
+  count.textContent = rows.length + ' rows · Spend ' + fmtCr(rows.reduce(function(a,r){return a+(r.spend||0);},0));
+
+  // Body
+  function roiCol(v) {
+    if (v == null) return 'var(--text3)';
+    if (v >= 3) return 'var(--green)';
+    if (v >= 1.5) return 'var(--orange)';
+    return 'var(--red)';
+  }
+  function deltaSpan(cur, prev, invert) {
+    if (prev == null || prev === 0 || cur == null) return '';
+    var pct = (cur - prev) / Math.abs(prev) * 100;
+    if (Math.abs(pct) < 1) return '';
+    var up = pct >= 0;
+    var good = invert ? !up : up;
+    var color = good ? 'var(--green)' : 'var(--red)';
+    return ' <span style="font-size:9px;color:'+color+';font-weight:600">'+(up?'▲':'▼')+Math.abs(pct).toFixed(0)+'%</span>';
+  }
+  function monoR(v, col) {
+    return '<td style="text-align:right;font-family:Courier New,monospace'+(col?';color:'+col:'')+'">'+v+'</td>';
+  }
+
+  if (rows.length === 0) {
+    body.innerHTML = '<tr><td colspan="10" class="empty">No rows match</td></tr>';
+    return;
+  }
+
+  if (view === 'campaign') {
+    body.innerHTML = rows.slice(0, 300).map(function(r){
+      var prev_r = prevMap[r.id];
+      var roi = r.roi != null ? r.roi.toFixed(2) + 'x' : '—';
+      return '<tr style="cursor:pointer" onclick="drillCamp(\''+r.id+'\')">' +
+        '<td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.name||'')+'">'+(r.name||'—').slice(0,48)+'</td>' +
+        '<td>'+brandPill(r.brand)+'</td>' +
+        monoR(fmtCr(r.spend) + (prev_r ? deltaSpan(r.spend, prev_r.spend, true) : ''), 'var(--red)') +
+        monoR(fmtCr(r.revenue) + (prev_r ? deltaSpan(r.revenue, prev_r.revenue) : ''), 'var(--green)') +
+        monoR(roi, roiCol(r.roi)) +
+        monoR(fmtUnits(r.units)) +
+        monoR(fmtImpr(r.views)) +
+        monoR(fmtPct(r.cvr, 2)) +
+        monoR(r.adgroup_count) +
+        monoR(r.sku_count) +
+        '</tr>';
+    }).join('');
+  } else if (view === 'adgroup') {
+    body.innerHTML = rows.slice(0, 300).map(function(r){
+      var prev_r = prevMap[r.key];
+      var roi = r.roi != null ? r.roi.toFixed(2) + 'x' : '—';
+      return '<tr style="cursor:pointer" onclick="drillAdGroup(\''+r.key.replace(/\'/g,"\\\\'")+'\')">' +
+        '<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.adgroup_name||'')+'">'+(r.adgroup_name||'—').slice(0,40)+'</td>' +
+        '<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text3)" title="'+(r.campaign_name||'')+'">'+(r.campaign_name||'—').slice(0,40)+'</td>' +
+        '<td>'+brandPill(r.brand)+'</td>' +
+        monoR(fmtCr(r.spend) + (prev_r ? deltaSpan(r.spend, prev_r.spend, true) : ''), 'var(--red)') +
+        monoR(fmtCr(r.revenue) + (prev_r ? deltaSpan(r.revenue, prev_r.revenue) : ''), 'var(--green)') +
+        monoR(roi, roiCol(r.roi)) +
+        monoR(fmtUnits(r.units)) +
+        monoR(fmtImpr(r.views)) +
+        monoR(r.sku_count) +
+        '</tr>';
+    }).join('');
+  } else {
+    body.innerHTML = rows.slice(0, 300).map(function(r){
+      var prev_r = prevMap[r.sku];
+      var roi = r.roi != null ? r.roi.toFixed(2) + 'x' : '—';
+      return '<tr>' +
+        '<td class="pid">'+(r.sku||'—')+'</td>' +
+        '<td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.title||'')+'">'+(r.title||'—').slice(0,48)+'</td>' +
+        '<td>'+brandPill(r.brand)+'</td>' +
+        monoR(fmtCr(r.spend) + (prev_r ? deltaSpan(r.spend, prev_r.spend, true) : ''), 'var(--red)') +
+        monoR(fmtCr(r.revenue) + (prev_r ? deltaSpan(r.revenue, prev_r.revenue) : ''), 'var(--green)') +
+        monoR(roi, roiCol(r.roi)) +
+        monoR(fmtUnits(r.units)) +
+        monoR(fmtUnits(r.direct_units)) +
+        monoR(fmtUnits(r.indirect_units)) +
+        monoR(fmtPct(r.cvr, 2)) +
+        monoR(r.campaign_count) +
+        '</tr>';
+    }).join('');
+  }
+}
+
+// ── Drill-down: click a campaign row to see its AdGroups + monthly trend ──
+function drillCamp(campId) {
+  var fsn = _fsn();
+  if (!fsn) return;
+  var c = fsn.campaigns.find(function(x){ return x.id === campId; });
+  if (!c) return;
+  var month = H.camp.month;
+
+  var card = document.getElementById('camp-drill-card');
+  var title = document.getElementById('camp-drill-title');
+  var body = document.getElementById('camp-drill-body');
+  title.innerHTML = '🎯 ' + (c.name || c.id) + ' · ' + brandPill(c.brand) +
+    ' <span style="font-size:11px;color:var(--text3);margin-left:8px">active ' + c.totals.months_active + ' months</span>';
+
+  // AdGroups within this campaign (current month)
+  var ags = fsn.adgroups.filter(function(a){
+    return a.campaign_id === campId && a.months && a.months[month];
+  }).map(function(a){
+    var m = a.months[month];
+    return Object.assign({}, a, m);
+  }).sort(function(a,b){ return b.spend - a.spend; });
+
+  // Monthly series for this campaign
+  var months = fsn.months.slice().sort();
+  var series = months.map(function(m){
+    var rec = c.months[m];
+    return rec ? {m:m, spend:rec.spend, revenue:rec.revenue, roi:rec.roi} : {m:m, spend:0, revenue:0, roi:0};
+  });
+
+  // Build HTML
+  var lines = '';
+  lines += '<div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px">';
+  lines += '  <div style="background:var(--bg2);padding:12px;border-radius:6px"><div style="color:var(--text3);font-size:11px;margin-bottom:6px">Monthly Spend (₹L)</div>';
+  lines += '    <canvas id="camp-drill-chart" height="150"></canvas></div>';
+  lines += '  <div style="background:var(--bg2);padding:12px;border-radius:6px">';
+  lines += '    <div style="color:var(--text3);font-size:11px;margin-bottom:8px">Cumulative</div>';
+  lines += '    <div style="font-family:Courier New,monospace;font-size:12px;line-height:1.8">';
+  lines += '      Spend: <b style="color:var(--red)">'+fmtCr(c.totals.spend)+'</b><br>';
+  lines += '      Revenue: <b style="color:var(--green)">'+fmtCr(c.totals.revenue)+'</b><br>';
+  lines += '      ROI: <b style="color:var(--accent)">'+(c.totals.roi!=null?c.totals.roi.toFixed(2)+'x':'—')+'</b><br>';
+  lines += '      Units: <b>'+fmtUnits(c.totals.units)+'</b><br>';
+  lines += '      Views: <b>'+fmtImpr(c.totals.views)+'</b>';
+  lines += '    </div></div></div>';
+
+  lines += '<div style="color:var(--text3);font-size:11px;margin-bottom:6px">AdGroups in '+monthLabel(month)+' ('+ags.length+')</div>';
+  lines += '<table style="width:100%"><thead><tr>';
+  lines += '<th>AdGroup</th><th style="text-align:right">Spend</th><th style="text-align:right">Revenue</th><th style="text-align:right">ROI</th><th style="text-align:right">Units</th><th style="text-align:right">SKUs</th>';
+  lines += '</tr></thead><tbody>';
+  if (!ags.length) lines += '<tr><td colspan="6" class="empty">No AdGroups in this month</td></tr>';
+  ags.forEach(function(a){
+    var roi = a.roi != null ? a.roi.toFixed(2) + 'x' : '—';
+    var rcol = a.roi >= 3 ? 'var(--green)' : a.roi >= 1.5 ? 'var(--orange)' : 'var(--red)';
+    lines += '<tr><td>'+(a.adgroup_name||'—')+'</td>';
+    lines += '<td style="text-align:right;font-family:Courier New,monospace;color:var(--red)">'+fmtCr(a.spend)+'</td>';
+    lines += '<td style="text-align:right;font-family:Courier New,monospace;color:var(--green)">'+fmtCr(a.revenue)+'</td>';
+    lines += '<td style="text-align:right;font-family:Courier New,monospace;color:'+rcol+'">'+roi+'</td>';
+    lines += '<td style="text-align:right;font-family:Courier New,monospace">'+fmtUnits(a.units)+'</td>';
+    lines += '<td style="text-align:right;font-family:Courier New,monospace">'+a.sku_count+'</td></tr>';
+  });
+  lines += '</tbody></table>';
+
+  body.innerHTML = lines;
+  card.style.display = 'block';
+  card.scrollIntoView({behavior:'smooth', block:'start'});
+
+  // Render mini chart
+  setTimeout(function(){
+    var ctx = document.getElementById('camp-drill-chart');
+    if (!ctx) return;
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: months.map(monthLabel),
+        datasets: [
+          {label:'Spend (₹L)', data: series.map(function(s){return (s.spend/1e5).toFixed(1);}),
+           backgroundColor:'rgba(220,53,69,0.55)', yAxisID:'y'},
+          {label:'ROI', type:'line', data: series.map(function(s){return s.roi;}),
+           borderColor:'rgba(0,212,255,1)', backgroundColor:'transparent', tension:0.2, pointRadius:2, yAxisID:'y1'},
+        ]
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{labels:{color:'#8892a4',font:{size:9}}}},
+        scales:{
+          x:{ticks:{color:'#8892a4',font:{size:8}}, grid:{color:'rgba(255,255,255,0.03)'}},
+          y:{ticks:{color:'#8892a4',font:{size:9}}, grid:{color:'rgba(255,255,255,0.03)'}},
+          y1:{position:'right', ticks:{color:'#8892a4',font:{size:9}}, grid:{display:false}},
+        }
+      }
+    });
+  }, 80);
+}
+
+function drillAdGroup(key) {
+  var fsn = _fsn();
+  if (!fsn) return;
+  var a = fsn.adgroups.find(function(x){ return x.key === key; });
+  if (!a) return;
+  var month = H.camp.month;
+  var curM = a.months[month];
+  if (!curM) return;
+
+  var card = document.getElementById('camp-drill-card');
+  var title = document.getElementById('camp-drill-title');
+  var body = document.getElementById('camp-drill-body');
+  title.innerHTML = '📂 ' + (a.adgroup_name || a.adgroup_id) + ' <span style="color:var(--text3);font-size:11px;margin-left:6px">in '+ (a.campaign_name||'—') +'</span>';
+
+  // SKUs in this adgroup (current month) — look them up from fsn.skus
+  var skuList = curM.skus || [];
+  var skus = skuList.map(function(s){
+    var rec = fsn.skus.find(function(x){ return x.sku === s; });
+    if (!rec || !rec.months || !rec.months[month]) return {sku:s, title:'—', brand:'—', spend:0,revenue:0,roi:null,units:0};
+    var m = rec.months[month];
+    return Object.assign({sku: rec.sku, title: rec.title, brand: rec.brand}, m);
+  }).sort(function(x,y){ return y.spend - x.spend; });
+
+  var lines = '';
+  lines += '<div style="background:var(--bg2);padding:10px;border-radius:6px;margin-bottom:12px;font-family:Courier New,monospace;font-size:12px">';
+  lines += 'Spend: <b style="color:var(--red)">'+fmtCr(curM.spend)+'</b> · ';
+  lines += 'Revenue: <b style="color:var(--green)">'+fmtCr(curM.revenue)+'</b> · ';
+  lines += 'ROI: <b style="color:var(--accent)">'+(curM.roi!=null?curM.roi.toFixed(2)+'x':'—')+'</b> · ';
+  lines += 'Units: <b>'+fmtUnits(curM.units)+'</b> · ';
+  lines += 'Active '+a.totals.months_active+' months</div>';
+
+  lines += '<div style="color:var(--text3);font-size:11px;margin-bottom:6px">SKUs in '+monthLabel(month)+' ('+skus.length+')</div>';
+  lines += '<table style="width:100%"><thead><tr><th>SKU</th><th>Product</th><th style="text-align:right">Spend</th><th style="text-align:right">Revenue</th><th style="text-align:right">ROI</th><th style="text-align:right">Units</th></tr></thead><tbody>';
+  if (!skus.length) lines += '<tr><td colspan="6" class="empty">No SKUs</td></tr>';
+  skus.forEach(function(s){
+    var roi = s.roi != null ? s.roi.toFixed(2)+'x' : '—';
+    var rcol = s.roi >= 3 ? 'var(--green)' : s.roi >= 1.5 ? 'var(--orange)' : 'var(--red)';
+    lines += '<tr><td class="pid">'+s.sku+'</td>';
+    lines += '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(s.title||'')+'">'+(s.title||'—').slice(0,50)+'</td>';
+    lines += '<td style="text-align:right;font-family:Courier New,monospace;color:var(--red)">'+fmtCr(s.spend)+'</td>';
+    lines += '<td style="text-align:right;font-family:Courier New,monospace;color:var(--green)">'+fmtCr(s.revenue)+'</td>';
+    lines += '<td style="text-align:right;font-family:Courier New,monospace;color:'+rcol+'">'+roi+'</td>';
+    lines += '<td style="text-align:right;font-family:Courier New,monospace">'+fmtUnits(s.units)+'</td></tr>';
+  });
+  lines += '</tbody></table>';
+
+  body.innerHTML = lines;
+  card.style.display = 'block';
+  card.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+// ── Analysis: Top spenders, worst ROI, new launches, declining ─────────────
+function renderCampAnalysis(cur, prev, month) {
+  var host = document.getElementById('camp-analysis');
+  if (!host) return;
+  if (!cur.campaigns.length) { host.innerHTML = '<div class="empty">No data</div>'; return; }
+
+  function prevOf(id) { return prev.campaigns.find(function(c){ return c.id === id; }); }
+  function cmpLine(name, curV, prevV, fmt, invert) {
+    var cv = fmt(curV);
+    var pv = prevV != null ? fmt(prevV) : '—';
+    var delta = '';
+    if (prevV != null && prevV !== 0) {
+      var pct = (curV - prevV) / Math.abs(prevV) * 100;
+      var up = pct >= 0;
+      var good = invert ? !up : up;
+      delta = ' <span style="color:'+(good?'var(--green)':'var(--red)')+';font-size:10px">'+(up?'▲':'▼')+Math.abs(pct).toFixed(0)+'%</span>';
+    }
+    return '<div style="padding:3px 0"><span style="color:var(--text3);font-size:10px">'+name+'</span> — '+cv+' <span style="color:var(--text3);font-size:10px">(vs '+pv+')</span>'+delta+'</div>';
+  }
+  function card(title, color, itemsHtml) {
+    return '<div style="background:var(--bg2);padding:10px 12px;border-radius:6px;border-left:3px solid '+color+'">' +
+      '<div style="color:'+color+';font-weight:600;font-size:11px;margin-bottom:6px">'+title+'</div>'+itemsHtml+'</div>';
+  }
+
+  // Top 5 spenders
+  var topSpend = cur.campaigns.slice().sort(function(a,b){return b.spend-a.spend;}).slice(0,5);
+  var h1 = topSpend.map(function(c){
+    var p = prevOf(c.id);
+    return cmpLine(c.name.slice(0,36), c.spend, p ? p.spend : null, fmtCr, true);
+  }).join('');
+
+  // Worst ROI (spend > ₹50K)
+  var worstRoi = cur.campaigns.filter(function(c){ return c.spend > 50000 && c.roi != null; })
+    .sort(function(a,b){return (a.roi||99)-(b.roi||99);}).slice(0,5);
+  var h2 = worstRoi.map(function(c){
+    var p = prevOf(c.id);
+    return cmpLine(c.name.slice(0,36) + ' (ROI '+c.roi.toFixed(2)+'x)', c.spend, p ? p.spend : null, fmtCr, true);
+  }).join('');
+  if (!h2) h2 = '<div class="empty">No low-ROI campaigns with significant spend</div>';
+
+  // Best ROI (spend > ₹20K)
+  var bestRoi = cur.campaigns.filter(function(c){ return c.spend > 20000 && c.roi != null; })
+    .sort(function(a,b){return (b.roi||0)-(a.roi||0);}).slice(0,5);
+  var h3 = bestRoi.map(function(c){
+    return cmpLine(c.name.slice(0,36) + ' (ROI '+c.roi.toFixed(2)+'x)', c.revenue, null, fmtCr, false);
+  }).join('');
+  if (!h3) h3 = '<div class="empty">—</div>';
+
+  // New this month (not seen in prev)
+  var newThis = cur.campaigns.filter(function(c){ return !prev.campaigns.find(function(p){ return p.id === c.id; }); })
+    .sort(function(a,b){return b.spend-a.spend;}).slice(0,5);
+  var h4 = newThis.map(function(c){
+    return '<div style="padding:3px 0"><b>'+c.name.slice(0,36)+'</b> — '+fmtCr(c.spend)+' · ROI '+(c.roi!=null?c.roi.toFixed(2)+'x':'—')+'</div>';
+  }).join('');
+  if (!h4) h4 = '<div class="empty">No new campaigns</div>';
+
+  // Biggest decliners in spend (% drop)
+  var decliners = cur.campaigns.map(function(c){
+    var p = prevOf(c.id);
+    if (!p || p.spend === 0) return null;
+    var pct = (c.spend - p.spend) / p.spend * 100;
+    return {c:c, p:p, pct:pct};
+  }).filter(function(x){ return x && x.pct < -20 && x.p.spend > 20000; })
+    .sort(function(a,b){return a.pct-b.pct;}).slice(0,5);
+  var h5 = decliners.map(function(x){
+    return cmpLine(x.c.name.slice(0,36), x.c.spend, x.p.spend, fmtCr, true);
+  }).join('');
+  if (!h5) h5 = '<div class="empty">No significant decliners</div>';
+
+  // High TACOS alert (spend > 20K, ROI < 2x)
+  var highTacos = cur.campaigns.filter(function(c){ return c.spend > 20000 && c.roi != null && c.roi < 2; })
+    .sort(function(a,b){return b.spend-a.spend;}).slice(0,5);
+  var h6 = highTacos.map(function(c){
+    return '<div style="padding:3px 0"><b>'+c.name.slice(0,36)+'</b> — '+fmtCr(c.spend)+' at ROI '+c.roi.toFixed(2)+'x</div>';
+  }).join('');
+  if (!h6) h6 = '<div class="empty">No alerts</div>';
+
+  host.innerHTML =
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px">' +
+    card('💰 Top Spenders',   'var(--red)',    h1) +
+    card('⚠️ Worst ROI',       'var(--orange)', h2) +
+    card('🚀 Best ROI',        'var(--green)',  h3) +
+    card('🆕 New This Month',  'var(--accent)', h4) +
+    card('📉 Biggest Decliners','var(--yellow)',h5) +
+    card('🔥 High TACOS Alert','var(--red)',    h6) +
+    '</div>';
+}
+
 
 // ══ OVERVIEW ════════════════════════════════════════════════════════
 function renderOverview() {

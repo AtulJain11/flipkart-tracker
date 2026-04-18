@@ -443,12 +443,15 @@ function checkPW(){
         <th onclick="sortHub('sales','brand')">Brand</th>
         <th style="text-align:right" onclick="sortHub('sales','mrp')">MRP</th>
         <th style="text-align:right" onclick="sortHub('sales','sp')">SP</th>
-        <th style="text-align:right" onclick="sortHub('sales','net_sales')">Net Sales ▼</th>
-        <th style="text-align:right" onclick="sortHub('sales','net_units')">Units</th>
-        <th style="text-align:right" onclick="sortHub('sales','gmv')">GMV</th>
-        <th style="text-align:right" onclick="sortHub('sales','drr')">DRR</th>
-        <th style="text-align:right" onclick="sortHub('sales','cancel_pct')">Cancel %</th>
-        <th style="text-align:right" onclick="sortHub('sales','return_pct')">Return %</th>
+        <th style="text-align:right" onclick="sortHub('sales','disc_pct')">Disc%</th>
+        <th style="text-align:right" onclick="sortHub('sales','net_sales')">Sales ▼</th>
+        <th style="text-align:right" onclick="sortHub('sales','net_ex_gst')">Net (ex-GST)</th>
+        <th style="text-align:right" onclick="sortHub('sales','units')">Units</th>
+        <th style="text-align:right" onclick="sortHub('sales','cancel_pct')">Cancel%</th>
+        <th style="text-align:right" onclick="sortHub('sales','return_pct')">Return%</th>
+        <th style="text-align:right" onclick="sortHub('sales','aov')">AOV</th>
+        <th style="text-align:right" onclick="sortHub('sales','drr_sales')">DRR ₹</th>
+        <th style="text-align:right" onclick="sortHub('sales','drr_units')">DRR U</th>
       </tr></thead>
       <tbody id="sales-sku-body"></tbody>
     </table>
@@ -1014,17 +1017,43 @@ function aggregateWindow(win, brand) {
     out.totals.ad_clicks = adsR.reduce(function(a,d){return a + adVal(d,'clicks');}, 0);
     out.totals.ad_views  = adsR.reduce(function(a,d){return a + adVal(d,'views');}, 0);
 
-    // Traffic daily
-    var trafD = (hub.traffic && hub.traffic.daily) ? hub.traffic.daily : [];
-    var trafR = trafD.filter(function(d){
-      if (win.singleDay) return d.date === win.singleDay;
-      if (win.dayRange)  return d.date >= win.dayRange[0] && d.date <= win.dayRange[1];
-      return false;
-    });
-    out.totals.views           = sumField(trafR, 'views');
-    out.totals.clicks          = sumField(trafR, 'clicks');
-    out.totals.traffic_sales   = sumField(trafR, 'sales');
-    out.totals.traffic_revenue = sumField(trafR, 'revenue');
+    // Traffic daily — when brand filter active, aggregate from sku_daily (which is brand-tagged)
+    if (brand === 'ALL') {
+      var trafD = (hub.traffic && hub.traffic.daily) ? hub.traffic.daily : [];
+      var trafR = trafD.filter(function(d){
+        if (win.singleDay) return d.date === win.singleDay;
+        if (win.dayRange)  return d.date >= win.dayRange[0] && d.date <= win.dayRange[1];
+        return false;
+      });
+      out.totals.views           = sumField(trafR, 'views');
+      out.totals.clicks          = sumField(trafR, 'clicks');
+      out.totals.traffic_sales   = sumField(trafR, 'sales');
+      out.totals.traffic_revenue = sumField(trafR, 'revenue');
+    } else {
+      // Brand-filtered: sum sku_daily rows for brand's SKUs in window
+      var skuBrandMap = {};
+      (hub.skus || []).forEach(function(s){ if (s.brand === brand) skuBrandMap[s.sku] = 1; });
+      var tsd = [];
+      if (hub.traffic && hub.traffic.sku_daily) tsd = tsd.concat(hub.traffic.sku_daily);
+      if (hub.history && hub.history.traffic_sku_daily) {
+        var seenT = new Set((hub.traffic && hub.traffic.sku_daily || []).map(function(r){return r.sku+'|'+r.date;}));
+        hub.history.traffic_sku_daily.forEach(function(r){
+          if (!seenT.has(r.sku+'|'+r.date)) tsd.push(r);
+        });
+      }
+      var v=0, c=0, s_=0, rv=0;
+      tsd.forEach(function(r){
+        if (!skuBrandMap[r.sku]) return;
+        var inWin = win.singleDay ? (r.date === win.singleDay) :
+                    win.dayRange  ? (r.date >= win.dayRange[0] && r.date <= win.dayRange[1]) : false;
+        if (!inWin) return;
+        v += r.views||0; c += r.clicks||0; s_ += r.sales||0; rv += r.revenue||0;
+      });
+      out.totals.views = v;
+      out.totals.clicks = c;
+      out.totals.traffic_sales = s_;
+      out.totals.traffic_revenue = rv;
+    }
 
     // SKU-level: start from MTD snapshot (hub.skus[]) which has sales/ad fields.
     // For traffic views/clicks/sales/revenue we override with real per-day data
@@ -1364,8 +1393,12 @@ function renderSales() {
   skusArr.forEach(function(s){
     s.net_sales = s.sales;  // alias
     s.net_ex_gst = s.sales / 1.18;
-    s.disc_pct = (s.mrp && s.gross_units > 0 && s.gmv > 0) ? ((s.mrp * s.gross_units - s.gmv) / (s.mrp * s.gross_units) * 100) : null;
-    if (s.disc_pct == null && s.mrp && s.sp) {  // fallback to master
+    // Disc% per user-requested formula: (MRP_total − Sales) / MRP_total
+    // where MRP_total = MRP × units_sold (net units for consistency with Net Sales)
+    var mrpTot = (s.mrp && s.units > 0) ? s.mrp * s.units : 0;
+    s.disc_pct = (mrpTot > 0) ? ((mrpTot - s.sales) / mrpTot * 100) : null;
+    // Fallback: compute from master MRP/SP if no sales data
+    if (s.disc_pct == null && s.mrp && s.sp) {
       s.disc_pct = (s.mrp - s.sp) / s.mrp * 100;
     }
     s.cancel_pct = s.gmv > 0 ? s.cxl/s.gmv*100 : 0;

@@ -289,7 +289,7 @@ function checkPW(){
       <thead><tr>
         <th>#</th><th style="min-width:140px">Vertical</th>
         <th style="text-align:right">SKUs</th>
-        <th style="text-align:right">Net Sales</th>
+        <th style="text-align:right">Sales</th>
         <th style="text-align:right">Units</th>
         <th style="text-align:right">Ad Spend</th>
         <th style="text-align:right">Ad Rev</th>
@@ -309,8 +309,8 @@ function checkPW(){
 
   <!-- Charts: 12-month Sales/Ads trend + Brand share donut -->
   <div class="chart-grid" style="grid-template-columns:2fr 1fr;margin-bottom:14px">
-    <div class="chart-card"><div class="chart-title">12-Month Trend · Net Sales &amp; Ad Spend</div><div class="chart-wrap"><canvas id="ch-ov-trend"></canvas></div></div>
-    <div class="chart-card"><div class="chart-title">Brand Share · Net Sales</div><div class="chart-wrap"><canvas id="ch-ov-brand"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">12-Month Trend · Sales &amp; Ad Spend</div><div class="chart-wrap"><canvas id="ch-ov-trend"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">Brand Share · Sales</div><div class="chart-wrap"><canvas id="ch-ov-brand"></canvas></div></div>
   </div>
 
   <!-- Secondary charts: SP Compliance (Mismatch only) + Rank Distribution donut -->
@@ -461,7 +461,7 @@ function checkPW(){
 
   <!-- Charts -->
   <div class="chart-grid" style="grid-template-columns:2fr 1fr">
-    <div class="chart-card"><div class="chart-title">Net Sales & Gross Sales (₹ daily)</div><div class="chart-wrap"><canvas id="ch-sales-trend"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">Sales (₹ daily)</div><div class="chart-wrap"><canvas id="ch-sales-trend"></canvas></div></div>
     <div class="chart-card"><div class="chart-title">Sales by Brand</div><div class="chart-wrap"><canvas id="ch-sales-brand"></canvas></div></div>
   </div>
 
@@ -481,7 +481,7 @@ function checkPW(){
         <th style="text-align:right" onclick="sortHub('sales','sp')">SP</th>
         <th style="text-align:right" onclick="sortHub('sales','disc_pct')">Disc%</th>
         <th style="text-align:right" onclick="sortHub('sales','net_sales')">Sales ▼</th>
-        <th style="text-align:right" onclick="sortHub('sales','net_ex_gst')">Net (ex-GST)</th>
+        <th style="text-align:right" onclick="sortHub('sales','net_ex_gst')">Net Sales</th>
         <th style="text-align:right" onclick="sortHub('sales','units')">Units</th>
         <th style="text-align:right" onclick="sortHub('sales','cancel_pct')">Cancel%</th>
         <th style="text-align:right" onclick="sortHub('sales','return_pct')">Return%</th>
@@ -1578,10 +1578,10 @@ function renderSales() {
     kpiTile('MRP (total)',     totalMrp>0?fmtCr(totalMrp):'—', 'Σ(units × MRP)', 'var(--text2)', p && pTotalMrp ? makeDelta(totalMrp, pTotalMrp) : null),
     kpiTile('Sales',           fmtCr(sales),         fmtUnits(units)+' units', 'var(--green)',  p ? makeDelta(sales, pSales) : null),
     kpiTile('Net Sales',       fmtCr(netExGst),      'ex-GST (÷1.18)',          'var(--green)',  p ? makeDelta(netExGst, pNet) : null),
-    kpiTile('Disc %',          discPct!=null?discPct.toFixed(1)+'%':'—', '(MRP − Net) / MRP', 'var(--orange)', p && pDiscPct!=null ? makeDelta(discPct, pDiscPct, true) : null),
+    kpiTile('Disc %',          discPct!=null?discPct.toFixed(1)+'%':'—', '(MRP − Sales) / MRP', 'var(--orange)', p && pDiscPct!=null ? makeDelta(discPct, pDiscPct, true) : null),
     kpiTile('Units',           fmtUnits(units),      'final sale',              'var(--accent)', p ? makeDelta(units, pUnits) : null),
-    kpiTile('Cancellations',   fmtCr(t.cxl),         fmtPct(cancelPct,1)+' of gross', 'var(--red)', p ? makeDelta(t.cxl, p.cxl, true) : null),
-    kpiTile('Returns',         fmtCr(t.rtn),         fmtPct(returnPct,1)+' of gross', 'var(--orange)', p ? makeDelta(t.rtn, p.rtn, true) : null),
+    kpiTile('Cancellations',   fmtCr(t.cxl),         fmtPct(cancelPct,1)+' of GMV', 'var(--red)', p ? makeDelta(t.cxl, p.cxl, true) : null),
+    kpiTile('Returns',         fmtCr(t.rtn),         fmtPct(returnPct,1)+' of GMV', 'var(--orange)', p ? makeDelta(t.rtn, p.rtn, true) : null),
     kpiTile('AOV',             aov!=null?'₹'+Math.round(aov):'—', 'Sales/Units', 'var(--purple)', p && pAov ? makeDelta(aov, pAov) : null),
     kpiTile('DRR ₹',           fmtCr(drrSales),      'per day',                 'var(--yellow)', p ? makeDelta(drrSales, pDrrSales) : null),
     kpiTile('DRR units',       fmtUnits(drrUnits),   'per day',                 'var(--yellow)', p ? makeDelta(drrUnits, pDrrUnits) : null),
@@ -1624,8 +1624,7 @@ function renderSales() {
   charts['sales-trend'] = new Chart(document.getElementById('ch-sales-trend').getContext('2d'), {
     type: useDaily ? 'line' : 'bar',
     data:{labels:chartLabels, datasets:[
-      {label:'Gross (₹L)', data:chartGmv,   backgroundColor:'rgba(79,142,247,.55)', borderColor:'#4f8ef7', borderWidth:1.5, fill:false, tension:.35, pointRadius:2, order:2},
-      {label:'Sales (₹L)', data:chartSales, backgroundColor:'rgba(62,207,142,.85)', borderColor:'#3ecf8e', borderWidth:2,   fill:false, tension:.35, pointRadius:3, order:1},
+      {label:'Sales (₹L)', data:chartSales, backgroundColor:'rgba(62,207,142,.85)', borderColor:'#3ecf8e', borderWidth:2, fill:false, tension:.35, pointRadius:3, order:1},
     ]},
     options:{responsive:true, maintainAspectRatio:false,
       plugins:{legend:{labels:{color:'#8892a4',font:{size:10},boxWidth:10}}},
@@ -1710,7 +1709,7 @@ function renderSales() {
       '<th style="text-align:right" onclick="sortHub(\'sales\',\'sp\')">SP</th>' +
       '<th style="text-align:right" onclick="sortHub(\'sales\',\'disc_pct\')">Disc%</th>' +
       '<th style="text-align:right" onclick="sortHub(\'sales\',\'net_sales\')">Sales ▼</th>' +
-      '<th style="text-align:right" onclick="sortHub(\'sales\',\'net_ex_gst\')">Net (ex-GST)</th>' +
+      '<th style="text-align:right" onclick="sortHub(\'sales\',\'net_ex_gst\')">Net Sales</th>' +
       '<th style="text-align:right" onclick="sortHub(\'sales\',\'units\')">Units</th>' +
       '<th style="text-align:right" onclick="sortHub(\'sales\',\'cancel_pct\')">Cancel%</th>' +
       '<th style="text-align:right" onclick="sortHub(\'sales\',\'return_pct\')">Return%</th>' +
@@ -2417,7 +2416,7 @@ function renderSalesAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical) 
   // Top cancel rates
   var topCxl = skuArr.filter(function(s){return s.gmv > 50000;}).sort(function(a,b){return b.cancel_pct-a.cancel_pct;}).slice(0,5);
   if (topCxl.length) {
-    html += '<div>' + insightBlock('🚨 Top Cancel Rates (GMV>₹50K)', 'var(--red)',
+    html += '<div>' + insightBlock('🚨 Top Cancel Rates (Sales>₹50K)', 'var(--red)',
       topCxl.map(function(s){ var p=prevSkus[s.sku]||{}; var pCxl = (p.gmv>0) ? p.cxl/p.gmv*100 : null;
         return cmpSkuLine(s.sku, s.title, s.cancel_pct, pCxl, function(v){return v!=null?v.toFixed(1)+'%':'—';}, true); })
     ) + '</div>';
@@ -2426,7 +2425,7 @@ function renderSalesAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical) 
   // Top return rates
   var topRtn = skuArr.filter(function(s){return s.gmv > 50000;}).sort(function(a,b){return b.return_pct-a.return_pct;}).slice(0,5);
   if (topRtn.length) {
-    html += '<div>' + insightBlock('↩️ Top Return Rates (GMV>₹50K)', 'var(--orange)',
+    html += '<div>' + insightBlock('↩️ Top Return Rates (Sales>₹50K)', 'var(--orange)',
       topRtn.map(function(s){ var p=prevSkus[s.sku]||{}; var pRtn = (p.gmv>0) ? p.rtn/p.gmv*100 : null;
         return cmpSkuLine(s.sku, s.title, s.return_pct, pRtn, function(v){return v!=null?v.toFixed(1)+'%':'—';}, true); })
     ) + '</div>';
@@ -3029,12 +3028,13 @@ function renderCampaigns() {
     var arrow = up ? '▲' : '▼';
     return {pct: pct, html: ' <span style="font-size:10px;color:'+color+';margin-left:4px;font-weight:600">'+arrow+Math.abs(pct).toFixed(1)+'%</span>'};
   }
-  var tacosSub = netSales > 0 ? 'Spend / Net Sales' : 'no sales data';
+  var tacosSub = netSales > 0 ? 'Spend / Sales' : 'no sales data';
   var kpis = [
     kpi('Spend',      fmtCr(t.spend),    monthLabel(month),            'var(--red)',    pt ? makeDeltaLocal(t.spend,   pt.spend, true) : null),
-    kpi('Revenue',    fmtCr(t.revenue),  'Direct + Indirect (ad)',     'var(--green)',  pt ? makeDeltaLocal(t.revenue, pt.revenue) : null),
-    kpi('Net Sales',  netSales>0?fmtCr(netSales):'—', 'org + ad (ex-GST)', 'var(--green)', pt ? makeDeltaLocal(netSales, pNetSales) : null),
-    kpi('ROI',        (t.roi||0).toFixed(2)+'x', 'ad Revenue / Spend',  'var(--accent)', pt ? makeDeltaLocal(t.roi||0, pt.roi||0) : null),
+    kpi('Ad Revenue', fmtCr(t.revenue),  'Direct + Indirect (ad)',     'var(--green)',  pt ? makeDeltaLocal(t.revenue, pt.revenue) : null),
+    kpi('Sales',      netSales>0?fmtCr(netSales):'—', 'org + ad',      'var(--green)',  pt ? makeDeltaLocal(netSales, pNetSales) : null),
+    kpi('Net Sales',  netSales>0?fmtCr(netSales/1.18):'—', 'ex-GST (÷1.18)', 'var(--green)', pt ? makeDeltaLocal(netSales/1.18, pNetSales/1.18) : null),
+    kpi('ROI',        (t.roi||0).toFixed(2)+'x', 'Ad Rev / Spend',     'var(--accent)', pt ? makeDeltaLocal(t.roi||0, pt.roi||0) : null),
     kpi('TACOS',      tacos!=null?tacos.toFixed(2)+'%':'—', tacosSub,  'var(--orange)', pTacos!=null && tacos!=null ? makeDeltaLocal(tacos, pTacos, true) : null),
     kpi('Units',      fmtUnits(t.units), 'Direct + Indirect',          'var(--text2)',  pt ? makeDeltaLocal(t.units,   pt.units) : null),
     kpi('Views',      fmtImpr(t.views),  'Impressions',                'var(--text2)',  pt ? makeDeltaLocal(t.views,   pt.views) : null),
@@ -3725,14 +3725,14 @@ function renderOverview() {
       '<div class="stat-sub">'+sub+'</div></div>';
   }
   var kpis = [
-    ovKpi('Net Sales', fmtCr(t.sales),  fmtUnits(t.units)+' units',      'var(--green)',  pt ? makeDelta(t.sales, pt.sales) : null),
-    ovKpi('Ad Spend',  fmtCr(t.spend),  fmtCr(t.rev)+' rev',             'var(--red)',    pt ? makeDelta(t.spend, pt.spend, true) : null),
-    ovKpi('ROI',       roi!=null?roi.toFixed(2)+'x':'—', 'Ad Rev / Spend', 'var(--yellow)', pt && pRoi!=null ? makeDelta(roi, pRoi) : null),
-    ovKpi('TACOS',     tacos!=null?tacos.toFixed(1)+'%':'—', 'Ad Spend / Net Sales', 'var(--orange)', pt && pTacos!=null ? makeDelta(tacos, pTacos, true) : null),
+    ovKpi('Sales',     fmtCr(t.sales),              fmtUnits(t.units)+' units',     'var(--green)',  pt ? makeDelta(t.sales, pt.sales) : null),
+    ovKpi('Net Sales', fmtCr((t.sales||0)/1.18),    'ex-GST (÷1.18)',               'var(--green)',  pt ? makeDelta((t.sales||0)/1.18, (pt.sales||0)/1.18) : null),
+    ovKpi('Ad Spend',  fmtCr(t.spend),              fmtCr(t.rev)+' rev',            'var(--red)',    pt ? makeDelta(t.spend, pt.spend, true) : null),
+    ovKpi('ROI',       roi!=null?roi.toFixed(2)+'x':'—', 'Ad Rev / Spend',          'var(--yellow)', pt && pRoi!=null ? makeDelta(roi, pRoi) : null),
+    ovKpi('TACOS',     tacos!=null?tacos.toFixed(1)+'%':'—', 'Ad Spend / Sales',    'var(--orange)', pt && pTacos!=null ? makeDelta(tacos, pTacos, true) : null),
     ovKpi('Impressions', fmtImpr(t.views), cvr!=null?'CVR '+cvr.toFixed(2)+'%':'—', 'var(--purple)', pt ? makeDelta(t.views, pt.views) : null),
-    ovKpi('Ad Units',  fmtUnits(t.ad_units), 'from ads',                 'var(--accent)', pt ? makeDelta(t.ad_units, pt.ad_units) : null),
-    ovKpi('Clicks',    fmtImpr(t.clicks), 'traffic clicks',              'var(--text2)',  pt ? makeDelta(t.clicks, pt.clicks) : null),
-    ovKpi('GMV',       fmtCr(t.gmv),     'gross before returns',          'var(--text2)',  pt ? makeDelta(t.gmv, pt.gmv) : null),
+    ovKpi('Ad Units',  fmtUnits(t.ad_units), 'from ads',                            'var(--accent)', pt ? makeDelta(t.ad_units, pt.ad_units) : null),
+    ovKpi('Clicks',    fmtImpr(t.clicks), 'traffic clicks',                         'var(--text2)',  pt ? makeDelta(t.clicks, pt.clicks) : null),
   ];
   document.getElementById('ov-hero-stats').innerHTML = kpis.join('');
 
@@ -3832,7 +3832,7 @@ function renderOvExtras(curWin, prevWin, brandFilter) {
     });
     charts['ov-trend'] = new Chart(document.getElementById('ch-ov-trend').getContext('2d'), {
       data: {labels: mLabels, datasets: [
-        {type:'bar',  label:'Net Sales (₹L)', data:netArr,   backgroundColor:'rgba(62,207,142,.7)',  borderWidth:0, yAxisID:'y', order:2},
+        {type:'bar',  label:'Sales (₹L)',    data:netArr,   backgroundColor:'rgba(62,207,142,.7)',  borderWidth:0, yAxisID:'y', order:2},
         {type:'bar',  label:'Ad Spend (₹L)',  data:spendArr, backgroundColor:'rgba(240,82,82,.6)',   borderWidth:0, yAxisID:'y', order:3},
         {type:'line', label:'ROI (x)',        data:roiArr,   borderColor:'#f5c842', backgroundColor:'rgba(245,200,66,.1)', fill:false, tension:.3, borderWidth:2, pointRadius:3, yAxisID:'y2', order:1},
       ]},

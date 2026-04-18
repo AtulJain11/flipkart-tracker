@@ -234,39 +234,57 @@ function checkPW(){
 <div class="page active" id="page-overview">
   <div class="filters">
     <span class="filter-label">Brand</span>
-    <button class="fbtn active" onclick="setF('ov','brand','ALL',this);renderOverview()">All</button>
-    <button class="fbtn ba" onclick="setF('ov','brand','BARE ANATOMY',this);renderOverview()">BA</button>
-    <button class="fbtn cap" onclick="setF('ov','brand','Chemist at Play',this);renderOverview()">CAP</button>
-    <button class="fbtn ss" onclick="setF('ov','brand','SunScoop',this);renderOverview()">SS</button>
+    <button class="fbtn active" id="ov-brand-all" onclick="setOvBrand('ALL',this)">All</button>
+    <button class="fbtn ba"  id="ov-brand-ba"  onclick="setOvBrand('BARE ANATOMY',this)">BA</button>
+    <button class="fbtn cap" id="ov-brand-cap" onclick="setOvBrand('Chemist at Play',this)">CAP</button>
+    <button class="fbtn ss"  id="ov-brand-ss"  onclick="setOvBrand('SunScoop',this)">SS</button>
     <div class="fsep"></div>
-    <span class="filter-label">Date</span>
-    <select class="fsel" id="ov-date-sel" onchange="setDateSel('ov')"><option value="">Latest</option></select>
+    <span class="filter-label">Day</span>
+    <select class="fsel" id="ov-day-sel" onchange="setOvTime('day')"><option value="">—</option></select>
+    <div class="fsep"></div>
+    <span class="filter-label">Month</span>
+    <select class="fsel" id="ov-month-sel" onchange="setOvTime('month')"><option value="">Pick month</option></select>
+    <div class="fsep"></div>
+    <span class="filter-label">Year</span>
+    <select class="fsel" id="ov-year-sel" onchange="setOvTime('year')"><option value="">Pick year</option></select>
+    <div class="fsep"></div>
+    <span class="filter-label">Custom</span>
+    <input class="fsel" type="date" id="ov-from-sel" onchange="setOvTime('custom')" style="width:140px">
+    <span style="color:var(--text3);padding:0 4px">→</span>
+    <input class="fsel" type="date" id="ov-to-sel" onchange="setOvTime('custom')" style="width:140px">
+    <div class="fsep"></div>
+    <button class="fbtn" onclick="clearOvTime()">Reset</button>
     <div class="fsep"></div>
     <span id="ov-window-lbl" style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace"></span>
   </div>
 
-  <!-- HEADLINE KPI TILES (cross-tab) -->
-  <div class="stat-grid" id="ov-hero-stats" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr));margin-bottom:14px"></div>
+  <!-- HEADLINE KPI TILES (cross-tab hero metrics) -->
+  <div class="stat-grid" id="ov-hero-stats" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr));margin-bottom:18px"></div>
 
-  <!-- Brand pills -->
-  <div class="brand-pills" id="ov-pills"></div>
+  <!-- Analysis sections container — auto-populated from ANALYSIS_REGISTRY. -->
+  <div id="ov-analyses-container"></div>
 
-  <!-- Charts: 12-month Sales/Ads trend + brand split -->
+  <!-- ═══ CHARTS + EXTRAS (below analyses, driven by same date+brand filter) ═══ -->
+
+  <!-- Brand pills (SKU count + avg rating per brand) -->
+  <div class="brand-pills" id="ov-pills" style="margin-top:18px"></div>
+
+  <!-- Cross-tab 6-block Insights grid -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-hdr"><span class="card-title">💡 Cross-Tab Insights</span><span class="card-sub" id="ov-insight-sub"></span></div>
+    <div id="ov-cross-insights" style="padding:12px"></div>
+  </div>
+
+  <!-- Charts: 12-month Sales/Ads trend + Brand share donut -->
   <div class="chart-grid" style="grid-template-columns:2fr 1fr;margin-bottom:14px">
     <div class="chart-card"><div class="chart-title">12-Month Trend · Net Sales &amp; Ad Spend</div><div class="chart-wrap"><canvas id="ch-ov-trend"></canvas></div></div>
     <div class="chart-card"><div class="chart-title">Brand Share · Net Sales</div><div class="chart-wrap"><canvas id="ch-ov-brand"></canvas></div></div>
   </div>
 
-  <!-- Secondary charts: SP + Rating -->
+  <!-- Secondary charts: SP Compliance (Mismatch only) + Rank Distribution donut -->
   <div class="chart-grid" style="margin-bottom:14px">
-    <div class="chart-card"><div class="chart-title">SP Compliance History</div><div class="chart-wrap"><canvas id="ch-sp-hist"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">SP Compliance · Mismatches Over Time</div><div class="chart-wrap"><canvas id="ch-sp-hist"></canvas></div></div>
     <div class="chart-card"><div class="chart-title">Rank Distribution</div><div class="chart-wrap"><canvas id="ch-rk-dist"></canvas></div></div>
-  </div>
-
-  <!-- Cross-tab analysis: 6 mini blocks -->
-  <div class="card">
-    <div class="card-hdr"><span class="card-title">💡 Cross-Tab Insights</span><span class="card-sub" id="ov-insight-sub"></span></div>
-    <div id="ov-cross-insights" style="padding:12px"></div>
   </div>
 
   <!-- Top Ranked Products -->
@@ -400,6 +418,12 @@ function checkPW(){
   <!-- KPI tiles -->
   <div class="stat-grid" id="sales-kpi" style="grid-template-columns:repeat(auto-fill,minmax(145px,1fr))"></div>
 
+  <!-- Analysis card (ABOVE charts) -->
+  <div class="card" id="sales-analysis-card" style="margin-bottom:14px">
+    <div class="card-hdr"><span class="card-title">💡 Sales Insights</span><span class="card-sub" id="sales-analysis-sub"></span></div>
+    <div id="sales-analysis" style="padding:12px"></div>
+  </div>
+
   <!-- Charts -->
   <div class="chart-grid" style="grid-template-columns:2fr 1fr">
     <div class="chart-card"><div class="chart-title">Net Sales & Gross Sales (₹ daily)</div><div class="chart-wrap"><canvas id="ch-sales-trend"></canvas></div></div>
@@ -428,12 +452,6 @@ function checkPW(){
       </tr></thead>
       <tbody id="sales-sku-body"></tbody>
     </table>
-  </div>
-
-  <!-- Analysis card -->
-  <div class="card" id="sales-analysis-card">
-    <div class="card-hdr"><span class="card-title">💡 Sales Insights</span></div>
-    <div id="sales-analysis" style="padding:12px"></div>
   </div>
 </div>
 
@@ -471,6 +489,12 @@ function checkPW(){
   <!-- KPI tiles -->
   <div class="stat-grid" id="ads-kpi" style="grid-template-columns:repeat(auto-fill,minmax(145px,1fr))"></div>
 
+  <!-- Analysis card (ABOVE charts) -->
+  <div class="card" id="ads-analysis-card" style="margin-bottom:14px">
+    <div class="card-hdr"><span class="card-title">💡 Ads Insights</span><span class="card-sub" id="ads-analysis-sub"></span></div>
+    <div id="ads-analysis" style="padding:12px"></div>
+  </div>
+
   <!-- Charts -->
   <div class="chart-grid" style="grid-template-columns:1fr 1fr">
     <div class="chart-card"><div class="chart-title">Ad Spend & Revenue by Brand (₹)</div><div class="chart-wrap"><canvas id="ch-ads-brand"></canvas></div></div>
@@ -493,12 +517,6 @@ function checkPW(){
       <thead><tr id="ads-table-hdr"></tr></thead>
       <tbody id="ads-table-body"></tbody>
     </table>
-  </div>
-
-  <!-- Analysis card -->
-  <div class="card" id="ads-analysis-card">
-    <div class="card-hdr"><span class="card-title">💡 Ads Insights</span></div>
-    <div id="ads-analysis" style="padding:12px"></div>
   </div>
 </div>
 
@@ -527,6 +545,12 @@ function checkPW(){
   <!-- KPI tiles -->
   <div class="stat-grid" id="camp-kpi" style="grid-template-columns:repeat(auto-fill,minmax(145px,1fr))"></div>
 
+  <!-- Analysis card (ABOVE charts) -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-hdr"><span class="card-title">💡 Campaign Insights</span><span class="card-sub" id="camp-analysis-sub"></span></div>
+    <div id="camp-analysis" style="padding:12px"></div>
+  </div>
+
   <!-- Charts -->
   <div class="chart-grid" style="grid-template-columns:2fr 1fr">
     <div class="chart-card"><div class="chart-title">Monthly Spend · ROI · TACOS (FSN, 13 months)</div><div class="chart-wrap"><canvas id="ch-camp-trend"></canvas></div></div>
@@ -552,12 +576,6 @@ function checkPW(){
       <button class="btn-sm" onclick="clearCampDrill()" style="margin-left:auto">✕ Close</button>
     </div>
     <div id="camp-drill-body" style="padding:12px"></div>
-  </div>
-
-  <!-- Analysis card -->
-  <div class="card">
-    <div class="card-hdr"><span class="card-title">💡 Campaign Insights</span></div>
-    <div id="camp-analysis" style="padding:12px"></div>
   </div>
 </div>
 
@@ -591,6 +609,12 @@ function checkPW(){
   <!-- KPI tiles -->
   <div class="stat-grid" id="traffic-kpi" style="grid-template-columns:repeat(auto-fill,minmax(145px,1fr))"></div>
 
+  <!-- Analysis card (ABOVE charts) -->
+  <div class="card" id="traffic-analysis-card" style="margin-bottom:14px">
+    <div class="card-hdr"><span class="card-title">💡 Traffic Insights</span><span class="card-sub" id="traffic-analysis-sub"></span></div>
+    <div id="traffic-analysis" style="padding:12px"></div>
+  </div>
+
   <!-- Charts -->
   <div class="chart-grid" style="grid-template-columns:2fr 1fr">
     <div class="chart-card"><div class="chart-title">Impressions & CVR</div><div class="chart-wrap"><canvas id="ch-traffic-trend"></canvas></div></div>
@@ -619,12 +643,6 @@ function checkPW(){
       <tbody id="traffic-sku-body"></tbody>
     </table>
   </div>
-
-  <!-- Analysis card -->
-  <div class="card" id="traffic-analysis-card">
-    <div class="card-hdr"><span class="card-title">💡 Traffic Insights</span></div>
-    <div id="traffic-analysis" style="padding:12px"></div>
-  </div>
 </div>
 
 <script>
@@ -633,6 +651,7 @@ function checkPW(){
 // Per-tab state — unified time model
 // mode: 'all' | 'day' | 'month' | 'year' | 'custom'
 var H = {
+  ov:      {brand:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:''},
   sales:   {brand:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'net_sales', sortDesc:true, search:''},
   ads:     {brand:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'ad_spend',  sortDesc:true, view:'sku', search:''},
   traffic: {brand:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'views',     sortDesc:true, search:''},
@@ -780,7 +799,17 @@ function populateHubDateSelectors() {
   // Days from daily data
   var daysS = (hub.sales   && hub.sales.daily)   ? hub.sales.daily.map(function(d){return d.date;})   : [];
   var daysT = (hub.traffic && hub.traffic.daily) ? hub.traffic.daily.map(function(d){return d.date;}) : [];
-  var daysA = (hub.ads     && hub.ads.daily)     ? hub.ads.daily.map(function(d){return d.date;})     : daysS;
+  // For Ads day dropdown: merge hub.history.daily.all_days + hub.daily.days (ads daily data)
+  var daysA = [];
+  if (hub.history && hub.history.daily && hub.history.daily.all_days) {
+    daysA = hub.history.daily.all_days.map(function(d){return d.date;});
+  }
+  if (hub.daily && hub.daily.days) {
+    var seenA = new Set(daysA);
+    hub.daily.days.forEach(function(d){ if (!seenA.has(d.date)) daysA.push(d.date); });
+  }
+  daysA.sort();
+  if (!daysA.length) daysA = daysS;  // fallback to sales dates if no ads daily data
   function dayOpts(days) {
     return ['<option value="">Pick day</option>']
       .concat(days.slice().reverse().map(function(d){ return '<option value="'+d+'">'+fmtDate(d)+'</option>'; })).join('');
@@ -957,18 +986,33 @@ function aggregateWindow(win, brand) {
     out.totals.rtn         = sumField(rows, 'returns');
     out.totals.days        = rows.length;
 
-    // Ads daily
-    var adsD = (hub.ads && hub.ads.daily) ? hub.ads.daily : [];
-    var adsR = adsD.filter(function(d){
+    // Ads daily — merge current month (hub.daily.days) + history (hub.history.daily.all_days)
+    // Pick the right brand slice via by_brand if a brand filter is active
+    var adsAllDays = [];
+    if (hub.history && hub.history.daily && hub.history.daily.all_days) {
+      adsAllDays = hub.history.daily.all_days.slice();
+    }
+    if (hub.daily && hub.daily.days && hub.daily.days.length) {
+      var seen = new Set(hub.daily.days.map(function(d){return d.date;}));
+      adsAllDays = adsAllDays.filter(function(d){ return !seen.has(d.date); });
+      hub.daily.days.forEach(function(d){ adsAllDays.push(d); });
+    }
+    var adsR = adsAllDays.filter(function(d){
       if (win.singleDay) return d.date === win.singleDay;
       if (win.dayRange)  return d.date >= win.dayRange[0] && d.date <= win.dayRange[1];
       return false;
     });
-    out.totals.spend     = sumField(adsR, 'spend');
-    out.totals.rev       = sumField(adsR, 'revenue');
-    out.totals.ad_units  = sumField(adsR, 'units');
-    out.totals.ad_clicks = sumField(adsR, 'clicks');
-    out.totals.ad_views  = sumField(adsR, 'views');
+    // Extract right values based on brand
+    function adVal(d, field) {
+      if (brand === 'ALL') return d[field] || 0;
+      var bb = d.by_brand && d.by_brand[brand];
+      return bb ? (bb[field] || 0) : 0;
+    }
+    out.totals.spend     = adsR.reduce(function(a,d){return a + adVal(d,'spend');}, 0);
+    out.totals.rev       = adsR.reduce(function(a,d){return a + adVal(d,'revenue');}, 0);
+    out.totals.ad_units  = adsR.reduce(function(a,d){return a + adVal(d,'units');}, 0);
+    out.totals.ad_clicks = adsR.reduce(function(a,d){return a + adVal(d,'clicks');}, 0);
+    out.totals.ad_views  = adsR.reduce(function(a,d){return a + adVal(d,'views');}, 0);
 
     // Traffic daily
     var trafD = (hub.traffic && hub.traffic.daily) ? hub.traffic.daily : [];
@@ -1372,16 +1416,34 @@ function renderAds() {
   // Chart: spend+revenue bars + ROI line
   var chartLabels=[], chartSpend=[], chartRev=[], chartRoi=[];
   if (curWin.granularity === 'day') {
-    var dailyAll = (hub.ads && hub.ads.daily) ? hub.ads.daily : [];
+    // Merge current-month daily + historical all_days
+    var dailyAll = [];
+    if (hub.history && hub.history.daily && hub.history.daily.all_days) {
+      dailyAll = hub.history.daily.all_days.slice();
+    }
+    if (hub.daily && hub.daily.days && hub.daily.days.length) {
+      var seen = new Set(hub.daily.days.map(function(d){return d.date;}));
+      dailyAll = dailyAll.filter(function(d){ return !seen.has(d.date); });
+      hub.daily.days.forEach(function(d){ dailyAll.push(d); });
+    }
     var rows = dailyAll.filter(function(d){
       if (curWin.singleDay) return d.date === curWin.singleDay;
       if (curWin.dayRange)  return d.date >= curWin.dayRange[0] && d.date <= curWin.dayRange[1];
       return false;
     });
+    // Extract by-brand values when a brand filter is active
+    function bVal(d, field) {
+      if (brand === 'ALL') return d[field] || 0;
+      var bb = d.by_brand && d.by_brand[brand];
+      return bb ? (bb[field] || 0) : 0;
+    }
     chartLabels = rows.map(function(d){ return fmtDate(d.date); });
-    chartSpend  = rows.map(function(d){ return +((d.spend||0)/1e5).toFixed(2); });
-    chartRev    = rows.map(function(d){ return +((d.revenue||0)/1e5).toFixed(2); });
-    chartRoi    = rows.map(function(d){ return d.spend > 0 ? +((d.revenue/d.spend)).toFixed(2) : 0; });
+    chartSpend  = rows.map(function(d){ return +(bVal(d,'spend')/1e5).toFixed(2); });
+    chartRev    = rows.map(function(d){ return +(bVal(d,'revenue')/1e5).toFixed(2); });
+    chartRoi    = rows.map(function(d){
+      var sp = bVal(d,'spend'), rv = bVal(d,'revenue');
+      return sp > 0 ? +(rv/sp).toFixed(2) : 0;
+    });
   } else {
     var series = brand === 'ALL' ? (hist.totals?.ads || []) : (hist.by_brand?.[brand]?.ads || []);
     var rowsM = series.filter(function(r){ return curWin.months.has(r.month); });
@@ -1420,8 +1482,27 @@ function renderAds() {
       return +(sumField(rm,'spend')/1e5).toFixed(1);
     });
   } else {
-    var bbMap = (hub.ads && hub.ads.by_brand) || {};
-    brandSpendVals = brandNames.map(function(b){ return +((bbMap[b]?.spend||0)/1e5).toFixed(1); });
+    // Day granularity: sum by_brand spend from filtered daily rows
+    var allDaysMerged = [];
+    if (hub.history && hub.history.daily && hub.history.daily.all_days) {
+      allDaysMerged = hub.history.daily.all_days.slice();
+    }
+    if (hub.daily && hub.daily.days && hub.daily.days.length) {
+      var seenDates = new Set(hub.daily.days.map(function(d){return d.date;}));
+      allDaysMerged = allDaysMerged.filter(function(d){ return !seenDates.has(d.date); });
+      hub.daily.days.forEach(function(d){ allDaysMerged.push(d); });
+    }
+    var filteredDays = allDaysMerged.filter(function(d){
+      if (curWin.singleDay) return d.date === curWin.singleDay;
+      if (curWin.dayRange)  return d.date >= curWin.dayRange[0] && d.date <= curWin.dayRange[1];
+      return false;
+    });
+    brandSpendVals = brandNames.map(function(b){
+      var total = filteredDays.reduce(function(a,d){
+        return a + ((d.by_brand && d.by_brand[b] && d.by_brand[b].spend) || 0);
+      }, 0);
+      return +(total/1e5).toFixed(1);
+    });
   }
   charts['ads-roi'] = new Chart(document.getElementById('ch-ads-roi').getContext('2d'), {
     type:'doughnut',
@@ -1782,6 +1863,8 @@ function cmpSkuLine(sku, title, cur, prev, fmt, invert) {
 function renderSalesAnalysis(curAgg, prevAgg, curWin, prevWin, brand) {
   var el = document.getElementById('sales-analysis');
   if (!el) return;
+  var sub = document.getElementById('sales-analysis-sub');
+  if (sub) sub.textContent = curWin ? (curWin.label + (prevWin ? ' · vs ' + prevWin.label : ' · no comparison')) : '';
   var curSkus = curAgg.skus, prevSkus = prevAgg ? prevAgg.skus : {};
   var skuArr = Object.values(curSkus).filter(function(s){ return (brand==='ALL'||s.brand===brand) && (s.sales > 0 || s.gmv > 0); });
   if (!skuArr.length) { el.innerHTML = '<div class="empty">No data for analysis</div>'; return; }
@@ -1857,6 +1940,8 @@ function renderSalesAnalysis(curAgg, prevAgg, curWin, prevWin, brand) {
 function renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand) {
   var el = document.getElementById('ads-analysis');
   if (!el) return;
+  var sub = document.getElementById('ads-analysis-sub');
+  if (sub) sub.textContent = curWin ? (curWin.label + (prevWin ? ' · vs ' + prevWin.label : ' · no comparison')) : '';
   var curSkus = curAgg.skus, prevSkus = prevAgg ? prevAgg.skus : {};
   var skuArr = Object.values(curSkus).filter(function(s){ return (brand==='ALL'||s.brand===brand) && s.ad_spend > 0; });
   if (!skuArr.length) { el.innerHTML = '<div class="empty">No data for analysis</div>'; return; }
@@ -1946,6 +2031,8 @@ function renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand) {
 function renderTrafficAnalysis(curAgg, prevAgg, curWin, prevWin, brand) {
   var el = document.getElementById('traffic-analysis');
   if (!el) return;
+  var sub = document.getElementById('traffic-analysis-sub');
+  if (sub) sub.textContent = curWin ? (curWin.label + (prevWin ? ' · vs ' + prevWin.label : ' · no comparison')) : '';
   var curSkus = curAgg.skus, prevSkus = prevAgg ? prevAgg.skus : {};
   var skuArr = Object.values(curSkus).filter(function(s){ return (brand==='ALL'||s.brand===brand) && (s.views||0) > 0; });
   if (!skuArr.length) { el.innerHTML = '<div class="empty">No data for analysis</div>'; return; }
@@ -2200,11 +2287,15 @@ function renderAll(){
   safeRun(renderSP,'renderSP');
   safeRun(renderRatings,'renderRatings');
   safeRun(populateHubDateSelectors, 'populateHubDateSelectors');
+  safeRun(populateOvSelectors, 'populateOvSelectors');
   safeRun(populateCampMonthSelector, 'populateCampMonthSelector');
   safeRun(renderSales,'renderSales');
   safeRun(renderAds,'renderAds');
   safeRun(renderTraffic,'renderTraffic');
   safeRun(renderCampaigns,'renderCampaigns');
+  // Re-render Overview now that tab data is ready (registry-driven analyses
+  // need all the per-tab render functions to exist first)
+  safeRun(renderOverview,'renderOverview-final');
   setTimeout(()=>{
     safeRun(()=>buildAnalysis(D.latest.date),'buildAnalysis');
     safeRun(()=>buildRankAnalysis(D.latest.date),'buildRankAnalysis');
@@ -2907,6 +2998,11 @@ function drillAdGroup(key) {
 function renderCampAnalysis(cur, prev, month) {
   var host = document.getElementById('camp-analysis');
   if (!host) return;
+  var sub = document.getElementById('camp-analysis-sub');
+  if (sub) {
+    var prevMonth = _prevMonth(month);
+    sub.textContent = monthLabel(month) + (prevMonth ? ' · vs ' + monthLabel(prevMonth) : ' · no comparison');
+  }
   if (!cur.campaigns.length) { host.innerHTML = '<div class="empty">No data</div>'; return; }
 
   function prevOf(id) { return prev.campaigns.find(function(c){ return c.id === id; }); }
@@ -2993,200 +3089,310 @@ function renderCampAnalysis(cur, prev, month) {
 
 
 // ══ OVERVIEW ════════════════════════════════════════════════════════
-function renderOverview() {
-  const prods = filteredProds('ov');
-  const ranked = prods.filter(p=>p.rank_v!=null);
-  const top10  = ranked.filter(p=>p.rank_v<=10).length;
-  const miss   = prods.filter(p=>p.sp_status==='MISMATCH').length;
-  const low    = prods.filter(p=>p.rating!=null&&p.rating<=4.0).length;
+// ═══════════════════════════════════════════════════════════════════════════
+//  ANALYSIS REGISTRY — extensible: tabs register themselves here
+//  Overview iterates this array and renders each entry as a card.
+//  When adding a new tab with its own analysis, just call:
+//     ANALYSIS_REGISTRY.push({id:'newtab', title:'...', icon:'...', render: fn})
+//  Overview will auto-pick it up next render — no Overview code change needed.
+// ═══════════════════════════════════════════════════════════════════════════
+var ANALYSIS_REGISTRY = [];
 
-  document.getElementById('ov-date-lbl').textContent = fmtDate(S.ov.date);
+function registerAnalysis(entry) {
+  // entry = {id, title, icon, containerId, subId, render: function(curWin, prevWin)}
+  // render function must fully populate the containerId element with analysis HTML.
+  var existing = ANALYSIS_REGISTRY.findIndex(function(e){ return e.id === entry.id; });
+  if (existing >= 0) ANALYSIS_REGISTRY[existing] = entry;
+  else ANALYSIS_REGISTRY.push(entry);
+}
 
-  // ── HERO KPIs: Cross-tab summary
-  var hub = D && D.hub ? D.hub : null;
-  var hist = hub && hub.history ? hub.history : null;
-  var brandFilter = S.ov.brand || 'ALL';
-
-  // Current-period stats from hub
-  var netSales = 0, gmv = 0, adSpend = 0, adRev = 0, adRoi = null, tacos = null;
-  var viewsCur = 0, cvrCur = null;
-  if (hub) {
-    if (brandFilter === 'ALL') {
-      netSales = hub.sales?.net_sales || 0;
-      gmv = hub.sales?.gmv || 0;
-      adSpend = hub.ads?.total_spend || 0;
-      adRev = hub.ads?.total_revenue || 0;
-      viewsCur = hub.traffic?.impressions || 0;
-      cvrCur = hub.traffic?.conversion_rate;
+// Sync Overview's current time window to each other tab's H state, then
+// trigger that tab's analysis render. This makes the Overview the "master"
+// time filter — all per-tab analyses are slaved to it.
+function syncOvToTab(tabKey) {
+  var o = H.ov;
+  var t = H[tabKey];
+  if (!t) return;
+  t.mode = o.mode;
+  t.day = o.day;
+  t.month = o.month;
+  t.year = o.year;
+  t.from = o.from;
+  t.to = o.to;
+  // Propagate Overview's brand filter
+  t.brand = o.brand || 'ALL';
+  // Campaigns tab uses month only, not day/year/custom
+  if (tabKey === 'camp') {
+    if (o.mode === 'day' && o.day) t.month = o.day.slice(0,7);
+    else if (o.mode === 'month' && o.month) t.month = o.month;
+    else if (o.mode === 'custom' && o.from) t.month = o.from.slice(0,7);
+    else if (o.mode === 'year' && o.year) {
+      // Pick latest month in that year
+      var hub = D && D.hub; var months = (hub && hub.history && hub.history.months) || [];
+      var yms = months.filter(function(m){ return m.slice(0,4) === o.year; }).sort();
+      if (yms.length) t.month = yms[yms.length-1];
     } else {
-      var bs = hub.sales?.by_brand?.[brandFilter];
-      var ba = hub.ads?.by_brand?.[brandFilter];
-      var bt = hub.traffic?.by_brand?.[brandFilter];
-      netSales = bs?.net_sales || 0; gmv = bs?.gmv || 0;
-      adSpend = ba?.spend || 0; adRev = ba?.revenue || 0;
-      viewsCur = bt?.views || 0;
-      cvrCur = bt?.views > 0 ? bt.sales/bt.views*100 : null;
+      // 'all' → use latest month with FSN data
+      var fsn = (D && D.hub && D.hub.history && D.hub.history.fsn) ? D.hub.history.fsn.months : [];
+      if (fsn && fsn.length) t.month = fsn[fsn.length-1];
     }
-    adRoi = adSpend > 0 ? adRev/adSpend : null;
-    tacos = netSales > 0 && adSpend > 0 ? adSpend/netSales*100 : null;
+  }
+}
+
+function renderOverview() {
+  if (!D || !D.hub) {
+    document.getElementById('ov-hero-stats').innerHTML =
+      '<div class="stat-card" style="grid-column:1/-1"><div class="stat-label">NO HUB DATA YET</div></div>';
+    return;
+  }
+  var hub = D.hub;
+  var hist = hub.history || {};
+
+  // ── Resolve current window (use the 'ov' state) ──
+  var curWin  = resolveTimeWindow('ov');
+  var prevWin = resolvePrevWindow('ov');
+
+  document.getElementById('ov-window-lbl').textContent =
+    'Window: ' + curWin.label + (prevWin ? ' · vs ' + prevWin.label : ' · no comparison');
+
+  // ── HERO KPI TILES (aggregate across all brands for the selected window) ──
+  var brand = H.ov.brand || 'ALL';
+  var curAgg  = aggregateWindow(curWin, brand);
+  var prevAgg = prevWin ? aggregateWindow(prevWin, brand) : null;
+  var t  = curAgg.totals;
+  var pt = prevAgg ? prevAgg.totals : null;
+  var roi   = t.spend > 0 ? t.rev/t.spend : null;
+  var tacos = t.sales > 0 && t.spend > 0 ? t.spend/t.sales*100 : null;
+  var cvr   = t.views > 0 ? t.clicks/t.views*100 : null;
+  var pRoi = null, pTacos = null, pCvr = null;
+  if (pt) {
+    pRoi   = pt.spend > 0 ? pt.rev/pt.spend : null;
+    pTacos = pt.sales > 0 && pt.spend > 0 ? pt.spend/pt.sales*100 : null;
+    pCvr   = pt.views > 0 ? pt.clicks/pt.views*100 : null;
   }
 
-  var avgRating = (prods.filter(p=>p.rating!=null).reduce((s,p)=>s+p.rating,0) / Math.max(1,prods.filter(p=>p.rating!=null).length)).toFixed(1);
+  function ovKpi(label, val, sub, color, delta) {
+    var deltaHtml = delta ? delta.html : '';
+    return '<div class="stat-card"><div class="stat-label">'+label+'</div>' +
+      '<div class="stat-value" style="color:'+color+';font-size:17px">'+val+deltaHtml+'</div>' +
+      '<div class="stat-sub">'+sub+'</div></div>';
+  }
+  var kpis = [
+    ovKpi('Net Sales', fmtCr(t.sales),  fmtUnits(t.units)+' units',      'var(--green)',  pt ? makeDelta(t.sales, pt.sales) : null),
+    ovKpi('Ad Spend',  fmtCr(t.spend),  fmtCr(t.rev)+' rev',             'var(--red)',    pt ? makeDelta(t.spend, pt.spend, true) : null),
+    ovKpi('ROI',       roi!=null?roi.toFixed(2)+'x':'—', 'Ad Rev / Spend', 'var(--yellow)', pt && pRoi!=null ? makeDelta(roi, pRoi) : null),
+    ovKpi('TACOS',     tacos!=null?tacos.toFixed(1)+'%':'—', 'Ad Spend / Net Sales', 'var(--orange)', pt && pTacos!=null ? makeDelta(tacos, pTacos, true) : null),
+    ovKpi('Impressions', fmtImpr(t.views), cvr!=null?'CVR '+cvr.toFixed(2)+'%':'—', 'var(--purple)', pt ? makeDelta(t.views, pt.views) : null),
+    ovKpi('Ad Units',  fmtUnits(t.ad_units), 'from ads',                 'var(--accent)', pt ? makeDelta(t.ad_units, pt.ad_units) : null),
+    ovKpi('Clicks',    fmtImpr(t.clicks), 'traffic clicks',              'var(--text2)',  pt ? makeDelta(t.clicks, pt.clicks) : null),
+    ovKpi('GMV',       fmtCr(t.gmv),     'gross before returns',          'var(--text2)',  pt ? makeDelta(t.gmv, pt.gmv) : null),
+  ];
+  document.getElementById('ov-hero-stats').innerHTML = kpis.join('');
 
-  var win = hub && hub.window ? (hub.window.from + ' → ' + hub.window.to) : '—';
-  document.getElementById('ov-window-lbl').textContent = 'Current window: ' + win;
+  // ── ANALYSIS SECTIONS from registry ──
+  var container = document.getElementById('ov-analyses-container');
+  if (!container) return;
 
-  document.getElementById('ov-hero-stats').innerHTML = `
-    <div class="stat-card"><div class="stat-label">Total SKUs</div><div class="stat-value">${prods.length}</div><div class="stat-sub">tracked</div></div>
-    <div class="stat-card"><div class="stat-label">Net Sales</div><div class="stat-value" style="color:var(--green);font-size:19px">${fmtCr(netSales)}</div><div class="stat-sub">current period</div></div>
-    <div class="stat-card"><div class="stat-label">Ad Spend</div><div class="stat-value" style="color:var(--red);font-size:19px">${fmtCr(adSpend)}</div><div class="stat-sub">ROI ${adRoi!=null?adRoi.toFixed(2)+'x':'—'}</div></div>
-    <div class="stat-card"><div class="stat-label">TACOS</div><div class="stat-value" style="color:var(--orange);font-size:19px">${tacos!=null?tacos.toFixed(1)+'%':'—'}</div><div class="stat-sub">Spend/Net</div></div>
-    <div class="stat-card"><div class="stat-label">Impressions</div><div class="stat-value" style="color:var(--purple);font-size:19px">${fmtImpr(viewsCur)}</div><div class="stat-sub">CVR ${cvrCur!=null?cvrCur.toFixed(2)+'%':'—'}</div></div>
-    <div class="stat-card"><div class="stat-label">Top 10 Ranks</div><div class="stat-value ${top10>0?'sv-green':''}" style="font-size:19px">${top10}</div><div class="stat-sub">of ${ranked.length} ranked</div></div>
-    <div class="stat-card"><div class="stat-label">SP Mismatches</div><div class="stat-value ${miss>0?'sv-red':''}" style="font-size:19px">${miss}</div><div class="stat-sub">need fixing</div></div>
-    <div class="stat-card"><div class="stat-label">Avg Rating</div><div class="stat-value" style="color:var(--yellow);font-size:19px">★ ${avgRating}</div><div class="stat-sub">${low} low rated</div></div>
-  `;
-
-  const brands=[['BARE ANATOMY','ba','BA'],['Chemist at Play','cap','CAP'],['SunScoop','ss','SS']];
-  document.getElementById('ov-pills').innerHTML = brands.map(([b,cls,sh])=>{
-    const bp=D.latest.products.filter(p=>p.brand===b);
-    const avg=(bp.filter(p=>p.rating!=null).reduce((s,p)=>s+p.rating,0)/Math.max(1,bp.filter(p=>p.rating!=null).length)).toFixed(1);
-    return `<div class="brand-pill ${cls}"><div class="dot"></div>
-      <span style="color:var(--text);font-size:13px">${sh}</span>
-      <span style="color:var(--text3)">${bp.length} SKUs</span>
-      <span style="color:var(--yellow)">★ ${avg}</span></div>`;
+  // Build skeleton DOM for each registered analysis.
+  // Each section has its own mount point matching the tab's existing analysis
+  // container ID (so the tab's render function can populate it).
+  var skeleton = ANALYSIS_REGISTRY.map(function(e){
+    return '<div class="card" style="margin-bottom:16px">' +
+      '<div class="card-hdr">' +
+        '<span class="card-title">' + (e.icon||'💡') + ' ' + e.title + '</span>' +
+        '<span class="card-sub" id="ov-' + e.id + '-sub" style="font-size:10px;color:var(--text3)"></span>' +
+      '</div>' +
+      '<div id="ov-' + e.id + '-body" style="padding:12px"></div>' +
+      '</div>';
   }).join('');
+  container.innerHTML = skeleton;
 
-  // ── 12-Month Trend chart (Net Sales + Ad Spend)
+  // Now invoke each registered render function with the current window slaved.
+  // We call render through a wrapper that temporarily swaps the DOM IDs so
+  // the existing tab render functions (which target e.g. 'sales-analysis') will
+  // populate our Overview mount points ('ov-sales-body') instead.
+  ANALYSIS_REGISTRY.forEach(function(e){
+    try {
+      e.render(curWin, prevWin);
+    } catch (err) {
+      console.error('Overview analysis render failed for '+e.id+':', err);
+      var body = document.getElementById('ov-' + e.id + '-body');
+      if (body) body.innerHTML = '<div class="empty">Error rendering: '+(err.message||err)+'</div>';
+    }
+  });
+
+  // ── EXTRAS (charts + brand pills + cross-tab insights grid + Top 20 table) ──
+  try { renderOvExtras(curWin, prevWin, brand); }
+  catch (err) { console.error('renderOvExtras failed:', err); }
+}
+
+// ── Overview EXTRAS section (below analyses) ───────────────────────────────
+// Renders: brand pills, cross-tab insights grid, 12-month trend,
+//          brand share donut, SP mismatch chart, rank distribution donut,
+//          Top 20 by rank table.
+// Every component respects the Overview's date window + brand filter.
+function renderOvExtras(curWin, prevWin, brandFilter) {
+  if (!D || !D.hub) return;
+  var hub = D.hub;
+  var hist = hub.history || {};
+
+  // ── Brand pills (SKU counts + avg rating per brand) ──
+  var brands = [['BARE ANATOMY','ba','BA'],['Chemist at Play','cap','CAP'],['SunScoop','ss','SS']];
+  var pillHtml = brands.map(function(b){
+    var bp = D.latest.products.filter(function(p){return p.brand === b[0];});
+    var rated = bp.filter(function(p){return p.rating != null;});
+    var avg = rated.length ? (rated.reduce(function(s,p){return s+p.rating;},0) / rated.length).toFixed(1) : '—';
+    return '<div class="brand-pill '+b[1]+'"><div class="dot"></div>' +
+      '<span style="color:var(--text);font-size:13px">'+b[2]+'</span>' +
+      '<span style="color:var(--text3)">'+bp.length+' SKUs</span>' +
+      '<span style="color:var(--yellow)">★ '+avg+'</span></div>';
+  }).join('');
+  var pillsEl = document.getElementById('ov-pills');
+  if (pillsEl) pillsEl.innerHTML = pillHtml;
+
+  // ── Cross-tab 6-block Insights grid ──
+  renderOvCrossInsights(curWin, prevWin, brandFilter);
+
+  // ── 12-Month Trend chart (brand-aware) ──
   dChart('ov-trend');
-  if (hist && hist.totals) {
-    var sSeries = brandFilter === 'ALL' ? (hist.totals.sales || [])
-                                        : (hist.by_brand?.[brandFilter]?.sales || []);
-    var aSeries = brandFilter === 'ALL' ? (hist.totals.ads || [])
-                                        : (hist.by_brand?.[brandFilter]?.ads || []);
-    var monthsLabels = sSeries.map(function(r){ return monthLabel(r.month); });
-    var netArr   = sSeries.map(function(r){ return +((r.net_sales||0)/1e5).toFixed(1); });
-    var spendArr = aSeries.map(function(r){ return +((r.spend||0)/1e5).toFixed(1); });
-    var roiArr   = aSeries.map(function(r){ return r.roi || 0; });
+  var months = (hist.months || []).slice();
+  if (months.length) {
+    var sSeries = brandFilter === 'ALL'
+      ? (hist.totals?.sales || [])
+      : (hist.by_brand?.[brandFilter]?.sales || []);
+    var aSeries = brandFilter === 'ALL'
+      ? (hist.totals?.ads || [])
+      : (hist.by_brand?.[brandFilter]?.ads || []);
+    var mLabels  = months.map(monthLabel);
+    var netArr   = months.map(function(m){
+      var r = sSeries.find(function(x){return x.month === m;});
+      return r ? +((r.net_sales||0)/1e5).toFixed(1) : 0;
+    });
+    var spendArr = months.map(function(m){
+      var r = aSeries.find(function(x){return x.month === m;});
+      return r ? +((r.spend||0)/1e5).toFixed(1) : 0;
+    });
+    var roiArr = months.map(function(m){
+      var r = aSeries.find(function(x){return x.month === m;});
+      return r ? (r.roi || 0) : 0;
+    });
     charts['ov-trend'] = new Chart(document.getElementById('ch-ov-trend').getContext('2d'), {
-      data:{labels:monthsLabels, datasets:[
+      data: {labels: mLabels, datasets: [
         {type:'bar',  label:'Net Sales (₹L)', data:netArr,   backgroundColor:'rgba(62,207,142,.7)',  borderWidth:0, yAxisID:'y', order:2},
         {type:'bar',  label:'Ad Spend (₹L)',  data:spendArr, backgroundColor:'rgba(240,82,82,.6)',   borderWidth:0, yAxisID:'y', order:3},
         {type:'line', label:'ROI (x)',        data:roiArr,   borderColor:'#f5c842', backgroundColor:'rgba(245,200,66,.1)', fill:false, tension:.3, borderWidth:2, pointRadius:3, yAxisID:'y2', order:1},
       ]},
-      options:{responsive:true, maintainAspectRatio:false,
-        plugins:{legend:{labels:{color:'#8892a4',font:{size:10},boxWidth:10}}},
-        scales:{
-          x:{ticks:{color:'#4a5168',font:{size:9}}, grid:{display:false}},
-          y:{ticks:{color:'#4a5168',font:{size:9},callback:function(v){return '₹'+v+'L'}}, grid:{color:'rgba(255,255,255,.05)'}},
-          y2:{position:'right', ticks:{color:'#f5c842',font:{size:9},callback:function(v){return v+'x'}}, grid:{display:false}},
+      options: {responsive:true, maintainAspectRatio:false,
+        plugins: {legend:{labels:{color:'#8892a4',font:{size:10},boxWidth:10}}},
+        scales: {
+          x:  {ticks:{color:'#4a5168',font:{size:9}}, grid:{display:false}},
+          y:  {ticks:{color:'#4a5168',font:{size:9},callback:function(v){return '₹'+v+'L';}}, grid:{color:'rgba(255,255,255,.05)'}},
+          y2: {position:'right', ticks:{color:'#f5c842',font:{size:9},callback:function(v){return v+'x';}}, grid:{display:false}},
         }}
-    });
-  } else {
-    // No history — render empty stub
-    charts['ov-trend'] = new Chart(document.getElementById('ch-ov-trend').getContext('2d'), {
-      type:'bar', data:{labels:['—'], datasets:[{data:[0]}]},
-      options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}}
     });
   }
 
-  // ── Brand share doughnut (Net Sales current)
+  // ── Brand share donut (Net Sales in current window, across all brands) ──
   dChart('ov-brand');
   var brandNames = ['BARE ANATOMY','Chemist at Play','SunScoop'];
   var brandCols  = ['rgba(79,142,247,.85)','rgba(62,207,142,.85)','rgba(245,165,36,.85)'];
   var brandVals = brandNames.map(function(b){
-    return +((hub?.sales?.by_brand?.[b]?.net_sales || 0)/1e5).toFixed(1);
+    // Aggregate net_sales for this brand over curWin months
+    var ser = (hist.by_brand?.[b]?.sales) || [];
+    var tot = 0;
+    ser.forEach(function(r){ if (curWin.months && curWin.months.has(r.month)) tot += (r.net_sales || 0); });
+    return +(tot/1e5).toFixed(1);
   });
   charts['ov-brand'] = new Chart(document.getElementById('ch-ov-brand').getContext('2d'), {
-    type:'doughnut',
-    data:{labels:brandNames.map(brandShort), datasets:[{data:brandVals, backgroundColor:brandCols, borderWidth:0}]},
-    options:{responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{position:'right',labels:{color:'#8892a4',font:{size:10},boxWidth:10}},
-               tooltip:{callbacks:{label:function(c){return c.label+': ₹'+c.parsed+'L';}}}}}
+    type: 'doughnut',
+    data: {labels: brandNames.map(brandShort), datasets: [{data: brandVals, backgroundColor: brandCols, borderWidth: 0}]},
+    options: {responsive:true, maintainAspectRatio:false,
+      plugins: {legend: {position:'right', labels: {color:'#8892a4', font:{size:10}, boxWidth:10}},
+                tooltip:{callbacks:{label:function(c){return c.label+': ₹'+c.parsed+'L';}}}}}
   });
 
-  // ── SP History chart
+  // ── SP Compliance — MISMATCH ONLY over time ──
   dChart('sp-hist');
-  document.getElementById('ch-sp-hist').style.cursor='pointer';
-  document.getElementById('ch-sp-hist').onclick=()=>{showPage('sp', document.querySelectorAll('.nav-tab')[5]);};
-  charts['sp-hist']=new Chart(document.getElementById('ch-sp-hist').getContext('2d'),{
-    type:'bar',
-    data:{labels:D.sp_history.map(d=>fmtDate(d.date)),
-      datasets:[
-        {label:'OK',data:D.sp_history.map(d=>d.ok),backgroundColor:'rgba(62,207,142,.55)',stack:'s'},
-        {label:'Mismatch',data:D.sp_history.map(d=>d.mismatches),backgroundColor:'rgba(240,82,82,.75)',stack:'s'},
-        {label:'Not Verified',data:D.sp_history.map(d=>d.not_verified),backgroundColor:'rgba(255,255,255,.12)',stack:'s'},
-      ]},
-    options:baseOpts()
+  var spHist = (D.sp_history || []);
+  document.getElementById('ch-sp-hist').style.cursor = 'pointer';
+  document.getElementById('ch-sp-hist').onclick = function(){
+    showPage('sp', document.querySelectorAll('.nav-tab')[5]);
+  };
+  charts['sp-hist'] = new Chart(document.getElementById('ch-sp-hist').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: spHist.map(function(d){return fmtDate(d.date);}),
+      datasets: [{
+        label: 'Mismatches',
+        data: spHist.map(function(d){return d.mismatches;}),
+        backgroundColor: 'rgba(240,82,82,.75)',
+        borderColor: 'rgba(240,82,82,1)',
+        borderWidth: 1,
+      }]
+    },
+    options: {responsive:true, maintainAspectRatio:false,
+      plugins: {legend:{display:false}},
+      scales: {
+        x: {ticks:{color:'#4a5168',font:{size:9}}, grid:{display:false}},
+        y: {ticks:{color:'#4a5168',font:{size:9}}, grid:{color:'rgba(255,255,255,.05)'}, beginAtZero:true}
+      }}
   });
 
-  // Rank dist doughnut
+  // ── Rank Distribution donut (brand-aware) ──
   dChart('rk-dist');
-  const r1=ranked.filter(p=>p.rank_v===1).length,r25=ranked.filter(p=>p.rank_v>=2&&p.rank_v<=5).length,
-        r610=ranked.filter(p=>p.rank_v>=6&&p.rank_v<=10).length,
-        r1150=ranked.filter(p=>p.rank_v>=11&&p.rank_v<=50).length,
-        r51=ranked.filter(p=>p.rank_v>50).length;
-  charts['rk-dist']=new Chart(document.getElementById('ch-rk-dist').getContext('2d'),{
-    type:'doughnut',
-    data:{labels:['#1','#2-5','#6-10','#11-50','#51+'],
-      datasets:[{data:[r1,r25,r610,r1150,r51],
-        backgroundColor:['rgba(245,200,66,.85)','rgba(79,142,247,.75)','rgba(62,207,142,.65)','rgba(167,139,250,.55)','rgba(255,255,255,.1)'],
-        borderWidth:0}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8892a4',font:{size:10},boxWidth:10}}}}
+  var prods = D.latest.products.filter(function(p){
+    return (brandFilter === 'ALL' || p.brand === brandFilter);
+  });
+  var ranked = prods.filter(function(p){return p.rank_v != null;});
+  var r1   = ranked.filter(function(p){return p.rank_v === 1;}).length;
+  var r25  = ranked.filter(function(p){return p.rank_v >= 2 && p.rank_v <= 5;}).length;
+  var r610 = ranked.filter(function(p){return p.rank_v >= 6 && p.rank_v <= 10;}).length;
+  var r1150= ranked.filter(function(p){return p.rank_v >= 11 && p.rank_v <= 50;}).length;
+  var r51  = ranked.filter(function(p){return p.rank_v > 50;}).length;
+  charts['rk-dist'] = new Chart(document.getElementById('ch-rk-dist').getContext('2d'), {
+    type: 'doughnut',
+    data: {labels: ['#1','#2-5','#6-10','#11-50','#51+'],
+      datasets: [{data: [r1,r25,r610,r1150,r51],
+        backgroundColor: ['rgba(245,200,66,.85)','rgba(79,142,247,.75)','rgba(62,207,142,.65)','rgba(167,139,250,.55)','rgba(255,255,255,.1)'],
+        borderWidth: 0}]},
+    options: {responsive:true, maintainAspectRatio:false,
+      plugins: {legend: {labels: {color:'#8892a4', font:{size:10}, boxWidth:10}}}}
   });
 
-  // ── Cross-tab insights
-  renderOverviewInsights(prods, ranked, hub, hist, brandFilter);
-
-  // Top 20 table
-  const sorted=[...ranked].sort((a,b)=>a.rank_v-b.rank_v).slice(0,20);
-  document.getElementById('ov-table').innerHTML = sorted.map((p,i)=>`<tr>
-    <td class="mono" style="color:var(--text3)">${i+1}</td>
-    <td><a href="${p.url}" target="_blank" title="${p.title}">${shortT(p.title,50)}</a></td>
-    <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:'Courier New',monospace;white-space:nowrap">${p.size||'—'}</span></td>
-    <td><span style="color:${brandColor(p.brand)};font-weight:700;font-size:11px;white-space:nowrap">${brandShort(p.brand)}</span></td>
-    <td>${rb(p.rank_v)}</td>
-    <td>${(p.rank_v_name&&p.rank_v_name!=='nan')?p.rank_v_name:'—'}</td>
-    <td>${subBadge(p.rank_sub)}</td>
-    <td>${fmtR(p.sp)}</td>
-    <td><div style="display:flex;align-items:center;gap:4px"><span class="star">★</span><span class="rv">${p.rating||'—'}</span><span class="rc">(${(p.rating_count||0).toLocaleString('en-IN')})</span></div></td>
-  </tr>`).join('');
+  // ── Top 20 by Vertical Rank (brand-aware) ──
+  var dateLblEl = document.getElementById('ov-date-lbl');
+  if (dateLblEl) dateLblEl.textContent = 'Latest · ' + (brandFilter === 'ALL' ? 'All brands' : brandShort(brandFilter));
+  var sorted = ranked.slice().sort(function(a,b){return a.rank_v - b.rank_v;}).slice(0, 20);
+  var tableEl = document.getElementById('ov-table');
+  if (tableEl) {
+    tableEl.innerHTML = sorted.map(function(p, i){
+      return '<tr>' +
+        '<td class="mono" style="color:var(--text3)">'+(i+1)+'</td>' +
+        '<td><a href="'+(p.url||'#')+'" target="_blank" title="'+(p.title||'')+'">'+shortT(p.title||'—',50)+'</a></td>' +
+        '<td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:\'Courier New\',monospace;white-space:nowrap">'+(p.size||'—')+'</span></td>' +
+        '<td><span style="color:'+brandColor(p.brand)+';font-weight:700;font-size:11px;white-space:nowrap">'+brandShort(p.brand)+'</span></td>' +
+        '<td>'+rb(p.rank_v)+'</td>' +
+        '<td>'+((p.rank_v_name && p.rank_v_name !== 'nan') ? p.rank_v_name : '—')+'</td>' +
+        '<td>'+subBadge(p.rank_sub)+'</td>' +
+        '<td>'+fmtR(p.sp)+'</td>' +
+        '<td><div style="display:flex;align-items:center;gap:4px"><span class="star">★</span><span class="rv">'+(p.rating||'—')+'</span><span class="rc">('+((p.rating_count||0).toLocaleString('en-IN'))+')</span></div></td>' +
+      '</tr>';
+    }).join('');
+  }
 }
 
-// ── Unified cross-tab insights for Overview tab
-function renderOverviewInsights(prods, ranked, hub, hist, brandFilter) {
+// ── Cross-tab 6-block insights grid (wired to curWin + brand filter) ───────
+function renderOvCrossInsights(curWin, prevWin, brandFilter) {
   var el = document.getElementById('ov-cross-insights');
   if (!el) return;
   var sub = document.getElementById('ov-insight-sub');
+  var hub = D && D.hub ? D.hub : {};
+  var hist = hub.history || {};
 
   function block(title, color, items) {
     return '<div><div style="font-size:11px;font-weight:700;color:'+color+';margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">'+title+'</div>' +
       '<div style="font-size:12px;color:var(--text2);line-height:1.7">' + items.map(function(it){return '• '+it;}).join('<br>') + '</div></div>';
   }
-
-  // Build prev-month SKU lookup for comparison
-  var prevSkuMap = {};
-  var cmpLabel = '';
-  if (hist && hist.months && hist.months.length >= 2) {
-    var curMonth = hist.months[hist.months.length - 1];
-    var prevMonth = hist.months[hist.months.length - 2];
-    cmpLabel = 'vs ' + monthLabel(prevMonth);
-    (hist.skus || []).forEach(function(s){
-      if (brandFilter !== 'ALL' && s.brand !== brandFilter) return;
-      var m = s.months && s.months[prevMonth];
-      if (m) {
-        prevSkuMap[s.sku] = {
-          net_sales: m.net_sales || 0,
-          ad_spend: m.ad_spend || 0,
-          ad_revenue: m.ad_revenue || 0,
-          ad_roi: m.ad_roi,
-          views: m.views || 0,
-          clicks: m.clicks || 0,
-        };
-      }
-    });
-  }
-
   function dArr(pct, invert) {
     if (pct == null || !isFinite(pct)) return '';
     var better = invert ? pct < 0 : pct > 0;
@@ -3194,58 +3400,74 @@ function renderOverviewInsights(prods, ranked, hub, hist, brandFilter) {
     var arr = pct >= 0 ? '▲' : '▼';
     return ' <span style="color:'+col+';font-size:10px">'+arr+Math.abs(pct).toFixed(1)+'%</span>';
   }
-  function dPct(cur, prev) {
-    if (prev == null || prev === 0) return null;
-    return (cur - prev) / prev * 100;
-  }
-  function compare(sku, cur, pField, fmt, invert) {
-    var p = prevSkuMap[sku];
-    var pv = p ? (p[pField] || 0) : 0;
-    return '<strong>'+fmt(cur)+'</strong> <span style="color:var(--text3)">(vs '+fmt(pv)+')</span>'+dArr(dPct(cur, pv), invert);
+  function dPct(cur, prev) { if (prev == null || prev === 0) return null; return (cur - prev) / prev * 100; }
+
+  // Aggregate curAgg + prevAgg for this window + brand → build SKU maps
+  var curAgg  = aggregateWindow(curWin, brandFilter);
+  var prevAgg = prevWin ? aggregateWindow(prevWin, brandFilter) : null;
+  var curSkus  = Object.values(curAgg.skus);
+  var prevSkus = prevAgg ? prevAgg.skus : {};
+
+  function fmtV(cur, prevV, fmt, invert) {
+    var pct = dPct(cur, prevV);
+    return '<strong>'+fmt(cur)+'</strong> <span style="color:var(--text3)">(vs '+fmt(prevV||0)+')</span>' + dArr(pct, invert);
   }
 
   var html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">';
 
-  // 1. Sales: top 3 with comparison
-  if (hub && hub.skus) {
-    var skus = hub.skus.filter(function(s){ return (brandFilter === 'ALL' || s.brand === brandFilter) && s.net_sales > 0; });
-    var top3Sales = skus.slice().sort(function(a,b){return b.net_sales-a.net_sales;}).slice(0,3);
-    if (top3Sales.length) {
-      html += block('📈 Top Sellers ('+cmpLabel+')', 'var(--green)',
-        top3Sales.map(function(s){ return '<code>'+s.sku+'</code> — ' + compare(s.sku, s.net_sales, 'net_sales', fmtCr); }));
-    }
+  // 1. Top sellers (by sales in window)
+  var topSales = curSkus.filter(function(s){return s.sales > 0;})
+    .sort(function(a,b){return b.sales - a.sales;}).slice(0,3);
+  if (topSales.length) {
+    html += block('📈 Top Sellers ('+(prevWin?'vs '+prevWin.label:'')+')', 'var(--green)',
+      topSales.map(function(s){
+        var p = prevSkus[s.sku] || {sales:0};
+        return '<code>'+s.sku+'</code> — ' + fmtV(s.sales, p.sales, fmtCr);
+      })
+    );
   }
 
-  // 2. Ads: worst ROI with comparison
-  if (hub && hub.skus) {
-    var skusAds = hub.skus.filter(function(s){ return (brandFilter === 'ALL' || s.brand === brandFilter) && s.ad_spend >= 50000 && s.ad_roi != null; });
-    var worstRoi = skusAds.slice().sort(function(a,b){return a.ad_roi-b.ad_roi;}).slice(0,3);
-    if (worstRoi.length) {
-      html += block('🩸 Worst Ad ROI (spend ≥₹50K)', 'var(--red)',
-        worstRoi.map(function(s){
-          return '<code>'+s.sku+'</code> — ' + compare(s.sku, s.ad_roi, 'ad_roi', function(v){return (v!=null?v.toFixed(2)+'x':'—');});
-        }));
-    }
-    var topRoi = skusAds.slice().sort(function(a,b){return b.ad_roi-a.ad_roi;}).slice(0,3);
-    if (topRoi.length) {
-      html += block('🚀 Top Ad ROI (spend ≥₹50K)', 'var(--green)',
-        topRoi.map(function(s){
-          return '<code>'+s.sku+'</code> — ' + compare(s.sku, s.ad_roi, 'ad_roi', function(v){return (v!=null?v.toFixed(2)+'x':'—');});
-        }));
-    }
+  // 2. Worst ROI (with min spend threshold)
+  var withSpend = curSkus.filter(function(s){return s.ad_spend >= 50000 && s.ad_spend > 0;})
+    .map(function(s){ s.ad_roi = s.ad_spend > 0 ? s.ad_revenue/s.ad_spend : null; return s; })
+    .filter(function(s){return s.ad_roi != null;});
+  var worstRoi = withSpend.slice().sort(function(a,b){return a.ad_roi - b.ad_roi;}).slice(0,3);
+  if (worstRoi.length) {
+    html += block('🩸 Worst Ad ROI (spend ≥₹50K)', 'var(--red)',
+      worstRoi.map(function(s){
+        var p = prevSkus[s.sku];
+        var pRoi = (p && p.ad_spend > 0) ? p.ad_revenue/p.ad_spend : null;
+        return '<code>'+s.sku+'</code> — ' + fmtV(s.ad_roi, pRoi, function(v){return v!=null?v.toFixed(2)+'x':'—';});
+      })
+    );
   }
 
-  // 3. Traffic: top 3 by views
-  if (hub && hub.skus) {
-    var skusTraf = hub.skus.filter(function(s){ return (brandFilter === 'ALL' || s.brand === brandFilter) && (s.views||0) > 0; });
-    var topView = skusTraf.slice().sort(function(a,b){return b.views-a.views;}).slice(0,3);
-    if (topView.length) {
-      html += block('👁️ Top Traffic (views)', 'var(--purple)',
-        topView.map(function(s){ return '<code>'+s.sku+'</code> — ' + compare(s.sku, s.views, 'views', fmtImpr); }));
-    }
+  // 3. Top ROI
+  var bestRoi = withSpend.slice().sort(function(a,b){return b.ad_roi - a.ad_roi;}).slice(0,3);
+  if (bestRoi.length) {
+    html += block('🚀 Top Ad ROI (spend ≥₹50K)', 'var(--green)',
+      bestRoi.map(function(s){
+        var p = prevSkus[s.sku];
+        var pRoi = (p && p.ad_spend > 0) ? p.ad_revenue/p.ad_spend : null;
+        return '<code>'+s.sku+'</code> — ' + fmtV(s.ad_roi, pRoi, function(v){return v!=null?v.toFixed(2)+'x':'—';});
+      })
+    );
   }
 
-  // 4. Rankings: top 3 rank drops (from latest vs yesterday)
+  // 4. Top traffic
+  var topViews = curSkus.filter(function(s){return (s.views||0) > 0;})
+    .sort(function(a,b){return b.views - a.views;}).slice(0,3);
+  if (topViews.length) {
+    html += block('👁️ Top Traffic (views)', 'var(--purple)',
+      topViews.map(function(s){
+        var p = prevSkus[s.sku] || {views:0};
+        return '<code>'+s.sku+'</code> — ' + fmtV(s.views, p.views, fmtImpr);
+      })
+    );
+  }
+
+  // 5. Rank drops (d-1)
+  var prods = D.latest.products.filter(function(p){return brandFilter==='ALL' || p.brand===brandFilter;});
   var rkDrops = [];
   if (D.all_days && D.all_days.length >= 2) {
     var curDay = D.all_days[D.all_days.length - 1];
@@ -3253,44 +3475,271 @@ function renderOverviewInsights(prods, ranked, hub, hist, brandFilter) {
     var curMap = {}, prevMap = {};
     curDay.products.forEach(function(p){ curMap[p.pid] = p.rank_v; });
     prevDay.products.forEach(function(p){ prevMap[p.pid] = p.rank_v; });
-    var brandProds = prods.filter(function(p){ return curMap[p.pid] != null && prevMap[p.pid] != null; });
-    brandProds.forEach(function(p){
-      var delta = curMap[p.pid] - prevMap[p.pid];
-      if (delta > 0) rkDrops.push({sku: p.title?.slice(0,30) || p.pid, delta:delta, from:prevMap[p.pid], to:curMap[p.pid]});
+    prods.forEach(function(p){
+      if (curMap[p.pid] != null && prevMap[p.pid] != null) {
+        var delta = curMap[p.pid] - prevMap[p.pid];
+        if (delta > 0) rkDrops.push({sku:p.title?p.title.slice(0,30):p.pid, delta:delta, from:prevMap[p.pid], to:curMap[p.pid]});
+      }
     });
-    rkDrops.sort(function(a,b){return b.delta-a.delta;});
+    rkDrops.sort(function(a,b){return b.delta - a.delta;});
   }
   if (rkDrops.length) {
     html += block('📉 Biggest Rank Drops (d-1)', 'var(--red)',
-      rkDrops.slice(0,3).map(function(r){ return r.sku+' — #'+r.from+'→#'+r.to+' ('+r.delta+'↓)'; }));
+      rkDrops.slice(0,3).map(function(r){return r.sku+' — #'+r.from+'→#'+r.to+' ('+r.delta+'↓)';})
+    );
   }
 
-  // 5. SP Compliance: current mismatches
-  var spMis = prods.filter(function(p){ return p.sp_status === 'MISMATCH'; });
+  // 6. SP Mismatches
+  var spMis = prods.filter(function(p){return p.sp_status === 'MISMATCH';});
   if (spMis.length) {
     html += block('💰 SP Mismatches', 'var(--red)',
-      spMis.slice(0,3).map(function(p){ return (p.title?.slice(0,30)||'—')+' — '+(p.sp_diff>0?'+':'')+p.sp_diff+' diff'; }).concat(
-        spMis.length > 3 ? ['<i>+'+(spMis.length-3)+' more</i>'] : []
-      ));
+      spMis.slice(0,3).map(function(p){
+        return (p.title?p.title.slice(0,30):'—') + ' — ' + (p.sp_diff>0?'+':'') + p.sp_diff + ' diff';
+      }).concat(spMis.length > 3 ? ['<i>+'+(spMis.length-3)+' more</i>'] : [])
+    );
   } else {
     html += block('💰 SP Compliance', 'var(--green)', ['All SKUs matching expected SP ✓']);
-  }
-
-  // 6. Ratings: low rated SKUs (<=4.0)
-  var lowRated = prods.filter(function(p){ return p.rating != null && p.rating <= 4.0; });
-  if (lowRated.length) {
-    lowRated.sort(function(a,b){return a.rating - b.rating;});
-    html += block('⭐ Low Ratings (≤4.0)', 'var(--red)',
-      lowRated.slice(0,3).map(function(p){ return (p.title?.slice(0,30)||'—')+' — ★ '+p.rating; }).concat(
-        lowRated.length > 3 ? ['<i>+'+(lowRated.length-3)+' more</i>'] : []
-      ));
   }
 
   html += '</div>';
   el.innerHTML = html;
 
-  if (sub) sub.textContent = (brandFilter === 'ALL' ? 'All brands' : brandFilter) + ' · ' + (hub && hub.window ? hub.window.from + ' → ' + hub.window.to : 'current');
+  if (sub) sub.textContent = (brandFilter === 'ALL' ? 'All brands' : brandShort(brandFilter)) +
+    ' · ' + curWin.label + (prevWin ? ' · vs ' + prevWin.label : '');
 }
+
+// ── Overview date/time control ─────────────────────────────────────────────
+function setOvTime(mode) {
+  var day   = document.getElementById('ov-day-sel')?.value   || '';
+  var month = document.getElementById('ov-month-sel')?.value || '';
+  var year  = document.getElementById('ov-year-sel')?.value  || '';
+  var from  = document.getElementById('ov-from-sel')?.value  || '';
+  var to    = document.getElementById('ov-to-sel')?.value    || '';
+
+  function clearOthers(keep) {
+    ['day','month','year','from','to'].forEach(function(k){
+      if (k === keep || (keep === 'custom' && (k === 'from' || k === 'to'))) return;
+      H.ov[k] = '';
+      var el = document.getElementById('ov-'+k+'-sel'); if (el) el.value = '';
+    });
+  }
+  if (mode === 'day' && day) {
+    H.ov.mode = 'day'; H.ov.day = day; clearOthers('day');
+  } else if (mode === 'month' && month) {
+    H.ov.mode = 'month'; H.ov.month = month; clearOthers('month');
+  } else if (mode === 'year' && year) {
+    H.ov.mode = 'year'; H.ov.year = year; clearOthers('year');
+  } else if (mode === 'custom' && from && to) {
+    H.ov.mode = 'custom'; H.ov.from = from; H.ov.to = to; clearOthers('custom');
+  }
+  renderOverview();
+}
+
+// "Reset" — go back to the smart default (latest day if daily data available,
+// else latest month). Never return to mode='all' because that loses the
+// comparison — and the user explicitly said they always want a vs-comparison.
+function clearOvTime() {
+  applyOvDefault();
+  renderOverview();
+}
+
+// Brand filter — applies to hero KPIs, all 4 registered analyses, AND the
+// charts/extras block below. One brand control drives everything on Overview.
+function setOvBrand(brand, btn) {
+  H.ov.brand = brand;
+  // Toggle active class among the 4 brand buttons
+  ['ov-brand-all','ov-brand-ba','ov-brand-cap','ov-brand-ss'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.classList.remove('active');
+  });
+  if (btn) btn.classList.add('active');
+  renderOverview();
+}
+
+// Apply the Overview default: latest day with data, else latest month.
+// Used on first load AND by Reset.
+function applyOvDefault() {
+  if (!D || !D.hub) return;
+  var hub = D.hub;
+
+  // Collect all available days across sources
+  var dayPool = new Set();
+  if (hub.sales && hub.sales.daily) hub.sales.daily.forEach(function(d){ dayPool.add(d.date); });
+  if (hub.history && hub.history.daily && hub.history.daily.all_days) hub.history.daily.all_days.forEach(function(d){ dayPool.add(d.date); });
+  if (hub.daily && hub.daily.days) hub.daily.days.forEach(function(d){ dayPool.add(d.date); });
+  var days = Array.from(dayPool).sort();
+
+  // Clear all selectors first
+  H.ov.day = ''; H.ov.month = ''; H.ov.year = ''; H.ov.from = ''; H.ov.to = '';
+  ['day','month','year','from','to'].forEach(function(k){
+    var el = document.getElementById('ov-'+k+'-sel'); if (el) el.value = '';
+  });
+
+  if (days.length >= 2) {
+    // Prefer latest day — gives day vs yesterday comparison
+    H.ov.mode = 'day';
+    H.ov.day  = days[days.length - 1];
+    var dSel = document.getElementById('ov-day-sel');
+    if (dSel) dSel.value = H.ov.day;
+  } else {
+    // Fall back to latest month
+    var months = (hub.history && hub.history.months) ? hub.history.months.slice() : [];
+    var curMonth = (hub.window && hub.window.from) ? hub.window.from.slice(0, 7) : null;
+    if (curMonth && !months.includes(curMonth)) months.push(curMonth);
+    months.sort();
+    if (months.length >= 2) {
+      H.ov.mode = 'month';
+      H.ov.month = months[months.length - 1];
+      var mSel = document.getElementById('ov-month-sel');
+      if (mSel) mSel.value = H.ov.month;
+    } else {
+      // Really no data — stay in 'all' (analysis will show "no comparison")
+      H.ov.mode = 'all';
+    }
+  }
+}
+
+// Populate the Day/Month/Year selectors on the Overview page (uses same data as hub tabs)
+function populateOvSelectors() {
+  if (!D || !D.hub) return;
+  var hub = D.hub;
+  var months = (hub.history && hub.history.months) ? hub.history.months.slice() : [];
+  var curMonth = (hub.window && hub.window.from) ? hub.window.from.slice(0, 7) : null;
+  if (curMonth && !months.includes(curMonth)) months.push(curMonth);
+  months.sort();
+  var mSel = document.getElementById('ov-month-sel');
+  if (mSel) mSel.innerHTML = ['<option value="">Pick month</option>']
+    .concat(months.slice().reverse().map(function(m){return '<option value="'+m+'">'+monthLabel(m)+'</option>';})).join('');
+
+  var years = Array.from(new Set(months.map(function(m){return m.slice(0,4);}))).sort().reverse();
+  var ySel = document.getElementById('ov-year-sel');
+  if (ySel) ySel.innerHTML = ['<option value="">Pick year</option>']
+    .concat(years.map(function(y){return '<option value="'+y+'">'+y+'</option>';})).join('');
+
+  // Day dropdown — merge all daily data sources (sales + ads + traffic)
+  var dayPool = new Set();
+  if (hub.sales && hub.sales.daily) hub.sales.daily.forEach(function(d){ dayPool.add(d.date); });
+  if (hub.history && hub.history.daily && hub.history.daily.all_days) hub.history.daily.all_days.forEach(function(d){ dayPool.add(d.date); });
+  if (hub.daily && hub.daily.days) hub.daily.days.forEach(function(d){ dayPool.add(d.date); });
+  var days = Array.from(dayPool).sort();
+  var dSel = document.getElementById('ov-day-sel');
+  if (dSel) dSel.innerHTML = ['<option value="">Pick day</option>']
+    .concat(days.slice().reverse().map(function(d){return '<option value="'+d+'">'+fmtDate(d)+'</option>';})).join('');
+
+  if (months.length) {
+    var f = document.getElementById('ov-from-sel'); if (f) { f.min = months[0] + '-01'; }
+    var t = document.getElementById('ov-to-sel'); if (t) { t.min = months[0] + '-01'; }
+  }
+
+  // Apply the smart default: latest day (w/ yesterday comparison) or latest month
+  if (H.ov.mode === 'all') applyOvDefault();
+}
+
+// ── Register analyses from each tab ────────────────────────────────────────
+// Each registered entry: syncs Overview's time window to the tab's state,
+// renders the analysis into the tab's native container, then moves it into
+// the Overview mount point. This reuses the exact same analysis functions
+// as the individual tabs — single source of truth.
+registerAnalysis({
+  id: 'sales', icon: '📈', title: 'Sales Insights',
+  render: function(curWin, prevWin) {
+    syncOvToTab('sales');
+    var brand = H.ov.brand || 'ALL';
+    var curAgg  = aggregateWindow(curWin, brand);
+    var prevAgg = prevWin ? aggregateWindow(prevWin, brand) : null;
+    moveAnalysisToOverview('sales', function(){
+      renderSalesAnalysis(curAgg, prevAgg, curWin, prevWin, brand);
+    });
+  }
+});
+registerAnalysis({
+  id: 'ads', icon: '📣', title: 'Ads Insights',
+  render: function(curWin, prevWin) {
+    syncOvToTab('ads');
+    var brand = H.ov.brand || 'ALL';
+    var curAgg  = aggregateWindow(curWin, brand);
+    var prevAgg = prevWin ? aggregateWindow(prevWin, brand) : null;
+    moveAnalysisToOverview('ads', function(){
+      renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand);
+    });
+  }
+});
+registerAnalysis({
+  id: 'traffic', icon: '🔍', title: 'Traffic Insights',
+  render: function(curWin, prevWin) {
+    syncOvToTab('traffic');
+    var brand = H.ov.brand || 'ALL';
+    var curAgg  = aggregateWindow(curWin, brand);
+    var prevAgg = prevWin ? aggregateWindow(prevWin, brand) : null;
+    moveAnalysisToOverview('traffic', function(){
+      renderTrafficAnalysis(curAgg, prevAgg, curWin, prevWin, brand);
+    });
+  }
+});
+registerAnalysis({
+  id: 'camp', icon: '🎯', title: 'Campaign Insights',
+  render: function(curWin, prevWin) {
+    syncOvToTab('camp');
+    var brand = H.ov.brand || 'ALL';
+    var month = H.camp.month;
+    if (!month) {
+      var fsn = (D.hub.history && D.hub.history.fsn) ? D.hub.history.fsn : null;
+      if (fsn && fsn.months && fsn.months.length) month = fsn.months[fsn.months.length-1];
+    }
+    if (!month) {
+      var body = document.getElementById('ov-camp-body');
+      if (body) body.innerHTML = '<div class="empty">No campaign data for this window</div>';
+      return;
+    }
+    var cur  = _campMonthData(month, brand);
+    var prev = _prevMonth(month) ? _campMonthData(_prevMonth(month), brand) : {campaigns:[], adgroups:[], skus:[], totals:null};
+    moveAnalysisToOverview('camp', function(){
+      renderCampAnalysis(cur, prev, month);
+    });
+  }
+});
+
+// Swap analysis target DOMs: tab render functions write to (e.g.) #sales-analysis,
+// but we want them to write to #ov-sales-body. Do a swap-render-swap dance.
+function moveAnalysisToOverview(tabId, renderFn) {
+  // Map tab id → native analysis container id and sub id
+  var nativeMap = {
+    sales:   {body:'sales-analysis',   sub:'sales-analysis-sub'},
+    ads:     {body:'ads-analysis',     sub:'ads-analysis-sub'},
+    traffic: {body:'traffic-analysis', sub:'traffic-analysis-sub'},
+    camp:    {body:'camp-analysis',    sub:'camp-analysis-sub'},
+  };
+  var m = nativeMap[tabId]; if (!m) return renderFn();
+
+  var ovBody = document.getElementById('ov-' + tabId + '-body');
+  var ovSub  = document.getElementById('ov-' + tabId + '-sub');
+  var nativeBody = document.getElementById(m.body);
+  var nativeSub  = document.getElementById(m.sub);
+  if (!ovBody || !nativeBody) { renderFn(); return; }
+
+  // Swap IDs so renderFn writes into our overview containers
+  var origBodyId = nativeBody.id; nativeBody.id = '_swap_' + origBodyId;
+  ovBody.id = origBodyId;
+  var origSubId = null;
+  if (nativeSub && ovSub) {
+    origSubId = nativeSub.id;
+    nativeSub.id = '_swap_' + origSubId;
+    ovSub.id = origSubId;
+  }
+  try {
+    renderFn();
+  } finally {
+    // Swap back so the tab's own render path isn't broken
+    ovBody.id = 'ov-' + tabId + '-body';
+    nativeBody.id = origBodyId;
+    if (origSubId) {
+      ovSub.id = 'ov-' + tabId + '-sub';
+      nativeSub.id = origSubId;
+    }
+  }
+}
+
+// Legacy Overview insights stub (kept for compatibility with anything that calls it)
+function renderOverviewInsights() {}
 
 // ══ RANKINGS ════════════════════════════════════════════════════════
 function renderRankings() {
@@ -3556,7 +4005,7 @@ function rrow(r,sub){const dv=r.dv;const ds=r.ds;const dStr=(dv==null||isNaN(dv)
 
 function buildAnalysis(date){
   if(!D)return;if(!date)date=D.latest.date;
-  const brand=S.ov.brand;
+  const brand=(S.ov && S.ov.brand) ? S.ov.brand : 'ALL';
   const pd=getPD(date);const rkc=getRkC(date,pd,brand);
   const gains=rkc.filter(r=>r.dv!=null&&!isNaN(r.dv)&&r.dv<0&&r.cv!=null&&r.cv<100).sort((a,b)=>a.dv-b.dv).slice(0,6);
   const drops=rkc.filter(r=>r.dv!=null&&!isNaN(r.dv)&&r.dv>0&&r.cv!=null&&r.cv<100).sort((a,b)=>b.dv-a.dv).slice(0,6);

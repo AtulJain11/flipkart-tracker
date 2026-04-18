@@ -477,6 +477,12 @@ function checkPW(){
     <div class="chart-card"><div class="chart-title">ROI by Top Campaigns</div><div class="chart-wrap"><canvas id="ch-ads-roi"></canvas></div></div>
   </div>
 
+  <!-- Daily spend trend (last 30 days) -->
+  <div class="chart-card" style="margin-bottom:16px">
+    <div class="chart-title">Daily Ad Spend · ROI (last 30 days) — <span id="ch-ads-daily-sub" style="color:var(--text3);font-weight:400;font-size:11px"></span></div>
+    <div class="chart-wrap" style="height:240px"><canvas id="ch-ads-daily"></canvas></div>
+  </div>
+
   <!-- Table (toggles between SKU-level and Campaign-level) -->
   <div class="card">
     <div class="card-hdr">
@@ -1479,6 +1485,7 @@ function renderAds() {
           '</tr>';
       }).join('');
 
+    renderAdsDailyChart(brand);
     renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand);
   } else {
     // Campaign view — current period only
@@ -1526,8 +1533,80 @@ function renderAds() {
           '</tr>';
       }).join('');
 
+    renderAdsDailyChart(brand);
     renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand);
   }
+}
+
+// ── Ads Daily Chart (last 30 days from D.hub.history.daily.all_days + current month from D.hub.daily.days) ──
+function renderAdsDailyChart(brand) {
+  var canvas = document.getElementById('ch-ads-daily');
+  if (!canvas) return;
+  var sub = document.getElementById('ch-ads-daily-sub');
+
+  // Merge: historical all_days (past months) + current-month daily (today's fresh data, may include today)
+  var allDays = [];
+  if (D && D.hub && D.hub.history && D.hub.history.daily) {
+    allDays = (D.hub.history.daily.all_days || []).slice();
+  }
+  // Replace/append current-month days with the freshest from D.hub.daily (if present)
+  if (D && D.hub && D.hub.daily && D.hub.daily.days && D.hub.daily.days.length) {
+    var currentDates = new Set(D.hub.daily.days.map(function(d){ return d.date; }));
+    allDays = allDays.filter(function(d){ return !currentDates.has(d.date); });
+    D.hub.daily.days.forEach(function(d){ allDays.push(d); });
+  }
+  allDays.sort(function(a,b){ return a.date.localeCompare(b.date); });
+
+  if (!allDays.length) {
+    if (sub) sub.textContent = '(no daily data — run FK_Hub_Historical after placing daily_YYYY-MM.csv files)';
+    if (charts['ads-daily']) { charts['ads-daily'].destroy(); delete charts['ads-daily']; }
+    return;
+  }
+
+  // Last 30 days only
+  var last30 = allDays.slice(-30);
+
+  // Apply brand filter if needed
+  function getVal(d, field) {
+    if (brand === 'ALL') return d[field];
+    var bb = d.by_brand && d.by_brand[brand];
+    return bb ? bb[field] : 0;
+  }
+
+  var labels = last30.map(function(d){ return d.date.slice(5); });  // MM-DD
+  var spendL = last30.map(function(d){ return (getVal(d,'spend') / 1e5).toFixed(2); });
+  var rois   = last30.map(function(d){
+    var sp = getVal(d, 'spend'), rv = getVal(d, 'revenue');
+    return sp > 0 ? +(rv/sp).toFixed(2) : null;
+  });
+  var totalSpend = last30.reduce(function(a,d){ return a + getVal(d,'spend'); }, 0);
+  var totalRev   = last30.reduce(function(a,d){ return a + getVal(d,'revenue'); }, 0);
+  var avgRoi = totalSpend > 0 ? (totalRev/totalSpend).toFixed(2) : '—';
+  if (sub) sub.textContent = last30.length + ' days · Spend ' + fmtCr(totalSpend) + ' · Revenue ' + fmtCr(totalRev) + ' · Avg ROI ' + avgRoi + 'x' + (brand !== 'ALL' ? ' · '+brandShort(brand) : '');
+
+  if (charts['ads-daily']) { charts['ads-daily'].destroy(); delete charts['ads-daily']; }
+  charts['ads-daily'] = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {label:'Spend (₹L)', type:'bar', data: spendL,
+         backgroundColor:'rgba(220,53,69,0.6)', borderColor:'rgba(220,53,69,1)', borderWidth:1, yAxisID:'y'},
+        {label:'ROI (x)', type:'line', data: rois,
+         borderColor:'rgba(0,212,255,1)', backgroundColor:'rgba(0,212,255,0.1)', fill:false, tension:0.25,
+         pointRadius:2.5, pointBackgroundColor:'rgba(0,212,255,1)', yAxisID:'y1', spanGaps:true},
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#8892a4',font:{size:10}}}},
+      scales:{
+        x:{ticks:{color:'#8892a4',font:{size:9}, maxRotation:0, autoSkip:true, maxTicksLimit:15}, grid:{color:'rgba(255,255,255,0.03)'}},
+        y:{position:'left', ticks:{color:'#8892a4',font:{size:10}}, grid:{color:'rgba(255,255,255,0.03)'}, title:{display:true, text:'Spend (₹L)', color:'#8892a4', font:{size:10}}},
+        y1:{position:'right', ticks:{color:'#8892a4',font:{size:10}}, grid:{display:false}, title:{display:true, text:'ROI (x)', color:'#8892a4', font:{size:10}}, beginAtZero:true},
+      }
+    }
+  });
 }
 
 // ── TRAFFIC TAB ────────────────────────────────────────────────────────────
@@ -2670,11 +2749,54 @@ function drillCamp(campId) {
   });
   lines += '</tbody></table>';
 
+  // ── Daily breakdown (if daily data available for this campaign × month) ──
+  var dailyC = null;
+  if (D.hub.history && D.hub.history.daily && D.hub.history.daily.campaigns) {
+    dailyC = D.hub.history.daily.campaigns.find(function(x){ return x.id === campId; });
+  }
+  // Prefer current-month daily (freshest) from D.hub.daily if this month matches
+  var curMonthDaily = null;
+  if (D.hub.daily && D.hub.daily.date_from && D.hub.daily.date_from.slice(0,7) === month && D.hub.daily.campaigns) {
+    curMonthDaily = D.hub.daily.campaigns.find(function(x){ return x.id === campId; });
+  }
+
+  // Collect days that belong to this campaign for the selected month
+  var dayRows = [];
+  var sourceDays = (curMonthDaily && curMonthDaily.days) || (dailyC && dailyC.days) || null;
+  if (sourceDays) {
+    Object.keys(sourceDays).sort().forEach(function(dt){
+      if (dt.slice(0,7) !== month) return;  // only days within the selected month
+      var d = sourceDays[dt];
+      dayRows.push(Object.assign({date: dt}, d));
+    });
+  }
+
+  if (dayRows.length) {
+    lines += '<div style="margin-top:18px;color:var(--text3);font-size:11px;margin-bottom:6px">Daily breakdown in '+monthLabel(month)+' ('+dayRows.length+' days)</div>';
+    lines += '<div style="background:var(--bg2);padding:12px;border-radius:6px;margin-bottom:10px">';
+    lines += '  <canvas id="camp-drill-daily-chart" height="140"></canvas></div>';
+    lines += '<details><summary style="cursor:pointer;color:var(--text3);font-size:11px;padding:6px 0">Show daily table</summary>';
+    lines += '<table style="width:100%"><thead><tr>';
+    lines += '<th>Date</th><th style="text-align:right">Spend</th><th style="text-align:right">Revenue</th><th style="text-align:right">ROI</th><th style="text-align:right">Units</th><th style="text-align:right">Views</th>';
+    lines += '</tr></thead><tbody>';
+    dayRows.forEach(function(d){
+      var roi = d.roi != null ? d.roi.toFixed(2) + 'x' : '—';
+      var rcol = d.roi >= 3 ? 'var(--green)' : d.roi >= 1.5 ? 'var(--orange)' : 'var(--red)';
+      lines += '<tr><td class="pid">'+d.date+'</td>';
+      lines += '<td style="text-align:right;font-family:Courier New,monospace;color:var(--red)">'+fmtCr(d.spend)+'</td>';
+      lines += '<td style="text-align:right;font-family:Courier New,monospace;color:var(--green)">'+fmtCr(d.revenue)+'</td>';
+      lines += '<td style="text-align:right;font-family:Courier New,monospace;color:'+rcol+'">'+roi+'</td>';
+      lines += '<td style="text-align:right;font-family:Courier New,monospace">'+fmtUnits(d.units)+'</td>';
+      lines += '<td style="text-align:right;font-family:Courier New,monospace;color:var(--text3)">'+fmtImpr(d.views)+'</td></tr>';
+    });
+    lines += '</tbody></table></details>';
+  }
+
   body.innerHTML = lines;
   card.style.display = 'block';
   card.scrollIntoView({behavior:'smooth', block:'start'});
 
-  // Render mini chart
+  // Render monthly chart
   setTimeout(function(){
     var ctx = document.getElementById('camp-drill-chart');
     if (!ctx) return;
@@ -2699,6 +2821,34 @@ function drillCamp(campId) {
         }
       }
     });
+
+    // Render daily chart if we have daily data
+    if (dayRows.length) {
+      var dctx = document.getElementById('camp-drill-daily-chart');
+      if (dctx) {
+        new Chart(dctx, {
+          type: 'bar',
+          data: {
+            labels: dayRows.map(function(d){ return d.date.slice(5); }),
+            datasets: [
+              {label:'Spend (₹)', data: dayRows.map(function(d){ return d.spend; }),
+               backgroundColor:'rgba(220,53,69,0.55)', yAxisID:'y'},
+              {label:'ROI', type:'line', data: dayRows.map(function(d){ return d.roi; }),
+               borderColor:'rgba(0,212,255,1)', backgroundColor:'transparent', tension:0.2, pointRadius:2, yAxisID:'y1', spanGaps:true},
+            ]
+          },
+          options: {
+            responsive:true, maintainAspectRatio:false,
+            plugins:{legend:{labels:{color:'#8892a4',font:{size:9}}}},
+            scales:{
+              x:{ticks:{color:'#8892a4',font:{size:8}, maxRotation:0, autoSkip:true, maxTicksLimit:15}, grid:{color:'rgba(255,255,255,0.03)'}},
+              y:{ticks:{color:'#8892a4',font:{size:9}, callback:function(v){return (v/1000).toFixed(0)+'k';}}, grid:{color:'rgba(255,255,255,0.03)'}, title:{display:true,text:'Spend (₹)',color:'#8892a4',font:{size:9}}},
+              y1:{position:'right', ticks:{color:'#8892a4',font:{size:9}}, grid:{display:false}, title:{display:true,text:'ROI',color:'#8892a4',font:{size:9}}},
+            }
+          }
+        });
+      }
+    }
   }, 80);
 }
 

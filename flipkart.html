@@ -578,10 +578,9 @@ function checkPW(){
     <div class="fsep"></div>
     <span class="filter-label">View</span>
     <button class="fbtn active" id="camp-view-camp"    onclick="setCampView('campaign',this)">Campaigns</button>
-    <button class="fbtn"        id="camp-view-ag"      onclick="setCampView('adgroup',this)">AdGroups</button>
     <button class="fbtn"        id="camp-view-sku"     onclick="setCampView('sku',this)">SKUs</button>
     <div class="fsep"></div>
-    <input class="fsearch" placeholder="Search campaign / adgroup / SKU..." id="camp-search" oninput="renderCampaigns()">
+    <input class="fsearch" placeholder="Search campaign / SKU..." id="camp-search" oninput="renderCampaigns()">
     <div class="fsep"></div>
     <span id="camp-window" style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace"></span>
   </div>
@@ -635,7 +634,10 @@ function checkPW(){
     <span class="filter-label">Placement</span>
     <select class="fsel" id="pl-type-sel" onchange="setPlacementType()"><option value="ALL">All Placements</option></select>
     <div class="fsep"></div>
-    <span id="pl-window-lbl" style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace"></span>
+    <span class="filter-label">Vertical</span>
+    <select class="fsel" id="pl-vertical-sel" onchange="setPlacementVertical()" style="min-width:130px"><option value="ALL">All Verticals</option></select>
+    <div class="fsep"></div>
+    <span id="pl-window-lbl" style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace">Current MTD · Placement data is current-month only</span>
   </div>
 
   <!-- Hero KPI tiles for placement summary -->
@@ -811,10 +813,49 @@ var H = {
   ads:     {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'ad_spend',  sortDesc:true, view:'sku', search:''},
   traffic: {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'views',     sortDesc:true, search:''},
   camp:    {brand:'ALL', vertical:'ALL', month:'',   view:'campaign', sort:'spend', sortDesc:true, search:'', drill:null},
-  placement: {brand:'ALL', type:'ALL', sort:'spend', sortDesc:true},
+  placement: {brand:'ALL', type:'ALL', vertical:'ALL', sort:'spend', sortDesc:true},
 };
 
 // ── Formatters ──────────────────────────────────────────────────────────────
+function escHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Chart.js plugin: draw % labels on each doughnut slice.
+// Registered globally so ALL doughnut charts get % overlays automatically.
+try {
+  if (typeof Chart !== 'undefined') {
+    Chart.register({
+      id: 'doughnutPercent',
+      afterDatasetsDraw: function(chart) {
+        if (chart.config.type !== 'doughnut' && chart.config.type !== 'pie') return;
+        var ctx = chart.ctx;
+        var ds = chart.data.datasets[0];
+        if (!ds) return;
+        var total = (ds.data || []).reduce(function(a,b){return a + (+b||0);}, 0);
+        if (total <= 0) return;
+        var meta = chart.getDatasetMeta(0);
+        ctx.save();
+        ctx.font = 'bold 11px -apple-system, sans-serif';
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(0,0,0,0.6)';
+        ctx.shadowBlur = 3;
+        meta.data.forEach(function(arc, i){
+          var val = +ds.data[i] || 0;
+          var pct = (val/total*100);
+          if (pct < 3) return;  // skip tiny slices
+          var pos = arc.tooltipPosition();
+          ctx.fillText(pct.toFixed(1)+'%', pos.x, pos.y);
+        });
+        ctx.restore();
+      }
+    });
+  }
+} catch (e) { console.warn('doughnutPercent plugin reg failed:', e); }
 function fmtCr(v) {
   if (v == null || isNaN(v) || v === 0) return '—';
   if (v >= 1e7) return '₹' + (v/1e7).toFixed(2) + 'Cr';
@@ -1073,6 +1114,22 @@ function populateHubDateSelectors() {
   var dS = document.getElementById('sales-day-sel');   if (dS) dS.innerHTML = dayOpts(daysS);
   var dT = document.getElementById('traffic-day-sel'); if (dT) dT.innerHTML = dayOpts(daysT);
   var dA = document.getElementById('ads-day-sel');     if (dA) dA.innerHTML = dayOpts(daysA);
+
+  // Set DEFAULT = latest day (with data) on each tab, unless user already picked something.
+  // Keeps dashboard meaningful on load instead of blank "pick a day" state.
+  function applyTabDefault(tab, daysArr) {
+    if (!daysArr || !daysArr.length) return;
+    var latest = daysArr[daysArr.length - 1];
+    if (!H[tab].day && !H[tab].month && !H[tab].year && !H[tab].from && !H[tab].to) {
+      H[tab].mode = 'day';
+      H[tab].day  = latest;
+      var sel = document.getElementById(tab+'-day-sel');
+      if (sel) sel.value = latest;
+    }
+  }
+  applyTabDefault('sales',   daysS);
+  applyTabDefault('ads',     daysA);
+  applyTabDefault('traffic', daysT);
 
   // Preset custom date bounds to the min/max available
   if (months.length) {
@@ -1379,7 +1436,7 @@ function aggregateWindow(win, brand) {
     // Re-derive CTR/CVR/AOV
     Object.values(out.skus).forEach(function(cur){
       cur.ctr = cur.views > 0 ? cur.clicks/cur.views*100 : null;
-      cur.cvr = cur.views > 0 ? cur.traffic_sales/cur.views*100 : null;
+      cur.cvr = cur.clicks > 0 ? cur.traffic_sales/cur.clicks*100 : null;
       cur.aov = cur.traffic_sales > 0 ? cur.traffic_revenue/cur.traffic_sales : null;
     });
   } else {
@@ -1591,8 +1648,10 @@ function renderSales() {
   var curAgg  = aggregateWindow(curWin, brand);
   var prevAgg = prevWin ? aggregateWindow(prevWin, brand) : null;
 
-  // Vertical-filter: rebuild totals from SKU rows
-  if (vertical !== 'ALL') {
+  // Brand or vertical filter: rebuild totals from SKU rows (out.skus is already
+  // brand-filtered in aggregateWindow, but daily totals were summed from all-brand
+  // day rows — rebuild from skus dict to match the filtered brand).
+  if (brand !== 'ALL' || vertical !== 'ALL') {
     curAgg.totals  = rebuildTotalsFromSkusV(curAgg.skus, vertical);
     if (prevAgg) prevAgg.totals = rebuildTotalsFromSkusV(prevAgg.skus, vertical);
   }
@@ -1697,22 +1756,32 @@ function renderSales() {
   document.getElementById('sales-kpi').innerHTML = kpis.join('');
 
   // ── Trend chart
-  // For single-month windows (Month filter OR single-month Custom), prefer daily
-  // granularity so users see a trend curve, not a single aggregated bar.
+  // When user selects a single day, show last 30 days ending on that day so the
+  // chart isn't just one bar. Otherwise respect the selected window.
   var chartLabels=[], chartSales=[], chartGmv=[];
   var useDaily = (curWin.granularity === 'day') ||
                  (curWin.months && curWin.months.size === 1 && (hub.sales && hub.sales.daily && hub.sales.daily.length));
   if (useDaily) {
-    var dailyAll = (hub.sales && hub.sales.daily) ? hub.sales.daily : [];
+    // Merge current + historical sales daily
+    var dailyAll = (hub.sales && hub.sales.daily) ? hub.sales.daily.slice() : [];
+    if (hub.history && hub.history.sales_daily) {
+      var seenSD = new Set(dailyAll.map(function(d){return d.date;}));
+      hub.history.sales_daily.forEach(function(d){ if (!seenSD.has(d.date)) dailyAll.push(d); });
+    }
+    dailyAll.sort(function(a,b){ return a.date < b.date ? -1 : 1; });
+
     var rows;
     if (curWin.granularity === 'day') {
-      rows = dailyAll.filter(function(d){
-        if (curWin.singleDay) return d.date === curWin.singleDay;
-        if (curWin.dayRange)  return d.date >= curWin.dayRange[0] && d.date <= curWin.dayRange[1];
-        return false;
-      });
+      if (curWin.singleDay) {
+        // Single-day → last 30 days ending on that day for trend context
+        var endDate = curWin.singleDay;
+        rows = dailyAll.filter(function(d){ return d.date <= endDate; }).slice(-30);
+      } else {
+        rows = dailyAll.filter(function(d){
+          return d.date >= curWin.dayRange[0] && d.date <= curWin.dayRange[1];
+        });
+      }
     } else {
-      // Month filter with 1 month → filter daily rows to that month
       var singleMonth = Array.from(curWin.months)[0];
       rows = dailyAll.filter(function(d){ return d.date.slice(0,7) === singleMonth; });
     }
@@ -1732,12 +1801,12 @@ function renderSales() {
   charts['sales-trend'] = new Chart(document.getElementById('ch-sales-trend').getContext('2d'), {
     type: useDaily ? 'line' : 'bar',
     data:{labels:chartLabels, datasets:[
-      {label:'Sales (₹L)', data:chartSales, backgroundColor:'rgba(62,207,142,.85)', borderColor:'#3ecf8e', borderWidth:2, fill:false, tension:.35, pointRadius:3, order:1},
+      {label:'Sales (₹L)', data:chartSales, backgroundColor:'rgba(62,207,142,.2)', borderColor:'#3ecf8e', borderWidth:2, fill:true, tension:.35, pointRadius:2, order:1},
     ]},
     options:{responsive:true, maintainAspectRatio:false,
       plugins:{legend:{labels:{color:'#8892a4',font:{size:10},boxWidth:10}}},
       scales:{
-        x:{ticks:{color:'#4a5168',font:{size:9}}, grid:{display:false}},
+        x:{ticks:{color:'#4a5168',font:{size:9}, maxRotation:0, autoSkip:true, maxTicksLimit:15}, grid:{display:false}},
         y:{ticks:{color:'#4a5168',font:{size:9},callback:function(v){return '₹'+v+'L'}}, grid:{color:'rgba(255,255,255,.05)'}},
       }}
   });
@@ -1881,7 +1950,7 @@ function renderAds() {
   var prevAgg = prevWin ? aggregateWindow(prevWin, brand) : null;
 
   // Vertical filter: rebuild totals from SKU rows
-  if (vertical !== 'ALL') {
+  if (brand !== 'ALL' || vertical !== 'ALL') {
     curAgg.totals = rebuildTotalsFromSkusV(curAgg.skus, vertical);
     if (prevAgg) prevAgg.totals = rebuildTotalsFromSkusV(prevAgg.skus, vertical);
   }
@@ -1953,13 +2022,18 @@ function renderAds() {
       dailyAll = dailyAll.filter(function(d){ return !seen.has(d.date); });
       hub.daily.days.forEach(function(d){ dailyAll.push(d); });
     }
+    dailyAll.sort(function(a,b){ return a.date < b.date ? -1 : 1; });
     var rows;
     if (curWin.granularity === 'day') {
-      rows = dailyAll.filter(function(d){
-        if (curWin.singleDay) return d.date === curWin.singleDay;
-        if (curWin.dayRange)  return d.date >= curWin.dayRange[0] && d.date <= curWin.dayRange[1];
-        return false;
-      });
+      if (curWin.singleDay) {
+        // Single-day → last 30 days ending on that day
+        var endDate = curWin.singleDay;
+        rows = dailyAll.filter(function(d){ return d.date <= endDate; }).slice(-30);
+      } else {
+        rows = dailyAll.filter(function(d){
+          return d.date >= curWin.dayRange[0] && d.date <= curWin.dayRange[1];
+        });
+      }
     } else {
       var singleMonthA = Array.from(curWin.months)[0];
       rows = dailyAll.filter(function(d){ return d.date.slice(0,7) === singleMonthA; });
@@ -1997,7 +2071,7 @@ function renderAds() {
     options:{responsive:true, maintainAspectRatio:false,
       plugins:{legend:{labels:{color:'#8892a4',font:{size:10},boxWidth:10}}},
       scales:{
-        x:{ticks:{color:'#4a5168',font:{size:9}}, grid:{display:false}},
+        x:{ticks:{color:'#4a5168',font:{size:9}, maxRotation:0, autoSkip:true, maxTicksLimit:15}, grid:{display:false}},
         y:{ticks:{color:'#4a5168',font:{size:9},callback:function(v){return '₹'+v+'L'}}, grid:{color:'rgba(255,255,255,.05)'}},
         y2:{position:'right', ticks:{color:'#f5c842',font:{size:9},callback:function(v){return v+'x'}}, grid:{display:false}},
       }}
@@ -2047,7 +2121,7 @@ function renderAds() {
 
   // ── SKU-level ads table
   if (H.ads.view === 'sku') {
-    document.getElementById('ads-table-title').textContent = '📣 SKU-level Ads';
+    document.getElementById('ads-table-title').textContent = '📣 SKU-level Ads (MTD — campaign data is monthly-aggregated)';
     var rowsSkus = Object.values(curAgg.skus).filter(function(s){ return s.ad_spend > 0; });
     if (brand !== 'ALL') rowsSkus = rowsSkus.filter(function(s){ return s.brand === brand; });
     var vertical = H.ads.vertical || 'ALL';
@@ -2250,7 +2324,7 @@ function renderTraffic() {
   var prevAgg = prevWin ? aggregateWindow(prevWin, brand) : null;
 
   // Vertical filter: rebuild totals from SKU rows
-  if (vertical !== 'ALL') {
+  if (brand !== 'ALL' || vertical !== 'ALL') {
     curAgg.totals = rebuildTotalsFromSkusV(curAgg.skus, vertical);
     if (prevAgg) prevAgg.totals = rebuildTotalsFromSkusV(prevAgg.skus, vertical);
   }
@@ -2261,13 +2335,14 @@ function renderTraffic() {
 
   var t = curAgg.totals, p = prevAgg ? prevAgg.totals : null;
   var ctr = t.views > 0 ? t.clicks/t.views*100 : null;
-  var cvr = t.views > 0 ? t.traffic_sales/t.views*100 : null;
+  // CVR = Units/Clicks (as requested — click-to-conversion, not view-to-conversion)
+  var cvr = t.clicks > 0 ? t.traffic_sales/t.clicks*100 : null;
   var aov = t.traffic_sales > 0 ? t.traffic_revenue/t.traffic_sales : null;
 
   var pCtr=null, pCvr=null, pAov=null;
   if (p) {
     pCtr = p.views > 0 ? p.clicks/p.views*100 : null;
-    pCvr = p.views > 0 ? p.traffic_sales/p.views*100 : null;
+    pCvr = p.clicks > 0 ? p.traffic_sales/p.clicks*100 : null;
     pAov = p.traffic_sales > 0 ? p.traffic_revenue/p.traffic_sales : null;
   }
 
@@ -2282,53 +2357,67 @@ function renderTraffic() {
     kpiTile('Impressions',   fmtImpr(t.views),  fmtImpr(t.clicks)+' clicks', 'var(--purple)', p ? makeDelta(t.views, p.views) : null),
     kpiTile('CTR',           ctr!=null?ctr.toFixed(2)+'%':'—', 'Clicks/Views', 'var(--accent)', p && pCtr!=null ? makeDelta(ctr, pCtr) : null),
     kpiTile('Traffic Sales', fmtUnits(t.traffic_sales), 'units', 'var(--green)', p ? makeDelta(t.traffic_sales, p.traffic_sales) : null),
-    kpiTile('CVR',           cvr!=null?cvr.toFixed(2)+'%':'—', 'Sales/Views', 'var(--yellow)', p && pCvr!=null ? makeDelta(cvr, pCvr) : null),
+    kpiTile('CVR',           cvr!=null?cvr.toFixed(2)+'%':'—', 'Units/Clicks', 'var(--yellow)', p && pCvr!=null ? makeDelta(cvr, pCvr) : null),
     kpiTile('Revenue',       fmtCr(t.traffic_revenue), '₹ from traffic', 'var(--green)', p ? makeDelta(t.traffic_revenue, p.traffic_revenue) : null),
     kpiTile('AOV',           aov!=null?'₹'+Math.round(aov):'—', 'Revenue/Sales', 'var(--orange)', p && pAov ? makeDelta(aov, pAov) : null),
   ];
   document.getElementById('traffic-kpi').innerHTML = kpis.join('');
 
-  // Trend chart — for single-month windows, use daily data to show within-month trend
-  var chartLabels=[], chartImpr=[], chartCvr=[];
+  // Trend chart — show Clicks (bars) + CVR=Units/Clicks (line) over a multi-day
+  // window. When user selects a single day, show last 30 days ending on that day
+  // (a single bar isn't useful). Otherwise respect the selected window.
+  var chartLabels=[], chartClk=[], chartCvr=[];
   var useTrafDaily = (curWin.granularity === 'day') ||
                      (curWin.months && curWin.months.size === 1 && hub.traffic && hub.traffic.daily && hub.traffic.daily.length);
   if (useTrafDaily) {
-    var dailyAll = (hub.traffic && hub.traffic.daily) ? hub.traffic.daily : [];
+    // Merge current + historical traffic daily
+    var dailyAll = (hub.traffic && hub.traffic.daily) ? hub.traffic.daily.slice() : [];
+    if (hub.history && hub.history.traffic_daily) {
+      var seenTD = new Set(dailyAll.map(function(d){return d.date;}));
+      hub.history.traffic_daily.forEach(function(d){ if (!seenTD.has(d.date)) dailyAll.push(d); });
+    }
+    dailyAll.sort(function(a,b){ return a.date < b.date ? -1 : 1; });
+
     var rows;
     if (curWin.granularity === 'day') {
-      rows = dailyAll.filter(function(d){
-        if (curWin.singleDay) return d.date === curWin.singleDay;
-        if (curWin.dayRange)  return d.date >= curWin.dayRange[0] && d.date <= curWin.dayRange[1];
-        return false;
-      });
+      if (curWin.singleDay) {
+        // Single-day selected → show last 30 days ending on that day for context
+        var endDate = curWin.singleDay;
+        rows = dailyAll.filter(function(d){ return d.date <= endDate; }).slice(-30);
+      } else {
+        rows = dailyAll.filter(function(d){
+          return d.date >= curWin.dayRange[0] && d.date <= curWin.dayRange[1];
+        });
+      }
     } else {
       var singleMonthT = Array.from(curWin.months)[0];
       rows = dailyAll.filter(function(d){ return d.date.slice(0,7) === singleMonthT; });
     }
     chartLabels = rows.map(function(d){ return fmtDate(d.date); });
-    chartImpr   = rows.map(function(d){ return +((d.views||0)/1e5).toFixed(1); });
-    chartCvr    = rows.map(function(d){ return d.views > 0 ? +(d.sales/d.views*100).toFixed(2) : 0; });
+    chartClk    = rows.map(function(d){ return +((d.clicks||0)/1e3).toFixed(1); });
+    // CVR = Units/Clicks (as requested)
+    chartCvr    = rows.map(function(d){ return d.clicks > 0 ? +((d.sales||0)/d.clicks*100).toFixed(2) : 0; });
   } else {
     var series = brand === 'ALL' ? (hist.totals?.traffic || []) : (hist.by_brand?.[brand]?.traffic || []);
     var rowsM = series.filter(function(r){ return curWin.months.has(r.month); });
     chartLabels = rowsM.map(function(r){ return monthLabel(r.month); });
-    chartImpr   = rowsM.map(function(r){ return +((r.impressions||0)/1e5).toFixed(1); });
-    chartCvr    = rowsM.map(function(r){ return r.impressions > 0 ? +(r.sales/r.impressions*100).toFixed(2) : 0; });
+    chartClk    = rowsM.map(function(r){ return +((r.clicks||0)/1e3).toFixed(1); });
+    chartCvr    = rowsM.map(function(r){ return r.clicks > 0 ? +((r.sales||0)/r.clicks*100).toFixed(2) : 0; });
   }
 
   dChart('traffic-trend');
   if (chartLabels.length === 0) chartLabels = ['—'];
   charts['traffic-trend'] = new Chart(document.getElementById('ch-traffic-trend').getContext('2d'), {
     data:{labels:chartLabels, datasets:[
-      {type:useTrafDaily?'line':'bar',  label:'Impressions (L)', data:chartImpr, backgroundColor:'rgba(167,139,250,.7)', borderColor:'#a78bfa', borderWidth:1.5, tension:.35, pointRadius:2, yAxisID:'y', fill:false},
-      {type:'line', label:'CVR (%)', data:chartCvr, borderColor:'#f5a524', backgroundColor:'transparent', fill:false, tension:.35, borderWidth:1.5, pointRadius:2, yAxisID:'y2'},
+      {type:'bar',  label:'Clicks (K)', data:chartClk, backgroundColor:'rgba(79,142,247,.65)', borderColor:'#4f8ef7', borderWidth:1, yAxisID:'y'},
+      {type:'line', label:'CVR % (Units/Clicks)', data:chartCvr, borderColor:'#f5a524', backgroundColor:'transparent', fill:false, tension:.35, borderWidth:1.8, pointRadius:2, yAxisID:'y2'},
     ]},
     options:{responsive:true, maintainAspectRatio:false,
       plugins:{legend:{labels:{color:'#8892a4',font:{size:10},boxWidth:10}}},
       scales:{
-        x:{ticks:{color:'#4a5168',font:{size:9}}, grid:{display:false}},
-        y:{ticks:{color:'#a78bfa',font:{size:9}}, grid:{color:'rgba(255,255,255,.05)'}, position:'left'},
-        y2:{ticks:{color:'#f5a524',font:{size:9}}, grid:{display:false}, position:'right'},
+        x:{ticks:{color:'#4a5168',font:{size:9}, maxRotation:0, autoSkip:true, maxTicksLimit:15}, grid:{display:false}},
+        y:{ticks:{color:'#4f8ef7',font:{size:9}}, grid:{color:'rgba(255,255,255,.05)'}, position:'left', title:{display:true,text:'Clicks (K)', color:'#4f8ef7', font:{size:10}}},
+        y2:{ticks:{color:'#f5a524',font:{size:9}}, grid:{display:false}, position:'right', title:{display:true,text:'CVR %', color:'#f5a524', font:{size:10}}},
       }}
   });
 
@@ -2363,7 +2452,8 @@ function renderTraffic() {
 
   skus.forEach(function(s){
     s.ctr = s.views > 0 ? s.clicks/s.views*100 : null;
-    s.cvr = (s.traffic_sales > 0 && s.views > 0) ? s.traffic_sales/s.views*100 : null;
+    // CVR = Units/Clicks (as requested)
+    s.cvr = (s.traffic_sales > 0 && s.clicks > 0) ? s.traffic_sales/s.clicks*100 : null;
     s.aov = (s.traffic_sales > 0 && s.traffic_revenue > 0) ? s.traffic_revenue/s.traffic_sales : null;
   });
 
@@ -2673,7 +2763,7 @@ function renderTrafficAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical
 
   skuArr.forEach(function(s){
     s.ctr = s.views > 0 ? s.clicks/s.views*100 : null;
-    s.cvr = (s.traffic_sales != null && s.views > 0) ? s.traffic_sales/s.views*100 : null;
+    s.cvr = (s.traffic_sales != null && s.clicks > 0) ? s.traffic_sales/s.clicks*100 : null;
   });
 
   var html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px">';
@@ -2925,6 +3015,7 @@ function renderAll(){
   safeRun(populateOvSelectors, 'populateOvSelectors');
   safeRun(populateCampMonthSelector, 'populateCampMonthSelector');
   safeRun(populatePlacementTypeSelector, 'populatePlacementTypeSelector');
+  safeRun(populatePlacementVerticalSelector, 'populatePlacementVerticalSelector');
   // Populate vertical dropdowns for Sales/Ads/Traffic/Overview
   safeRun(function(){ populateHubVerticalSelector('sales'); populateHubVerticalSelector('ads'); populateHubVerticalSelector('traffic'); populateOvVerticalSelector(); }, 'populateVerticals');
   safeRun(renderSales,'renderSales');
@@ -3105,6 +3196,27 @@ function setPlacementType() {
   var sel = document.getElementById('pl-type-sel');
   H.placement.type = sel ? (sel.value || 'ALL') : 'ALL';
   renderPlacement();
+}
+
+function setPlacementVertical() {
+  var sel = document.getElementById('pl-vertical-sel');
+  H.placement.vertical = sel ? (sel.value || 'ALL') : 'ALL';
+  renderPlacement();
+}
+
+function populatePlacementVerticalSelector() {
+  var sel = document.getElementById('pl-vertical-sel');
+  if (!sel || !D || !D.hub) return;
+  var verticals = new Set();
+  (D.hub.skus || []).forEach(function(s){ if (s.vertical) verticals.add(s.vertical); });
+  var sorted = Array.from(verticals).sort();
+  var current = H.placement.vertical || 'ALL';
+  var html = '<option value="ALL">All Verticals</option>';
+  sorted.forEach(function(v){
+    var selected = (v === current) ? ' selected' : '';
+    html += '<option value="'+v+'"'+selected+'>'+v+'</option>';
+  });
+  sel.innerHTML = html;
 }
 
 function populatePlacementTypeSelector() {
@@ -3499,7 +3611,6 @@ function renderCampaigns() {
     kpi('Units',      fmtUnits(t.units), 'Direct + Indirect',          'var(--text2)',  pt ? makeDeltaLocal(t.units,   pt.units) : null),
     kpi('Views',      fmtImpr(t.views),  'Impressions',                'var(--text2)',  pt ? makeDeltaLocal(t.views,   pt.views) : null),
     kpi('Campaigns',  cur.campaigns.length, 'active this month',       'var(--yellow)', pt ? makeDeltaLocal(cur.campaigns.length, prev.campaigns.length) : null),
-    kpi('AdGroups',   cur.adgroups.length,  'active this month',       'var(--yellow)', pt ? makeDeltaLocal(cur.adgroups.length,  prev.adgroups.length)  : null),
     kpi('SKUs',       cur.skus.length,      'with ad activity',        'var(--purple)', pt ? makeDeltaLocal(cur.skus.length,      prev.skus.length)      : null),
   ];
   document.getElementById('camp-kpi').innerHTML = kpis.join('');
@@ -4161,7 +4272,7 @@ function renderOverview() {
   var prevAgg = prevWin ? aggregateWindow(prevWin, brand) : null;
 
   var t, pt;
-  if (vertical !== 'ALL') {
+  if (brand !== 'ALL' || vertical !== 'ALL') {
     t  = rebuildTotalsFromSkusV(curAgg.skus, vertical);
     pt = prevAgg ? rebuildTotalsFromSkusV(prevAgg.skus, vertical) : null;
   } else {
@@ -4170,13 +4281,32 @@ function renderOverview() {
   }
   var roi   = t.spend > 0 ? t.rev/t.spend : null;
   var tacos = t.sales > 0 && t.spend > 0 ? t.spend/t.sales*100 : null;
-  var cvr   = t.views > 0 ? t.clicks/t.views*100 : null;
+  // CVR = Units/Clicks (as requested — from traffic-driven sales)
+  var cvr   = t.clicks > 0 ? t.traffic_sales/t.clicks*100 : null;
   var pRoi = null, pTacos = null, pCvr = null;
   if (pt) {
     pRoi   = pt.spend > 0 ? pt.rev/pt.spend : null;
     pTacos = pt.sales > 0 && pt.spend > 0 ? pt.spend/pt.sales*100 : null;
-    pCvr   = pt.views > 0 ? pt.clicks/pt.views*100 : null;
+    pCvr   = pt.clicks > 0 ? pt.traffic_sales/pt.clicks*100 : null;
   }
+
+  // ── MRP + Discount% — needs units-weighted MRP from SKU dict ──
+  function computeMrpDisc(agg, totals) {
+    if (!agg) return {mrp:null, disc:null};
+    var mtdUnits = 0, mrpXU = 0;
+    Object.values(agg.skus || {}).forEach(function(s){
+      if (vertical !== 'ALL' && s.vertical !== vertical) return;
+      mtdUnits += s.units || 0;
+      if (s.mrp && s.units) mrpXU += s.mrp * s.units;
+    });
+    // Scale MRP to match window units (same technique as sales tab)
+    var totMrp = (mtdUnits > 0 && totals.units > 0) ? (mrpXU * (totals.units / mtdUnits)) : mrpXU;
+    if (!totMrp) return {mrp:null, disc:null};
+    var discPct = (totMrp > 0) ? ((totMrp - totals.sales) / totMrp * 100) : null;
+    return {mrp: totMrp, disc: discPct};
+  }
+  var curMD = computeMrpDisc(curAgg, t);
+  var prevMD = prevAgg ? computeMrpDisc(prevAgg, pt) : {mrp:null, disc:null};
 
   function ovKpi(label, val, sub, color, delta) {
     var deltaHtml = delta ? delta.html : '';
@@ -4185,14 +4315,15 @@ function renderOverview() {
       '<div class="stat-sub">'+sub+'</div></div>';
   }
   var kpis = [
-    ovKpi('Sales',     fmtCr(t.sales),              fmtUnits(t.units)+' units',     'var(--green)',  pt ? makeDelta(t.sales, pt.sales) : null),
-    ovKpi('Net Sales', fmtCr((t.sales||0)/1.18),    'ex-GST (÷1.18)',               'var(--green)',  pt ? makeDelta((t.sales||0)/1.18, (pt.sales||0)/1.18) : null),
-    ovKpi('Ad Spend',  fmtCr(t.spend),              fmtCr(t.rev)+' rev',            'var(--red)',    pt ? makeDelta(t.spend, pt.spend, true) : null),
-    ovKpi('ROI',       roi!=null?roi.toFixed(2)+'x':'—', 'Ad Rev / Spend',          'var(--yellow)', pt && pRoi!=null ? makeDelta(roi, pRoi) : null),
-    ovKpi('TACOS',     tacos!=null?tacos.toFixed(1)+'%':'—', 'Ad Spend / Sales',    'var(--orange)', pt && pTacos!=null ? makeDelta(tacos, pTacos, true) : null),
-    ovKpi('Impressions', fmtImpr(t.views), cvr!=null?'CVR '+cvr.toFixed(2)+'%':'—', 'var(--purple)', pt ? makeDelta(t.views, pt.views) : null),
-    ovKpi('Ad Units',  fmtUnits(t.ad_units), 'from ads',                            'var(--accent)', pt ? makeDelta(t.ad_units, pt.ad_units) : null),
-    ovKpi('Clicks',    fmtImpr(t.clicks), 'traffic clicks',                         'var(--text2)',  pt ? makeDelta(t.clicks, pt.clicks) : null),
+    ovKpi('MRP',       curMD.mrp!=null?fmtCr(curMD.mrp):'—', 'Σ(units × MRP)',          'var(--text2)',  prevMD.mrp ? makeDelta(curMD.mrp, prevMD.mrp) : null),
+    ovKpi('Sales',     fmtCr(t.sales),              fmtUnits(t.units)+' units',         'var(--green)',  pt ? makeDelta(t.sales, pt.sales) : null),
+    ovKpi('Net Sales', fmtCr((t.sales||0)/1.18),    'ex-GST (÷1.18)',                   'var(--green)',  pt ? makeDelta((t.sales||0)/1.18, (pt.sales||0)/1.18) : null),
+    ovKpi('Disc %',    curMD.disc!=null?curMD.disc.toFixed(1)+'%':'—', '(MRP − Sales) / MRP', 'var(--orange)', prevMD.disc!=null ? makeDelta(curMD.disc, prevMD.disc, true) : null),
+    ovKpi('Ad Spend',  fmtCr(t.spend),              fmtCr(t.rev)+' rev',                'var(--red)',    pt ? makeDelta(t.spend, pt.spend, true) : null),
+    ovKpi('ROI',       roi!=null?roi.toFixed(2)+'x':'—', 'Ad Rev / Spend',               'var(--yellow)', pt && pRoi!=null ? makeDelta(roi, pRoi) : null),
+    ovKpi('TACOS',     tacos!=null?tacos.toFixed(1)+'%':'—', 'Ad Spend / Sales',         'var(--orange)', pt && pTacos!=null ? makeDelta(tacos, pTacos, true) : null),
+    ovKpi('Impressions', fmtImpr(t.views), cvr!=null?'CVR '+cvr.toFixed(2)+'%':'—',       'var(--purple)', pt ? makeDelta(t.views, pt.views) : null),
+    ovKpi('Clicks',    fmtImpr(t.clicks), 'traffic clicks',                               'var(--text2)',  pt ? makeDelta(t.clicks, pt.clicks) : null),
   ];
   document.getElementById('ov-hero-stats').innerHTML = kpis.join('');
 

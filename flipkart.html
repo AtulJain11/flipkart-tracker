@@ -1598,7 +1598,28 @@ function aggregateWindow(win, brand) {
     out.totals.clicks      = sumField(tR, 'clicks');
     out.totals.traffic_sales   = sumField(tR, 'sales');
     out.totals.traffic_revenue = sumField(tR, 'revenue');
-    out.totals.days        = win.months.size * 30;  // approx
+    // Days denominator for DRR: use real days-per-month for historical months,
+    // and actual sales days available for the CURRENT month (which is partial).
+    var todayIso = (new Date()).toISOString().slice(0,10);
+    var curMonthIso = todayIso.slice(0, 7);
+    var salesMaxDate = (hub.sales && hub.sales.date_to) || '';
+    var dayCount = 0;
+    win.months.forEach(function(m){
+      var y = parseInt(m.slice(0,4),10), mm = parseInt(m.slice(5,7),10);
+      if (m === curMonthIso) {
+        // Current month — use real sales days available (partial month)
+        if (salesMaxDate && salesMaxDate.slice(0,7) === m) {
+          dayCount += parseInt(salesMaxDate.slice(8,10),10);
+        } else {
+          // Fall back to today's day-of-month
+          dayCount += parseInt(todayIso.slice(8,10),10);
+        }
+      } else {
+        // Historical month: exact days in that month
+        dayCount += new Date(y, mm, 0).getDate();
+      }
+    });
+    out.totals.days = Math.max(1, dayCount);
 
     // Build hub SKU lookup for vertical/category (hist.skus[] may lack these)
     var hubBySku = {};
@@ -1891,7 +1912,10 @@ function renderSales() {
   var cancelPct = t.gmv > 0 ? t.cxl/t.gmv*100 : null;
   var returnPct = t.gmv > 0 ? t.rtn/t.gmv*100 : null;
   var aov   = t.units > 0 ? t.sales/t.units : null;
-  var nDays = Math.max(1, curWin.granularity === 'day' ? (t.days || 1) : (curWin.months ? curWin.months.size * 30 : 1));
+  // DRR denominator: aggregateWindow computes t.days correctly for both day
+  // and month modes (real days-per-month for historical, partial count for
+  // current month). Use it as the source of truth instead of approximations.
+  var nDays = Math.max(1, t.days || 1);
   var drrSales = t.sales / nDays;
   var drrUnits = t.units / nDays;
 
@@ -1902,7 +1926,7 @@ function renderSales() {
     pCancelPct = p.gmv > 0 ? p.cxl/p.gmv*100 : null;
     pReturnPct = p.gmv > 0 ? p.rtn/p.gmv*100 : null;
     pAov = p.units > 0 ? p.sales/p.units : null;
-    var pDays = Math.max(1, prevWin.granularity === 'day' ? (p.days || 1) : (prevWin.months ? prevWin.months.size * 30 : 1));
+    var pDays = Math.max(1, p.days || 1);
     pDrrSales = p.sales / pDays;
     pDrrUnits = p.units / pDays;
     // Prev discount
@@ -2153,6 +2177,16 @@ function renderAds() {
 
   var windowLabel = 'Window: ' + curWin.label;
   if (prevWin) windowLabel += ' · vs ' + prevWin.label;
+
+  // Warn if window selects days where ads data exists but sales don't (common at
+  // start-of-day before sales file refreshes — TACOS becomes infinite/meaningless)
+  if (curWin.granularity === 'day') {
+    var salesMax = (hub.sales && hub.sales.date_to) || '';
+    var winLast = curWin.singleDay || (curWin.dayRange ? curWin.dayRange[1] : '');
+    if (winLast && salesMax && winLast > salesMax) {
+      windowLabel += ' · ⚠ ads data extends past sales (TACOS unreliable)';
+    }
+  }
   document.getElementById('ads-window').textContent = windowLabel;
 
   var t = curAgg.totals, p = prevAgg ? prevAgg.totals : null;
@@ -4870,13 +4904,19 @@ function renderOvCrossInsights(curWin, prevWin, brandFilter, verticalFilter) {
     );
   }
 
-  // 2. Worst ROI (with min spend threshold)
-  var withSpend = curSkus.filter(function(s){return s.ad_spend >= 50000 && s.ad_spend > 0;})
+  // 2. Worst / Best Ad ROI (with adaptive min spend threshold)
+  // Day-level windows have ~1/30 of MTD spend per SKU, so fixed ₹50K cutoff
+  // would hide all rows. Use top-25% percentile as fallback.
+  var spendsSortedOv = curSkus.map(function(s){return s.ad_spend||0;})
+    .filter(function(v){return v > 0;}).sort(function(a,b){return b-a;});
+  var cutOv = Math.min(50000, spendsSortedOv[Math.floor(spendsSortedOv.length * 0.25)] || 0);
+  var cutLabelOv = cutOv >= 50000 ? '≥₹50K' : '(top 25%)';
+  var withSpend = curSkus.filter(function(s){return s.ad_spend >= cutOv && s.ad_spend > 0;})
     .map(function(s){ s.ad_roi = s.ad_spend > 0 ? s.ad_revenue/s.ad_spend : null; return s; })
     .filter(function(s){return s.ad_roi != null;});
   var worstRoi = withSpend.slice().sort(function(a,b){return a.ad_roi - b.ad_roi;}).slice(0,3);
   if (worstRoi.length) {
-    html += block('🩸 Worst Ad ROI (spend ≥₹50K)', 'var(--red)',
+    html += block('🩸 Worst Ad ROI (spend ' + cutLabelOv + ')', 'var(--red)',
       worstRoi.map(function(s){
         var p = prevSkus[s.sku];
         var pRoi = (p && p.ad_spend > 0) ? p.ad_revenue/p.ad_spend : null;
@@ -4888,7 +4928,7 @@ function renderOvCrossInsights(curWin, prevWin, brandFilter, verticalFilter) {
   // 3. Top ROI
   var bestRoi = withSpend.slice().sort(function(a,b){return b.ad_roi - a.ad_roi;}).slice(0,3);
   if (bestRoi.length) {
-    html += block('🚀 Top Ad ROI (spend ≥₹50K)', 'var(--green)',
+    html += block('🚀 Top Ad ROI (spend ' + cutLabelOv + ')', 'var(--green)',
       bestRoi.map(function(s){
         var p = prevSkus[s.sku];
         var pRoi = (p && p.ad_spend > 0) ? p.ad_revenue/p.ad_spend : null;
@@ -5174,9 +5214,14 @@ function renderOvVerticalBreakdown() {
   if (!curWin) { body.innerHTML = '<tr><td colspan="11" class="empty">No window</td></tr>'; return; }
   var curAgg = aggregateWindow(curWin, brand);
 
+  // Reconcile per-SKU ad values to canonical day totals so vertical ad_spend
+  // sums match what Ads KPI tiles show for the same window.
+  var skuArr = Object.values(curAgg.skus);
+  if (curWin.granularity === 'day') reconcileAdsToCanon(skuArr, curWin, brand);
+
   // Group SKUs by vertical
   var groups = {};  // vertical -> aggregates
-  Object.values(curAgg.skus).forEach(function(s){
+  skuArr.forEach(function(s){
     var v = s.vertical || '(Unknown)';
     if (!groups[v]) groups[v] = {
       vertical: v, skus: 0,

@@ -1179,17 +1179,39 @@ function resolveTimeWindow(tab) {
             label:'Year · ' + state.year};
   }
   if (state.mode === 'custom' && state.from && state.to) {
-    // Determine if range is entirely within current month
-    var fromM = state.from.slice(0,7);
-    var toM   = state.to.slice(0,7);
-    if (fromM === toM && fromM === currentMonth) {
-      // Daily granularity within current month
-      var daysIn = dailyAll.filter(function(d){ return d >= state.from && d <= state.to; });
+    // Use day-granularity whenever daily data covers the requested range.
+    // We have 367+ days of sales_daily (historical) + current-month hub.sales.daily,
+    // and 202+ days of ads daily across 7 months. Only fall back to month-granularity
+    // if the range extends BEYOND the available daily data.
+    var histSalesDaily = (hub.history && hub.history.sales_daily) ? hub.history.sales_daily : [];
+    var histDates = histSalesDaily.map(function(d){return d.date;});
+    var allSalesDays = dailyAll.concat(histDates);
+    var minDailyDate = allSalesDays.length ? allSalesDays.reduce(function(a,b){return a<b?a:b;}) : null;
+    var maxDailyDate = allSalesDays.length ? allSalesDays.reduce(function(a,b){return a>b?a:b;}) : null;
+    var rangeFullyCoveredByDaily = minDailyDate && state.from >= minDailyDate && state.to <= maxDailyDate;
+
+    if (rangeFullyCoveredByDaily) {
+      // Compute which months the range spans so monthly aggregations (e.g.
+      // 12-month trend when zoomed out) still work. months Set lists ALL months
+      // touched by the range.
+      var touchedMonths = new Set();
+      var curIter = state.from.slice(0,7);
+      var endM = state.to.slice(0,7);
+      while (curIter <= endM) {
+        touchedMonths.add(curIter);
+        // Advance one month
+        var yy = parseInt(curIter.slice(0,4),10), mm = parseInt(curIter.slice(5,7),10);
+        mm++; if (mm === 13) { mm = 1; yy++; }
+        curIter = yy + '-' + (mm<10?'0':'') + mm;
+      }
+      var daysIn = allSalesDays.filter(function(d){ return d >= state.from && d <= state.to; });
       return {granularity:'day', dayRange:[state.from, state.to], daysIn:daysIn,
-              months:new Set([fromM]),
+              months:touchedMonths,
               label:'Custom · ' + fmtDate(state.from) + ' → ' + fmtDate(state.to)};
     } else {
-      // Monthly granularity — include any month that overlaps the range
+      // Range extends beyond available daily data — fall back to month-granularity
+      var fromM = state.from.slice(0,7);
+      var toM   = state.to.slice(0,7);
       var inRange = monthsAll.filter(function(m){ return m >= fromM && m <= toM; });
       return {granularity:'month', months:new Set(inRange), monthsList:inRange,
               label:'Custom · ' + fmtDate(state.from) + ' → ' + fmtDate(state.to)};
@@ -1977,17 +1999,53 @@ function renderSales() {
   var useDaily = (curWin.granularity === 'day') ||
                  (curWin.months && curWin.months.size === 1 && (hub.sales && hub.sales.daily && hub.sales.daily.length));
   if (useDaily) {
-    // Merge current + historical sales daily — skip historical rows for any month
-    // already covered by current hub to avoid double-counting.
-    var dailyAll = (hub.sales && hub.sales.daily) ? hub.sales.daily.slice() : [];
-    var _curMonthsChart = new Set(dailyAll.map(function(d){return d && d.date ? d.date.slice(0,7) : '';}));
-    if (hub.history && hub.history.sales_daily) {
-      var seenSD = new Set(dailyAll.map(function(d){return d.date;}));
-      hub.history.sales_daily.forEach(function(d){
-        if (!d || !d.date) return;
-        if (_curMonthsChart.has(d.date.slice(0,7))) return;
-        if (!seenSD.has(d.date)) dailyAll.push(d);
+    // When brand filter is active, aggregate per-day from SKU-day data so the
+    // trend respects the brand. Otherwise use the all-brand daily rollup.
+    var dailyAll;
+    if (brand && brand !== 'ALL') {
+      // Build date → {net_sales, gmv} from SKU-day sources, filtered by brand
+      var byDate = {};
+      // Current-month per-SKU per-day
+      (hub.skus || []).forEach(function(s){
+        if (s.brand !== brand) return;
+        (s.sales_daily || []).forEach(function(r){
+          if (!r || !r.date) return;
+          var e = byDate[r.date] || {date: r.date, net_sales: 0, gmv: 0};
+          e.net_sales += r.net_sales || 0;
+          e.gmv       += r.gmv       || 0;
+          byDate[r.date] = e;
+        });
       });
+      // Historical per-SKU per-day — dedup months already in current hub
+      var curMonthsSet = new Set(Object.keys(byDate).map(function(d){return d.slice(0,7);}));
+      var skuBrand = {};
+      (hub.skus || []).forEach(function(s){ skuBrand[s.sku] = s.brand; });
+      // For historical SKUs not in current hub, consult hist.skus
+      var histSkus = (hub.history && hub.history.skus) || [];
+      histSkus.forEach(function(s){ if (!(s.sku in skuBrand)) skuBrand[s.sku] = s.brand; });
+      var histSkuDaily = (hub.history && hub.history.sales_sku_daily) || [];
+      histSkuDaily.forEach(function(r){
+        if (!r || !r.date) return;
+        if (curMonthsSet.has(r.date.slice(0,7))) return;
+        if (skuBrand[r.sku] !== brand) return;
+        var e = byDate[r.date] || {date: r.date, net_sales: 0, gmv: 0};
+        e.net_sales += r.net_sales || 0;
+        e.gmv       += r.gmv       || 0;
+        byDate[r.date] = e;
+      });
+      dailyAll = Object.values(byDate);
+    } else {
+      // All-brand: use precomputed daily rollup (fast path)
+      dailyAll = (hub.sales && hub.sales.daily) ? hub.sales.daily.slice() : [];
+      var _curMonthsChart = new Set(dailyAll.map(function(d){return d && d.date ? d.date.slice(0,7) : '';}));
+      if (hub.history && hub.history.sales_daily) {
+        var seenSD = new Set(dailyAll.map(function(d){return d.date;}));
+        hub.history.sales_daily.forEach(function(d){
+          if (!d || !d.date) return;
+          if (_curMonthsChart.has(d.date.slice(0,7))) return;
+          if (!seenSD.has(d.date)) dailyAll.push(d);
+        });
+      }
     }
     dailyAll.sort(function(a,b){ return a.date < b.date ? -1 : 1; });
 
@@ -3946,8 +4004,13 @@ function renderCampaigns() {
 // ── Charts: monthly trend (spend+ROI overlay) + brand doughnut ─────────────
 var _chCampTrend, _chCampBrand;
 function renderCampCharts(fsn, brand) {
-  // Trend: all months, spend bars + ROI line
-  var months = fsn.months.slice().sort();
+  // Trend: last 13 months (12 full + current partial), spend bars + ROI line.
+  // Chart title says "13 months" — limiting to exactly that window so
+  // the oldest months don't crowd out recency.
+  var monthsAllC = fsn.months.slice().sort();
+  var months = monthsAllC.slice(-13);
+  var todayIsoC = (new Date()).toISOString().slice(0,10);
+  var curMonthIsoC = todayIsoC.slice(0,7);
   var series = months.map(function(m){
     var rec = (fsn.totals || []).find(function(t){ return t.month === m; });
     if (!rec) return {spend:0, roi:0, tacos:null};
@@ -3957,7 +4020,13 @@ function renderCampCharts(fsn, brand) {
     }
     return {spend: rec.spend, roi: rec.roi, tacos: rec.tacos};
   });
-  var labels = months.map(monthLabel);
+  var labels = months.map(function(m){
+    return monthLabel(m) + (m === curMonthIsoC ? ' *' : '');
+  });
+  // Lighter color for current partial month
+  var spendColors = months.map(function(m){
+    return m === curMonthIsoC ? 'rgba(220,53,69,0.28)' : 'rgba(220,53,69,0.55)';
+  });
 
   var ctx1 = document.getElementById('ch-camp-trend');
   if (_chCampTrend) _chCampTrend.destroy();
@@ -3967,7 +4036,7 @@ function renderCampCharts(fsn, brand) {
       labels: labels,
       datasets: [
         {label:'Spend (₹L)', type:'bar', data: series.map(function(s){return (s.spend/1e5).toFixed(1);}),
-         backgroundColor:'rgba(220,53,69,0.55)', borderColor:'rgba(220,53,69,1)', borderWidth:1, yAxisID:'y'},
+         backgroundColor:spendColors, borderColor:'rgba(220,53,69,1)', borderWidth:1, yAxisID:'y'},
         {label:'ROI (x)', type:'line', data: series.map(function(s){return s.roi;}),
          borderColor:'rgba(0,212,255,1)', backgroundColor:'rgba(0,212,255,0.15)', fill:false, tension:0.2,
          pointRadius:3, pointBackgroundColor:'rgba(0,212,255,1)', yAxisID:'y1'},
@@ -4739,7 +4808,18 @@ function renderOvExtras(curWin, prevWin, brandFilter) {
 
   // ── 12-Month Trend chart (brand-aware) ──
   dChart('ov-trend');
-  var months = (hist.months || []).slice();
+  var allMonths = (hist.months || []).slice().sort();
+  // Limit to last 13 months (12 full + current partial) so the chart title
+  // "12-Month Trend" is truthful and the bars stay legible.
+  var months = allMonths.slice(-13);
+  // Identify current month (partial) so we can visually flag it
+  var todayIsoT = (new Date()).toISOString().slice(0,10);
+  var curMonthIsoT = todayIsoT.slice(0,7);
+  var salesMaxDateT = (hub.sales && hub.sales.date_to) || '';
+  var curMonthDays = null;
+  if (salesMaxDateT && salesMaxDateT.slice(0,7) === curMonthIsoT) {
+    curMonthDays = parseInt(salesMaxDateT.slice(8,10),10);
+  }
   if (months.length) {
     var sSeries = brandFilter === 'ALL'
       ? (hist.totals?.sales || [])
@@ -4747,7 +4827,14 @@ function renderOvExtras(curWin, prevWin, brandFilter) {
     var aSeries = brandFilter === 'ALL'
       ? (hist.totals?.ads || [])
       : (hist.by_brand?.[brandFilter]?.ads || []);
-    var mLabels  = months.map(monthLabel);
+    // Month label shows "(partial)" suffix for current month
+    var mLabels  = months.map(function(m){
+      var lbl = monthLabel(m);
+      if (m === curMonthIsoT && curMonthDays) {
+        lbl += ' (' + curMonthDays + 'd)';
+      }
+      return lbl;
+    });
     var netArr   = months.map(function(m){
       var r = sSeries.find(function(x){return x.month === m;});
       return r ? +((r.net_sales||0)/1e5).toFixed(1) : 0;
@@ -4760,14 +4847,28 @@ function renderOvExtras(curWin, prevWin, brandFilter) {
       var r = aSeries.find(function(x){return x.month === m;});
       return r ? (r.roi || 0) : 0;
     });
+    // Current month gets lighter fill to visually differentiate partial data
+    var salesBarColors = months.map(function(m){
+      return m === curMonthIsoT ? 'rgba(62,207,142,.35)' : 'rgba(62,207,142,.7)';
+    });
+    var spendBarColors = months.map(function(m){
+      return m === curMonthIsoT ? 'rgba(240,82,82,.3)' : 'rgba(240,82,82,.6)';
+    });
     charts['ov-trend'] = new Chart(document.getElementById('ch-ov-trend').getContext('2d'), {
       data: {labels: mLabels, datasets: [
-        {type:'bar',  label:'Sales (₹L)',    data:netArr,   backgroundColor:'rgba(62,207,142,.7)',  borderWidth:0, yAxisID:'y', order:2},
-        {type:'bar',  label:'Ad Spend (₹L)',  data:spendArr, backgroundColor:'rgba(240,82,82,.6)',   borderWidth:0, yAxisID:'y', order:3},
+        {type:'bar',  label:'Sales (₹L)',    data:netArr,   backgroundColor:salesBarColors, borderWidth:0, yAxisID:'y', order:2},
+        {type:'bar',  label:'Ad Spend (₹L)',  data:spendArr, backgroundColor:spendBarColors, borderWidth:0, yAxisID:'y', order:3},
         {type:'line', label:'ROI (x)',        data:roiArr,   borderColor:'#f5c842', backgroundColor:'rgba(245,200,66,.1)', fill:false, tension:.3, borderWidth:2, pointRadius:3, yAxisID:'y2', order:1},
       ]},
       options: {responsive:true, maintainAspectRatio:false,
-        plugins: {legend:{labels:{color:'#8892a4',font:{size:10},boxWidth:10}}},
+        plugins: {legend:{labels:{color:'#8892a4',font:{size:10},boxWidth:10}},
+                  tooltip:{callbacks:{afterBody:function(items){
+                    var idx = items[0].dataIndex;
+                    if (months[idx] === curMonthIsoT && curMonthDays) {
+                      return ['⚠ Partial month: ' + curMonthDays + ' days of data'];
+                    }
+                    return [];
+                  }}}},
         scales: {
           x:  {ticks:{color:'#4a5168',font:{size:9}}, grid:{display:false}},
           y:  {ticks:{color:'#4a5168',font:{size:9},callback:function(v){return '₹'+v+'L';}}, grid:{color:'rgba(255,255,255,.05)'}},

@@ -3304,10 +3304,10 @@ function renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical) {
       var topDC = dayCamps.slice().sort(function(a,b){return b.spend-a.spend;}).slice(0,5);
       html += '<div>' + insightBlock('🎯 Top Campaigns (day-level)', 'var(--accent)',
         topDC.map(function(c){
-          return '<div style="padding:3px 0;font-size:11px"><b>'+escHtml(c.name.slice(0,32))+'</b> · ' +
+          return '<b>'+escHtml(c.name.slice(0,32))+'</b> · ' +
             '<span style="color:var(--red)">'+fmtCr(c.spend)+'</span> · ' +
-            '<span style="color:var(--accent)">'+(c.roi!=null?c.roi.toFixed(2)+'x':'—')+'</span></div>';
-        }).join('')
+            '<span style="color:var(--accent)">'+(c.roi!=null?c.roi.toFixed(2)+'x':'—')+'</span>';
+        })
       ) + '</div>';
 
       // Worst ROI campaigns (day-level, min spend top quartile)
@@ -3318,10 +3318,10 @@ function renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical) {
       if (worstDC.length) {
         html += '<div>' + insightBlock('⚠️ Worst ROI Campaigns (day-level)', 'var(--red)',
           worstDC.map(function(c){
-            return '<div style="padding:3px 0;font-size:11px"><b>'+escHtml(c.name.slice(0,32))+'</b> · ' +
+            return '<b>'+escHtml(c.name.slice(0,32))+'</b> · ' +
               fmtCr(c.spend)+' · ' +
-              '<span style="color:var(--red)">'+c.roi.toFixed(2)+'x</span></div>';
-          }).join('')
+              '<span style="color:var(--red)">'+c.roi.toFixed(2)+'x</span>';
+          })
         ) + '</div>';
       }
     }
@@ -3336,11 +3336,11 @@ function renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical) {
       var topC = fsnCamps.slice().sort(function(a,b){return b.spend-a.spend;}).slice(0,5);
       html += '<div>' + insightBlock('🎯 Top Campaigns (FSN · MTD)', 'var(--accent)',
         topC.map(function(c){
-          return '<div style="padding:3px 0;font-size:11px;cursor:pointer" onclick="gotoCampDrill(\''+escHtml(c.id)+'\')" title="Open in Campaigns tab">' +
+          return '<span style="cursor:pointer" onclick="gotoCampDrill(\''+escHtml(c.id)+'\')" title="Open in Campaigns tab">' +
             '<b>'+escHtml(c.name.slice(0,32))+'</b> · ' +
             '<span style="color:var(--red)">'+fmtCr(c.spend)+'</span> · ' +
-            '<span style="color:var(--accent)">'+(c.roi!=null?c.roi.toFixed(2)+'x':'—')+'</span></div>';
-        }).join('')
+            '<span style="color:var(--accent)">'+(c.roi!=null?c.roi.toFixed(2)+'x':'—')+'</span></span>';
+        })
       ) + '</div>';
 
       // Worst ROI campaigns (MTD, spend > ₹50K)
@@ -3349,11 +3349,11 @@ function renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical) {
       if (worstC.length) {
         html += '<div>' + insightBlock('⚠️ Worst ROI Campaigns (FSN · MTD, ≥₹50K)', 'var(--red)',
           worstC.map(function(c){
-            return '<div style="padding:3px 0;font-size:11px;cursor:pointer" onclick="gotoCampDrill(\''+escHtml(c.id)+'\')" title="Open in Campaigns tab">' +
+            return '<span style="cursor:pointer" onclick="gotoCampDrill(\''+escHtml(c.id)+'\')" title="Open in Campaigns tab">' +
               '<b>'+escHtml(c.name.slice(0,32))+'</b> · ' +
               fmtCr(c.spend)+' · ' +
-              '<span style="color:var(--red)">'+c.roi.toFixed(2)+'x</span></div>';
-          }).join('')
+              '<span style="color:var(--red)">'+c.roi.toFixed(2)+'x</span></span>';
+          })
         ) + '</div>';
       }
     }
@@ -3481,6 +3481,7 @@ async function loadData() {
     const latest = D.days[D.days.length-1];
     S.ov.date=latest; S.rk.date=latest; S.sp.date=latest; S.rt.date=latest;
     buildDateBars();
+    try { buildSearchSuggestions(); } catch(se) { console.warn('suggestions failed', se); }
     try { renderAll(); } catch(re) {
       console.error('renderAll failed:', re);
       showErrBanner('Render error: '+re.message);
@@ -3489,6 +3490,63 @@ async function loadData() {
     document.getElementById('loading').style.display='none';
     showErrBanner('Load failed: '+e.message+' — run fk_data_processor.py');
   }
+}
+
+// ── Search autocomplete ────────────────────────────────────────────────────
+// Populates a shared <datalist> with SKU codes, product titles, brand + vertical
+// keywords, and campaign names so browser autocomplete surfaces matches for all
+// fsearch inputs (sales, ads, campaigns, traffic, rankings). The datalist is
+// created lazily the first time we have data, then every input gets `list=`.
+function buildSearchSuggestions() {
+  if (!D || !D.hub) return;
+  var hub = D.hub;
+  var hist = hub.history || {};
+  var entries = new Set();
+  // SKU codes + titles (current unified table)
+  (hub.skus || []).forEach(function(s){
+    if (s.sku) entries.add(s.sku);
+    if (s.title) entries.add(String(s.title).slice(0, 80));
+    if (s.vertical) entries.add(s.vertical);
+  });
+  // Historical SKUs (discontinued but still searchable)
+  (hist.skus || []).forEach(function(s){
+    if (s.sku) entries.add(s.sku);
+    if (s.title) entries.add(String(s.title).slice(0, 80));
+  });
+  // Campaign names — helpful for ads-search and camp-search
+  (hub.fsn && hub.fsn.campaigns || []).forEach(function(c){
+    if (c.name) entries.add(c.name);
+  });
+  ((hist.fsn && hist.fsn.campaigns) || []).forEach(function(c){
+    if (c.name) entries.add(c.name);
+  });
+  // Rankings tab also wants products by title — latest snapshot covers it
+  ((D.latest && D.latest.products) || []).forEach(function(p){
+    if (p.title) entries.add(String(p.title).slice(0, 80));
+  });
+  // Canned vertical keywords so "bo" → "BodyWash" etc.
+  ['Shampoo','Conditioner','BodyWash','Facewash','HairSerum','HairMask','HairStyling',
+   'Sunscreen','RollOn','FaceCream','LipBalm','BodyLotion','Scrub','FootCream']
+    .forEach(function(v){ entries.add(v); });
+
+  // Render the datalist — keep it capped so the browser stays responsive
+  var items = Array.from(entries).filter(Boolean).sort().slice(0, 2000);
+  var dl = document.getElementById('sku-suggest');
+  if (!dl) {
+    dl = document.createElement('datalist');
+    dl.id = 'sku-suggest';
+    document.body.appendChild(dl);
+  }
+  dl.innerHTML = items.map(function(v){
+    return '<option value="'+String(v).replace(/"/g,'&quot;')+'"></option>';
+  }).join('');
+
+  // Wire every fsearch input on the page — covers sales/ads/camp/traffic/rankings
+  // and any future ones added with the same class.
+  document.querySelectorAll('input.fsearch').forEach(function(el){
+    el.setAttribute('list', 'sku-suggest');
+    el.setAttribute('autocomplete', 'on');
+  });
 }
 function showErrBanner(msg){
   const b=document.createElement('div');
@@ -5828,12 +5886,15 @@ function applyOvDefault() {
   if (!D || !D.hub) return;
   var hub = D.hub;
 
-  // Collect all available days across sources
-  var dayPool = new Set();
-  if (hub.sales && hub.sales.daily) hub.sales.daily.forEach(function(d){ dayPool.add(d.date); });
-  if (hub.history && hub.history.daily && hub.history.daily.all_days) hub.history.daily.all_days.forEach(function(d){ dayPool.add(d.date); });
-  if (hub.daily && hub.daily.days) hub.daily.days.forEach(function(d){ dayPool.add(d.date); });
-  var days = Array.from(dayPool).sort();
+  // Only consider days where SALES data exists — Overview KPIs depend on net_sales
+  // for DISC%/TACOS/DRR, so defaulting to an ads-only day (like today before the
+  // sales snapshot arrives) would render everything as zero. This matches the
+  // day-dropdown filter in populateOvSelectors() so the dropdown value and the
+  // resolved window always stay in sync.
+  var salesDayPool = new Set();
+  if (hub.sales && hub.sales.daily) hub.sales.daily.forEach(function(d){ salesDayPool.add(d.date); });
+  if (hub.history && hub.history.sales_daily) hub.history.sales_daily.forEach(function(d){ salesDayPool.add(d.date); });
+  var days = Array.from(salesDayPool).sort();
 
   // Clear all selectors first
   H.ov.day = ''; H.ov.month = ''; H.ov.year = ''; H.ov.from = ''; H.ov.to = '';

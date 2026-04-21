@@ -1280,10 +1280,18 @@ function aggregateWindow(win, brand) {
 
   if (win.granularity === 'day') {
     // Sales daily rows — merge current month (hub.sales.daily) + history (hub.history.sales_daily)
+    // Prefer current month's rows; only add historical rows for months NOT already
+    // present in current hub (prevents double-counting if FK_Hub_Historical captured
+    // the current open month).
     var salesDailyAll = (hub.sales && hub.sales.daily) ? hub.sales.daily.slice() : [];
+    var currentMonthsDaily = new Set(salesDailyAll.map(function(d){return d && d.date ? d.date.slice(0,7) : '';}));
     if (hub.history && hub.history.sales_daily) {
       var seenSD = new Set(salesDailyAll.map(function(d){return d.date;}));
-      hub.history.sales_daily.forEach(function(d){ if (!seenSD.has(d.date)) salesDailyAll.push(d); });
+      hub.history.sales_daily.forEach(function(d){
+        if (!d || !d.date) return;
+        if (currentMonthsDaily.has(d.date.slice(0,7))) return;  // current-month dedup
+        if (!seenSD.has(d.date)) salesDailyAll.push(d);
+      });
     }
     var rows = salesDailyAll.filter(function(d){
       if (win.singleDay) return d.date === win.singleDay;
@@ -1427,11 +1435,19 @@ function aggregateWindow(win, brand) {
     });
 
     // 2) Historical per-SKU per-day (from hub.history.sales_sku_daily)
-    //    Same defensive dedup per (sku, date).
+    //    CRITICAL: skip any record whose month is already covered by current
+    //    hub.skus[*].sales_daily — otherwise 19 Apr gets counted twice (once
+    //    from current hub, once from history) and brand sales appear 2×.
+    //    "Current month" = months for which hub.sales.daily has data.
+    var currentMonths = new Set();
+    if (hub.sales && hub.sales.daily) {
+      hub.sales.daily.forEach(function(d){ if (d && d.date) currentMonths.add(d.date.slice(0,7)); });
+    }
     var histSalesSkuDaily = (hub.history && hub.history.sales_sku_daily) ? hub.history.sales_sku_daily : [];
     var histByKey = {};
     histSalesSkuDaily.forEach(function(r){
       if (!r || !r.date || !r.sku) return;
+      if (currentMonths.has(r.date.slice(0,7))) return;  // dedup vs current hub
       if (!inWindow(r.date)) return;
       var k = r.sku + '|' + r.date;
       var e = histByKey[k] || {sku:r.sku, net_sales:0, net_units:0, gmv:0};
@@ -1872,11 +1888,17 @@ function renderSales() {
   var useDaily = (curWin.granularity === 'day') ||
                  (curWin.months && curWin.months.size === 1 && (hub.sales && hub.sales.daily && hub.sales.daily.length));
   if (useDaily) {
-    // Merge current + historical sales daily
+    // Merge current + historical sales daily — skip historical rows for any month
+    // already covered by current hub to avoid double-counting.
     var dailyAll = (hub.sales && hub.sales.daily) ? hub.sales.daily.slice() : [];
+    var _curMonthsChart = new Set(dailyAll.map(function(d){return d && d.date ? d.date.slice(0,7) : '';}));
     if (hub.history && hub.history.sales_daily) {
       var seenSD = new Set(dailyAll.map(function(d){return d.date;}));
-      hub.history.sales_daily.forEach(function(d){ if (!seenSD.has(d.date)) dailyAll.push(d); });
+      hub.history.sales_daily.forEach(function(d){
+        if (!d || !d.date) return;
+        if (_curMonthsChart.has(d.date.slice(0,7))) return;
+        if (!seenSD.has(d.date)) dailyAll.push(d);
+      });
     }
     dailyAll.sort(function(a,b){ return a.date < b.date ? -1 : 1; });
 
@@ -2780,52 +2802,120 @@ function renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical) {
   function prevRoi(sku){ var p=prevSkus[sku]; return (p && p.ad_spend > 0) ? p.ad_revenue/p.ad_spend : null; }
   function prevTacos(sku){ var p=prevSkus[sku]; return (p && p.sales > 0 && p.ad_spend > 0) ? p.ad_spend/p.sales*100 : null; }
 
+  // Adaptive thresholds — for day-level windows the absolute spend per SKU is ~1/30 of MTD,
+  // so fixed ₹50K/₹10K cutoffs exclude everyone. Use dynamic percentile instead.
+  var spendsSorted = skuArr.map(function(s){return s.ad_spend;}).sort(function(a,b){return b-a;});
+  function pct(p) { var i = Math.max(0, Math.min(spendsSorted.length-1, Math.floor(spendsSorted.length*p))); return spendsSorted[i] || 0; }
+  var highSpendCut = Math.min(50000, pct(0.25));   // top 25% OR ≥50K, whichever is lower
+  var midSpendCut  = Math.min(10000, pct(0.50));   // above median OR ≥10K
+  var highSpendLabel = highSpendCut >= 50000 ? '≥₹50K' : '(top 25%)';
+
   var html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px">';
 
-  // Top ROI (spend>50K)
-  var topRoi = skuArr.filter(function(s){return s.ad_spend>=50000 && s.ad_roi!=null;}).sort(function(a,b){return b.ad_roi-a.ad_roi;}).slice(0,5);
-  html += '<div>' + insightBlock('🚀 Top ROI (Spend≥₹50K)', 'var(--green)',
-    topRoi.map(function(s){ return cmpSkuLine(s.sku, s.title, s.ad_roi, prevRoi(s.sku), function(v){return v!=null?v.toFixed(2)+'x':'—';}); })
-  ) + '</div>';
+  // Top ROI (spend in top 25% or ≥50K)
+  var topRoi = skuArr.filter(function(s){return s.ad_spend>=highSpendCut && s.ad_roi!=null;}).sort(function(a,b){return b.ad_roi-a.ad_roi;}).slice(0,5);
+  if (topRoi.length) {
+    html += '<div>' + insightBlock('🚀 Top ROI (Spend ' + highSpendLabel + ')', 'var(--green)',
+      topRoi.map(function(s){ return cmpSkuLine(s.sku, s.title, s.ad_roi, prevRoi(s.sku), function(v){return v!=null?v.toFixed(2)+'x':'—';}); })
+    ) + '</div>';
+  }
 
-  // Worst ROI (spend>50K)
-  var worstRoi = skuArr.filter(function(s){return s.ad_spend>=50000 && s.ad_roi!=null;}).sort(function(a,b){return a.ad_roi-b.ad_roi;}).slice(0,5);
+  // Worst ROI (same cutoff)
+  var worstRoi = skuArr.filter(function(s){return s.ad_spend>=highSpendCut && s.ad_roi!=null;}).sort(function(a,b){return a.ad_roi-b.ad_roi;}).slice(0,5);
   if (worstRoi.length) {
-    html += '<div>' + insightBlock('🩸 Worst ROI (Spend≥₹50K)', 'var(--red)',
+    html += '<div>' + insightBlock('🩸 Worst ROI (Spend ' + highSpendLabel + ')', 'var(--red)',
       worstRoi.map(function(s){ return cmpSkuLine(s.sku, s.title, s.ad_roi, prevRoi(s.sku), function(v){return v!=null?v.toFixed(2)+'x':'—';}); })
     ) + '</div>';
   }
 
-  // Top spenders
+  // Top spenders — no threshold needed
   var topSpend = skuArr.slice().sort(function(a,b){return b.ad_spend-a.ad_spend;}).slice(0,5);
   html += '<div>' + insightBlock('💰 Top Spenders', 'var(--red)',
     topSpend.map(function(s){ var p=prevSkus[s.sku]||{ad_spend:0}; return cmpSkuLine(s.sku, s.title, s.ad_spend, p.ad_spend, fmtCr, true); })
   ) + '</div>';
 
-  // Scale-up opportunities (high ROI, mid spend)
-  var scale = skuArr.filter(function(s){return s.ad_spend>10000 && s.ad_spend<100000 && s.ad_roi>=3;}).sort(function(a,b){return b.ad_roi-a.ad_roi;}).slice(0,5);
+  // Scale-up opportunities (mid spend with high ROI)
+  var scale = skuArr.filter(function(s){return s.ad_spend>=midSpendCut && s.ad_spend<highSpendCut && s.ad_roi>=3;}).sort(function(a,b){return b.ad_roi-a.ad_roi;}).slice(0,5);
   if (scale.length) {
     html += '<div>' + insightBlock('📈 Scale-Up Opportunities', 'var(--yellow)',
       scale.map(function(s){ return cmpSkuLine(s.sku, s.title, s.ad_roi, prevRoi(s.sku), function(v){return v!=null?v.toFixed(2)+'x':'—';}); })
     ) + '</div>';
   }
 
-  // TACOS outliers (high)
-  var highTacos = skuArr.filter(function(s){return s.tacos!=null && s.ad_spend>=50000;}).sort(function(a,b){return b.tacos-a.tacos;}).slice(0,5);
+  // TACOS outliers
+  var highTacos = skuArr.filter(function(s){return s.tacos!=null && s.ad_spend>=highSpendCut;}).sort(function(a,b){return b.tacos-a.tacos;}).slice(0,5);
   if (highTacos.length) {
-    html += '<div>' + insightBlock('🚨 High TACOS (Spend≥₹50K)', 'var(--orange)',
+    html += '<div>' + insightBlock('🚨 High TACOS (Spend ' + highSpendLabel + ')', 'var(--orange)',
       highTacos.map(function(s){ return cmpSkuLine(s.sku, s.title, s.tacos, prevTacos(s.sku), function(v){return v!=null?v.toFixed(1)+'%':'—';}, true); })
     ) + '</div>';
   }
 
-  // FSN Top Campaigns (campaign-level from Consolidated FSN Report — more accurate than PPR)
+  // Daily campaign insights (when window is day-level) — uses hub.daily.days for true daily data
+  if (curWin.granularity === 'day' && D.hub && D.hub.daily && D.hub.daily.campaigns) {
+    var winInDaily = function(d){
+      if (curWin.singleDay) return d === curWin.singleDay;
+      if (curWin.dayRange)  return d >= curWin.dayRange[0] && d <= curWin.dayRange[1];
+      return false;
+    };
+    var dayCamps = [];
+    D.hub.daily.campaigns.forEach(function(c){
+      if (brand !== 'ALL' && c.brand !== brand) return;
+      var winSpend = 0, winRev = 0, winUnits = 0, winClicks = 0, winViews = 0;
+      Object.keys(c.days || {}).forEach(function(d){
+        if (!winInDaily(d)) return;
+        var dv = c.days[d];
+        winSpend += dv.spend || 0;
+        winRev   += dv.revenue || 0;
+        winUnits += dv.units || 0;
+        winClicks+= dv.clicks || 0;
+        winViews += dv.views || 0;
+      });
+      if (winSpend > 0) {
+        dayCamps.push({
+          id: c.id, name: c.name, brand: c.brand,
+          spend: winSpend, revenue: winRev, units: winUnits,
+          clicks: winClicks, views: winViews,
+          roi: winSpend > 0 ? winRev/winSpend : null,
+        });
+      }
+    });
+
+    if (dayCamps.length) {
+      // Top campaigns by spend (day-level)
+      var topDC = dayCamps.slice().sort(function(a,b){return b.spend-a.spend;}).slice(0,5);
+      html += '<div>' + insightBlock('🎯 Top Campaigns (day-level)', 'var(--accent)',
+        topDC.map(function(c){
+          return '<div style="padding:3px 0;font-size:11px"><b>'+escHtml(c.name.slice(0,32))+'</b> · ' +
+            '<span style="color:var(--red)">'+fmtCr(c.spend)+'</span> · ' +
+            '<span style="color:var(--accent)">'+(c.roi!=null?c.roi.toFixed(2)+'x':'—')+'</span></div>';
+        }).join('')
+      ) + '</div>';
+
+      // Worst ROI campaigns (day-level, min spend top quartile)
+      var dcSpendsSorted = dayCamps.map(function(c){return c.spend;}).sort(function(a,b){return b-a;});
+      var dcCut = dcSpendsSorted[Math.floor(dcSpendsSorted.length*0.25)] || 0;
+      var worstDC = dayCamps.filter(function(c){return c.spend >= dcCut && c.roi != null;})
+        .sort(function(a,b){return a.roi-b.roi;}).slice(0,5);
+      if (worstDC.length) {
+        html += '<div>' + insightBlock('⚠️ Worst ROI Campaigns (day-level)', 'var(--red)',
+          worstDC.map(function(c){
+            return '<div style="padding:3px 0;font-size:11px"><b>'+escHtml(c.name.slice(0,32))+'</b> · ' +
+              fmtCr(c.spend)+' · ' +
+              '<span style="color:var(--red)">'+c.roi.toFixed(2)+'x</span></div>';
+          }).join('')
+        ) + '</div>';
+      }
+    }
+  }
+
+  // FSN Top Campaigns (campaign-level from Consolidated FSN Report — MTD, always shown)
   var fsn = (D.hub && D.hub.fsn) ? D.hub.fsn : null;
   if (fsn && fsn.campaigns && fsn.campaigns.length) {
     var fsnCamps = fsn.campaigns.filter(function(c){ return brand === 'ALL' || c.brand === brand; });
     if (fsnCamps.length) {
-      // Top by spend
+      // Top by spend (MTD)
       var topC = fsnCamps.slice().sort(function(a,b){return b.spend-a.spend;}).slice(0,5);
-      html += '<div>' + insightBlock('🎯 Top Campaigns (FSN · current month)', 'var(--accent)',
+      html += '<div>' + insightBlock('🎯 Top Campaigns (FSN · MTD)', 'var(--accent)',
         topC.map(function(c){
           return '<div style="padding:3px 0;font-size:11px;cursor:pointer" onclick="gotoCampDrill(\''+escHtml(c.id)+'\')" title="Open in Campaigns tab">' +
             '<b>'+escHtml(c.name.slice(0,32))+'</b> · ' +
@@ -2834,11 +2924,11 @@ function renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical) {
         }).join('')
       ) + '</div>';
 
-      // Worst ROI campaigns (spend > ₹50K)
+      // Worst ROI campaigns (MTD, spend > ₹50K)
       var worstC = fsnCamps.filter(function(c){ return c.spend > 50000 && c.roi != null; })
         .sort(function(a,b){return a.roi-b.roi;}).slice(0,5);
       if (worstC.length) {
-        html += '<div>' + insightBlock('⚠️ Worst ROI Campaigns (FSN, ≥₹50K)', 'var(--red)',
+        html += '<div>' + insightBlock('⚠️ Worst ROI Campaigns (FSN · MTD, ≥₹50K)', 'var(--red)',
           worstC.map(function(c){
             return '<div style="padding:3px 0;font-size:11px;cursor:pointer" onclick="gotoCampDrill(\''+escHtml(c.id)+'\')" title="Open in Campaigns tab">' +
               '<b>'+escHtml(c.name.slice(0,32))+'</b> · ' +

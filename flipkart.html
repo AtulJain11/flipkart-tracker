@@ -1364,11 +1364,13 @@ function aggregateWindow(win, brand) {
       out.totals.traffic_revenue = rv;
     }
 
-    // SKU-level: start from MTD snapshot (hub.skus[]) which has ad fields.
+    // SKU-level: start from MTD snapshot (hub.skus[]) for identity fields.
     // For SALES (net_sales/units/gmv) we override with real per-day data from
     // hub.skus[*].sales_daily (current month only — historical months share
     // monthly SKU totals from hist.skus).
     // For TRAFFIC we override with hub.traffic.sku_daily + history.
+    // For ADS we prorate MTD spend using brand-level daily ratio (true per-SKU
+    // daily ads data isn't in the FK exports — only campaign-level is).
     (hub.skus || []).forEach(function(s){
       if (brand && brand !== 'ALL' && s.brand !== brand) return;
       out.skus[s.sku] = {
@@ -1380,8 +1382,13 @@ function aggregateWindow(win, brand) {
         sales: 0, units: 0, gmv: 0, gross_units: 0, cxl: 0, rtn: 0,
         views: 0, clicks: 0, traffic_sales: 0, traffic_revenue: 0,
         ctr: null, cvr: null, aov: null,
-        ad_spend: s.ad_spend || 0, ad_revenue: s.ad_revenue || 0,
-        ad_units: s.ad_units || 0, ad_clicks: s.ad_clicks || 0,
+        // Ad fields start at zero; prorated from MTD after daily ratios computed below
+        ad_spend: 0, ad_revenue: 0, ad_units: 0, ad_clicks: 0,
+        // Stash MTD values for proration
+        _mtd_ad_spend:   s.ad_spend   || 0,
+        _mtd_ad_revenue: s.ad_revenue || 0,
+        _mtd_ad_units:   s.ad_units   || 0,
+        _mtd_ad_clicks:  s.ad_clicks  || 0,
         // Keep reference to full SKU for any per-day lookup
         _sales_daily: s.sales_daily || [],
       };
@@ -1395,25 +1402,50 @@ function aggregateWindow(win, brand) {
     };
 
     // 1) Current-month per-SKU per-day (from hub.skus[*].sales_daily)
+    //    Defensively dedupe by date — if the upstream export accidentally
+    //    contains multiple entries for the same date (e.g., from a merged/
+    //    cumulative export), sum them once per date then apply window filter.
     Object.values(out.skus).forEach(function(cur){
+      var byDate = {};
       (cur._sales_daily || []).forEach(function(r){
+        if (!r || !r.date) return;
         if (!inWindow(r.date)) return;
-        cur.sales += r.net_sales || 0;
-        cur.units += r.net_units || 0;
-        cur.gmv   += r.gmv || 0;
+        var e = byDate[r.date] || {net_sales:0, net_units:0, gmv:0};
+        // If multiple entries for same date exist, take the MAX (latest snapshot)
+        // rather than SUM — this protects against cumulative-style duplication.
+        e.net_sales = Math.max(e.net_sales, r.net_sales || 0);
+        e.net_units = Math.max(e.net_units, r.net_units || 0);
+        e.gmv       = Math.max(e.gmv,       r.gmv || 0);
+        byDate[r.date] = e;
+      });
+      Object.values(byDate).forEach(function(e){
+        cur.sales += e.net_sales;
+        cur.units += e.net_units;
+        cur.gmv   += e.gmv;
       });
       delete cur._sales_daily;
     });
 
     // 2) Historical per-SKU per-day (from hub.history.sales_sku_daily)
+    //    Same defensive dedup per (sku, date).
     var histSalesSkuDaily = (hub.history && hub.history.sales_sku_daily) ? hub.history.sales_sku_daily : [];
+    var histByKey = {};
     histSalesSkuDaily.forEach(function(r){
+      if (!r || !r.date || !r.sku) return;
       if (!inWindow(r.date)) return;
-      var cur = out.skus[r.sku];
+      var k = r.sku + '|' + r.date;
+      var e = histByKey[k] || {sku:r.sku, net_sales:0, net_units:0, gmv:0};
+      e.net_sales = Math.max(e.net_sales, r.net_sales || 0);
+      e.net_units = Math.max(e.net_units, r.net_units || 0);
+      e.gmv       = Math.max(e.gmv,       r.gmv || 0);
+      histByKey[k] = e;
+    });
+    Object.values(histByKey).forEach(function(e){
+      var cur = out.skus[e.sku];
       if (!cur) return;  // SKU excluded by brand filter
-      cur.sales += r.net_sales || 0;
-      cur.units += r.net_units || 0;
-      cur.gmv   += r.gmv || 0;
+      cur.sales += e.net_sales;
+      cur.units += e.net_units;
+      cur.gmv   += e.gmv;
     });
     // Merge traffic sku_daily (current + historical) for this window
     var trafSkuDaily = [];
@@ -1438,6 +1470,84 @@ function aggregateWindow(win, brand) {
       cur.ctr = cur.views > 0 ? cur.clicks/cur.views*100 : null;
       cur.cvr = cur.clicks > 0 ? cur.traffic_sales/cur.clicks*100 : null;
       cur.aov = cur.traffic_sales > 0 ? cur.traffic_revenue/cur.traffic_sales : null;
+    });
+
+    // Ads proration: per-SKU ad_spend is MTD-only (FK exports don't give us
+    // daily per-SKU ads). Prorate each SKU's MTD ad fields by the brand-level
+    // window/MTD ratio derived from hub.daily.days (campaign-level daily ads).
+    // This makes per-SKU ad numbers respect the day filter proportionally.
+    var brandDailyMtd = {};  // brand -> {spend, revenue, units, clicks, views} for MTD (month of window)
+    var brandDailyWin = {};  // brand -> same for window only
+    var winMonth = win.singleDay ? win.singleDay.slice(0,7)
+                  : (win.dayRange ? win.dayRange[0].slice(0,7) : null);
+    var allDailyDays = [];
+    if (hub.history && hub.history.daily && hub.history.daily.all_days) {
+      allDailyDays = hub.history.daily.all_days.slice();
+    }
+    if (hub.daily && hub.daily.days && hub.daily.days.length) {
+      var seenDays = new Set(hub.daily.days.map(function(d){return d.date;}));
+      allDailyDays = allDailyDays.filter(function(d){ return !seenDays.has(d.date); });
+      hub.daily.days.forEach(function(d){ allDailyDays.push(d); });
+    }
+    function accBrand(bucket, bkey, d) {
+      bucket[bkey] = bucket[bkey] || {spend:0, revenue:0, units:0, clicks:0, views:0};
+      bucket[bkey].spend   += d.spend   || 0;
+      bucket[bkey].revenue += d.revenue || 0;
+      bucket[bkey].units   += d.units   || 0;
+      bucket[bkey].clicks  += d.clicks  || 0;
+      bucket[bkey].views   += d.views   || 0;
+    }
+    allDailyDays.forEach(function(d){
+      var inWin = inWindow(d.date);
+      var inMtd = winMonth && d.date.slice(0,7) === winMonth;
+      if (!inWin && !inMtd) return;
+      // ALL-brand totals
+      if (inMtd) accBrand(brandDailyMtd, 'ALL', d);
+      if (inWin) accBrand(brandDailyWin, 'ALL', d);
+      // Per-brand from by_brand
+      if (d.by_brand) {
+        Object.keys(d.by_brand).forEach(function(bk){
+          if (inMtd) accBrand(brandDailyMtd, bk, d.by_brand[bk]);
+          if (inWin) accBrand(brandDailyWin, bk, d.by_brand[bk]);
+        });
+      }
+    });
+    // Build brand -> ratio for each ad field
+    function ratio(winBucket, mtdBucket, field) {
+      if (!mtdBucket || !mtdBucket[field] || mtdBucket[field] === 0) return null;
+      return (winBucket && winBucket[field] ? winBucket[field] : 0) / mtdBucket[field];
+    }
+    var brandRatios = {};
+    Object.keys(brandDailyMtd).forEach(function(bk){
+      brandRatios[bk] = {
+        spend:   ratio(brandDailyWin[bk], brandDailyMtd[bk], 'spend'),
+        revenue: ratio(brandDailyWin[bk], brandDailyMtd[bk], 'revenue'),
+        units:   ratio(brandDailyWin[bk], brandDailyMtd[bk], 'units'),
+        clicks:  ratio(brandDailyWin[bk], brandDailyMtd[bk], 'clicks'),
+      };
+    });
+    // Apply proration to each SKU: use its brand's ratio, fall back to ALL
+    Object.values(out.skus).forEach(function(cur){
+      var r = brandRatios[cur.brand] || brandRatios['ALL'] || {};
+      // If no daily ads data at all OR window month isn't the current ads-daily
+      // month, fall back to MTD values (can't prorate historical months this way).
+      var hasDaily = brandDailyMtd[cur.brand] || brandDailyMtd['ALL'];
+      if (!hasDaily) {
+        cur.ad_spend   = cur._mtd_ad_spend;
+        cur.ad_revenue = cur._mtd_ad_revenue;
+        cur.ad_units   = cur._mtd_ad_units;
+        cur.ad_clicks  = cur._mtd_ad_clicks;
+      } else {
+        cur.ad_spend   = (r.spend   != null) ? cur._mtd_ad_spend   * r.spend   : 0;
+        cur.ad_revenue = (r.revenue != null) ? cur._mtd_ad_revenue * r.revenue : 0;
+        cur.ad_units   = (r.units   != null) ? cur._mtd_ad_units   * r.units   : 0;
+        cur.ad_clicks  = (r.clicks  != null) ? cur._mtd_ad_clicks  * r.clicks  : 0;
+      }
+      // Clean up stash fields
+      delete cur._mtd_ad_spend;
+      delete cur._mtd_ad_revenue;
+      delete cur._mtd_ad_units;
+      delete cur._mtd_ad_clicks;
     });
   } else {
     // Monthly from history

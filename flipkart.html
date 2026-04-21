@@ -1883,9 +1883,10 @@ function renderSales() {
     if (s.mrp && s.gross_units) mrpXUnits += s.mrp * s.gross_units;
   });
   // MRP (total) = Σ(final_sale_units × MRP) — total MRP-equivalent revenue of units sold
-  // IMPORTANT: curAgg.skus[].units is MTD when granularity='day' (we don't have
-  // SKU-by-day breakdown in fk_data.json). Scale to the window using ratio of
-  // window units to MTD units, so the MRP tile moves with the date filter.
+  // NOTE: curAgg.skus[].units is already window-filtered via hub.skus[*].sales_daily
+  // (current month) and hub.history.sales_sku_daily (historical). The unit/gross
+  // ratios below should be 1.0 when SKU rows sum to totals.days — they remain as
+  // a safety scale in case any SKU lacks daily breakdown.
   var mtdSkuUnits = 0, mtdSkuGrossUnits = 0;
   Object.values(curAgg.skus).forEach(function(s){
     mtdSkuUnits      += s.units || 0;
@@ -3262,14 +3263,21 @@ function getRatingH(pid) { return (D.rating_history[pid]||[]); }
 function rankTrend(pid, field, days) {
   const h = getRankH(pid).filter(x=>x[field]!=null);
   if (h.length<2) return null;
-  const last=h[h.length-1][field], prev=h[Math.max(0,h.length-days)][field];
+  // Require at least `days+1` points so index h.length-days-1 is the entry from
+  // `days` ago. If history is shorter than the requested window, return null
+  // rather than silently reporting a shorter-window trend as the requested one.
+  if (h.length <= days) return null;
+  const last = h[h.length-1][field];
+  const prev = h[h.length-1-days][field];
   return last-prev;
 }
 
 function ratingTrend(pid, days) {
   const h = getRatingH(pid).filter(x=>x.rating!=null);
   if (h.length<2) return null;
-  const last=h[h.length-1].rating, prev=h[Math.max(0,h.length-days)].rating;
+  if (h.length <= days) return null;
+  const last = h[h.length-1].rating;
+  const prev = h[h.length-1-days].rating;
   return +(last-prev).toFixed(1);
 }
 
@@ -3402,12 +3410,15 @@ function _campMonthData(month, brand) {
   var fsn = _fsn();
   if (!fsn) return {campaigns:[], adgroups:[], skus:[], totals:null};
 
-  // Filter campaigns that have data in the selected month
+  // Filter campaigns that have data in the selected month. Include brand_mix
+  // and months[m].brand_mix so downstream brand filter can detect multi-brand
+  // Quick/Boost campaigns and include them for any brand they contain.
   var campaigns = fsn.campaigns.filter(function(c){ return c.months && c.months[month]; })
     .map(function(c){
       var m = c.months[month];
       return {
         id: c.id, name: c.name, brand: c.brand,
+        brand_mix: c.brand_mix || (m && m.brand_mix) || {},
         spend: m.spend, revenue: m.revenue, roi: m.roi,
         units: m.units, clicks: m.clicks, views: m.views,
         ctr: m.ctr, cvr: m.cvr,
@@ -3440,9 +3451,15 @@ function _campMonthData(month, brand) {
       };
     });
 
-  // Brand filter
+  // Brand filter — dominant-brand match OR multi-brand campaigns that
+  // contain this brand in their brand_mix (so BA filter surfaces Quick/Boost
+  // campaigns that have BA SKUs alongside CAP/SS).
   if (brand && brand !== 'ALL') {
-    campaigns = campaigns.filter(function(c){ return c.brand === brand; });
+    campaigns = campaigns.filter(function(c){
+      if (c.brand === brand) return true;
+      var bm = c.brand_mix || {};
+      return !!bm[brand];
+    });
     adgroups  = adgroups.filter(function(a){ return a.brand === brand; });
     skus      = skus.filter(function(s){ return s.brand === brand; });
   }
@@ -4130,9 +4147,27 @@ function renderCampTable(cur, prev, month) {
     body.innerHTML = rows.slice(0, 300).map(function(r){
       var prev_r = prevMap[r.id];
       var roi = r.roi != null ? r.roi.toFixed(2) + 'x' : '—';
+      // Multi-brand marker: show all brands in the mix as stacked pills so
+      // user knows Quick/Boost campaigns are split across BA/CAP/SS.
+      var brandCell;
+      var bm = r.brand_mix || {};
+      var bmBrands = Object.keys(bm).filter(function(b){ return bm[b] > 0; });
+      if (bmBrands.length > 1) {
+        // Sort by count desc, show mini-pills
+        bmBrands.sort(function(a,b){ return (bm[b]||0) - (bm[a]||0); });
+        brandCell = '<td><div style="display:flex;flex-direction:column;gap:2px">' +
+          bmBrands.map(function(b){
+            return '<span style="font-size:9px;color:'+brandColor(b)+';font-weight:600;white-space:nowrap">'+
+              brandShort(b)+' <span style="color:var(--text3);font-weight:400">('+bm[b]+')</span></span>';
+          }).join('') + '</div></td>';
+      } else {
+        brandCell = '<td>'+brandPill(r.brand)+'</td>';
+      }
       return '<tr style="cursor:pointer" onclick="drillCamp(\''+r.id+'\')">' +
-        '<td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.name||'')+'">'+(r.name||'—').slice(0,48)+'</td>' +
-        '<td>'+brandPill(r.brand)+'</td>' +
+        '<td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.name||'')+'">'+(r.name||'—').slice(0,48)+
+          (bmBrands.length > 1 ? ' <span style="background:rgba(245,165,36,.18);color:var(--orange);padding:1px 4px;border-radius:3px;font-size:9px;font-weight:600">multi</span>' : '') +
+          '</td>' +
+        brandCell +
         monoR(fmtCr(r.spend) + (prev_r ? deltaSpan(r.spend, prev_r.spend, true) : ''), 'var(--red)') +
         monoR(fmtCr(r.revenue) + (prev_r ? deltaSpan(r.revenue, prev_r.revenue) : ''), 'var(--green)') +
         monoR(roi, roiCol(r.roi)) +
@@ -5628,12 +5663,33 @@ function renderSP() {
   `;
 
   dChart('sp-trend');
+  // Per-brand trend: recompute from sp_history[*].items filtered by brand
+  // (items[] contains per-PID mismatches, we can join with latest.products to
+  // get brand). When brand='ALL' this matches the overall sp_history totals.
+  var pidToBrand = {};
+  (D.latest && D.latest.products ? D.latest.products : []).forEach(function(p){
+    pidToBrand[p.pid] = p.brand;
+  });
+  var spBrand = S.sp.brand || 'ALL';
+  var spTrendData = (D.sp_history || []).map(function(d){
+    if (spBrand === 'ALL') {
+      return {date: d.date, mismatches: d.mismatches || 0, not_verified: d.not_verified || 0};
+    }
+    var items = d.items || [];
+    var miss = items.filter(function(it){
+      return it.status === 'MISMATCH' && pidToBrand[it.pid] === spBrand;
+    }).length;
+    var nv = items.filter(function(it){
+      return it.status === 'NOT VERIFIED' && pidToBrand[it.pid] === spBrand;
+    }).length;
+    return {date: d.date, mismatches: miss, not_verified: nv};
+  });
   charts['sp-trend']=new Chart(document.getElementById('ch-sp-trend').getContext('2d'),{
     type:'line',
-    data:{labels:D.sp_history.map(d=>fmtDate(d.date)),
+    data:{labels:spTrendData.map(d=>fmtDate(d.date)),
       datasets:[
-        {label:'Mismatches',data:D.sp_history.map(d=>d.mismatches),borderColor:'rgba(240,82,82,.9)',backgroundColor:'rgba(240,82,82,.12)',fill:true,tension:.4,borderWidth:2,pointRadius:3},
-        {label:'Not Verified',data:D.sp_history.map(d=>d.not_verified),borderColor:'rgba(255,255,255,.25)',backgroundColor:'transparent',tension:.4,borderWidth:1.5,pointRadius:2},
+        {label:'Mismatches',data:spTrendData.map(d=>d.mismatches),borderColor:'rgba(240,82,82,.9)',backgroundColor:'rgba(240,82,82,.12)',fill:true,tension:.4,borderWidth:2,pointRadius:3},
+        {label:'Not Verified',data:spTrendData.map(d=>d.not_verified),borderColor:'rgba(255,255,255,.25)',backgroundColor:'transparent',tension:.4,borderWidth:1.5,pointRadius:2},
       ]},
     options:baseOpts()
   });

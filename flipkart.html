@@ -3493,60 +3493,216 @@ async function loadData() {
 }
 
 // ── Search autocomplete ────────────────────────────────────────────────────
-// Populates a shared <datalist> with SKU codes, product titles, brand + vertical
-// keywords, and campaign names so browser autocomplete surfaces matches for all
-// fsearch inputs (sales, ads, campaigns, traffic, rankings). The datalist is
-// created lazily the first time we have data, then every input gets `list=`.
-function buildSearchSuggestions() {
+// Custom dropdown (not native <datalist>) so we can style it to match the
+// dashboard dark theme, limit it to ~8 items, filter per tab, and only show
+// after the user has typed ≥2 characters.
+//
+// Each fsearch input gets an associated suggestion pool based on what the tab
+// actually cares about:
+//   sales / traffic   → SKU codes + product titles
+//   ads               → SKU codes + titles + campaign names
+//   campaigns         → campaign names + adgroup names + SKU codes
+//   rankings          → product titles
+var _searchPools = null;
+
+function buildSearchPools() {
   if (!D || !D.hub) return;
   var hub = D.hub;
   var hist = hub.history || {};
-  var entries = new Set();
-  // SKU codes + titles (current unified table)
+
+  // Helper: de-dupe + preserve first-seen order. Each entry is {label, type}
+  // so the dropdown can tag what a suggestion is (SKU / Product / Campaign).
+  function uniq(arr) {
+    var seen = new Set(), out = [];
+    arr.forEach(function(e){
+      if (!e || !e.label) return;
+      var k = e.type + '::' + e.label;
+      if (seen.has(k)) return;
+      seen.add(k); out.push(e);
+    });
+    return out;
+  }
+
+  // SKU + title from hub.skus (current) and history.skus (discontinued)
+  var skuEntries = [];
   (hub.skus || []).forEach(function(s){
-    if (s.sku) entries.add(s.sku);
-    if (s.title) entries.add(String(s.title).slice(0, 80));
-    if (s.vertical) entries.add(s.vertical);
+    if (s.sku) skuEntries.push({label: s.sku, type: 'SKU', sub: s.title || ''});
+    if (s.title) skuEntries.push({label: String(s.title).slice(0, 90), type: 'Product', sub: s.sku || ''});
   });
-  // Historical SKUs (discontinued but still searchable)
   (hist.skus || []).forEach(function(s){
-    if (s.sku) entries.add(s.sku);
-    if (s.title) entries.add(String(s.title).slice(0, 80));
+    if (s.sku) skuEntries.push({label: s.sku, type: 'SKU', sub: s.title || ''});
+    if (s.title) skuEntries.push({label: String(s.title).slice(0, 90), type: 'Product', sub: s.sku || ''});
   });
-  // Campaign names — helpful for ads-search and camp-search
-  (hub.fsn && hub.fsn.campaigns || []).forEach(function(c){
-    if (c.name) entries.add(c.name);
+
+  // Campaign + adgroup names
+  var campEntries = [];
+  ((hub.fsn && hub.fsn.campaigns) || []).forEach(function(c){
+    if (c.name) campEntries.push({label: c.name, type: 'Campaign', sub: c.brand || ''});
   });
   ((hist.fsn && hist.fsn.campaigns) || []).forEach(function(c){
-    if (c.name) entries.add(c.name);
+    if (c.name) campEntries.push({label: c.name, type: 'Campaign', sub: c.brand || ''});
   });
-  // Rankings tab also wants products by title — latest snapshot covers it
+  var agEntries = [];
+  ((hist.fsn && hist.fsn.adgroups) || []).forEach(function(a){
+    if (a.adgroup_name) agEntries.push({label: a.adgroup_name, type: 'AdGroup', sub: a.campaign_name || ''});
+  });
+
+  // Latest snapshot product titles for Rankings tab
+  var snapEntries = [];
   ((D.latest && D.latest.products) || []).forEach(function(p){
-    if (p.title) entries.add(String(p.title).slice(0, 80));
+    if (p.title) snapEntries.push({label: String(p.title).slice(0, 90), type: 'Product', sub: p.brand || ''});
   });
-  // Canned vertical keywords so "bo" → "BodyWash" etc.
-  ['Shampoo','Conditioner','BodyWash','Facewash','HairSerum','HairMask','HairStyling',
-   'Sunscreen','RollOn','FaceCream','LipBalm','BodyLotion','Scrub','FootCream']
-    .forEach(function(v){ entries.add(v); });
 
-  // Render the datalist — keep it capped so the browser stays responsive
-  var items = Array.from(entries).filter(Boolean).sort().slice(0, 2000);
-  var dl = document.getElementById('sku-suggest');
-  if (!dl) {
-    dl = document.createElement('datalist');
-    dl.id = 'sku-suggest';
-    document.body.appendChild(dl);
+  _searchPools = {
+    sales:   uniq(skuEntries),
+    traffic: uniq(skuEntries),
+    ads:     uniq(skuEntries.concat(campEntries)),
+    camp:    uniq(campEntries.concat(agEntries).concat(skuEntries)),
+    rk:      uniq(snapEntries.length ? snapEntries : skuEntries.filter(function(e){return e.type==='Product';})),
+  };
+}
+
+// Map from input id → pool key
+var _searchPoolKey = {
+  'sales-search':   'sales',
+  'traffic-search': 'traffic',
+  'ads-search':     'ads',
+  'camp-search':    'camp',
+  'rk-search':      'rk',
+};
+
+function buildSearchSuggestions() {
+  if (!D || !D.hub) return;
+  buildSearchPools();
+
+  // Create shared dropdown element (reused across all 5 inputs)
+  var dd = document.getElementById('fsearch-dd');
+  if (!dd) {
+    dd = document.createElement('div');
+    dd.id = 'fsearch-dd';
+    dd.style.cssText = [
+      'position:absolute',
+      'display:none',
+      'min-width:260px',
+      'max-width:420px',
+      'max-height:260px',
+      'overflow-y:auto',
+      'background:var(--bg2,#1a1f2a)',
+      'border:1px solid var(--border2,rgba(255,255,255,.12))',
+      'border-radius:8px',
+      'box-shadow:0 8px 24px rgba(0,0,0,.5)',
+      'z-index:9000',
+      'font-family:inherit',
+      'font-size:12px',
+    ].join(';');
+    document.body.appendChild(dd);
+    // Click outside to close
+    document.addEventListener('click', function(e){
+      if (!dd.contains(e.target) && !e.target.classList.contains('fsearch')) {
+        dd.style.display = 'none';
+      }
+    });
   }
-  dl.innerHTML = items.map(function(v){
-    return '<option value="'+String(v).replace(/"/g,'&quot;')+'"></option>';
-  }).join('');
 
-  // Wire every fsearch input on the page — covers sales/ads/camp/traffic/rankings
-  // and any future ones added with the same class.
+  function hideDropdown() { dd.style.display = 'none'; }
+
+  function renderDropdown(input, matches) {
+    if (!matches.length) { hideDropdown(); return; }
+    dd.innerHTML = matches.map(function(m, i){
+      var typeColor = m.type === 'SKU' ? 'var(--accent)'
+                    : m.type === 'Campaign' ? 'var(--yellow)'
+                    : m.type === 'AdGroup' ? 'var(--orange)'
+                    : 'var(--text3)';
+      var sub = m.sub ? '<span style="color:var(--text3);font-size:10px;margin-left:6px">'+escHtml(m.sub).slice(0,40)+'</span>' : '';
+      return '<div class="fsearch-item" data-val="'+escHtml(m.label)+'" style="padding:6px 10px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04);color:var(--text2);display:flex;align-items:center;gap:6px">' +
+        '<span style="font-size:9px;color:'+typeColor+';font-weight:700;text-transform:uppercase;min-width:54px">'+m.type+'</span>' +
+        '<span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(m.label)+sub+'</span>' +
+        '</div>';
+    }).join('');
+    // Position under the input
+    var r = input.getBoundingClientRect();
+    dd.style.left = (r.left + window.scrollX) + 'px';
+    dd.style.top  = (r.bottom + window.scrollY + 2) + 'px';
+    dd.style.width = Math.max(r.width, 260) + 'px';
+    dd.style.display = 'block';
+    // Wire clicks
+    Array.prototype.forEach.call(dd.querySelectorAll('.fsearch-item'), function(el){
+      el.addEventListener('mouseenter', function(){ el.style.background = 'rgba(255,255,255,.05)'; });
+      el.addEventListener('mouseleave', function(){ el.style.background = 'transparent'; });
+      el.addEventListener('click', function(){
+        input.value = el.dataset.val;
+        hideDropdown();
+        input.dispatchEvent(new Event('input', {bubbles: true}));
+      });
+    });
+  }
+
+  function filterPool(pool, q) {
+    q = q.toLowerCase();
+    var results = [];
+    for (var i = 0; i < pool.length && results.length < 12; i++) {
+      var e = pool[i];
+      if (e.label.toLowerCase().indexOf(q) !== -1) results.push(e);
+    }
+    return results;
+  }
+
+  // Wire every fsearch input with custom dropdown + 2-char minimum
   document.querySelectorAll('input.fsearch').forEach(function(el){
-    el.setAttribute('list', 'sku-suggest');
-    el.setAttribute('autocomplete', 'on');
+    // Strip any old datalist attribute from earlier build
+    el.removeAttribute('list');
+    el.setAttribute('autocomplete', 'off');
+    var poolKey = _searchPoolKey[el.id];
+    if (!poolKey) return;
+    var pool = (_searchPools || {})[poolKey] || [];
+
+    // Re-bind: replace any prior listeners by cloning. Safe because oninput= is
+    // declared inline in HTML and survives cloning of the node.
+    var handler = function(){
+      var q = el.value.trim();
+      if (q.length < 2) { hideDropdown(); return; }
+      renderDropdown(el, filterPool(pool, q));
+    };
+    el.addEventListener('input', handler);
+    el.addEventListener('focus', handler);
+    el.addEventListener('blur', function(){
+      // Small delay so click on a dropdown item registers first
+      setTimeout(hideDropdown, 150);
+    });
+    // Arrow key navigation + escape to close
+    el.addEventListener('keydown', function(ev){
+      if (ev.key === 'Escape') { hideDropdown(); return; }
+      if (dd.style.display === 'none') return;
+      var items = dd.querySelectorAll('.fsearch-item');
+      if (!items.length) return;
+      var cur = dd.querySelector('.fsearch-item.active');
+      var idx = cur ? Array.prototype.indexOf.call(items, cur) : -1;
+      if (ev.key === 'ArrowDown') {
+        ev.preventDefault();
+        if (cur) cur.classList.remove('active'), cur.style.background = 'transparent';
+        idx = Math.min(items.length - 1, idx + 1);
+        items[idx].classList.add('active');
+        items[idx].style.background = 'rgba(255,255,255,.08)';
+        items[idx].scrollIntoView({block:'nearest'});
+      } else if (ev.key === 'ArrowUp') {
+        ev.preventDefault();
+        if (cur) cur.classList.remove('active'), cur.style.background = 'transparent';
+        idx = Math.max(0, idx - 1);
+        items[idx].classList.add('active');
+        items[idx].style.background = 'rgba(255,255,255,.08)';
+        items[idx].scrollIntoView({block:'nearest'});
+      } else if (ev.key === 'Enter' && cur) {
+        ev.preventDefault();
+        el.value = cur.dataset.val;
+        hideDropdown();
+        el.dispatchEvent(new Event('input', {bubbles: true}));
+      }
+    });
   });
+
+  // Clean up any legacy datalist so native dropdown never appears
+  var legacy = document.getElementById('sku-suggest');
+  if (legacy) legacy.remove();
 }
 function showErrBanner(msg){
   const b=document.createElement('div');

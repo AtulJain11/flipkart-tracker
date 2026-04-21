@@ -293,6 +293,7 @@ function checkPW(){
         <button class="fbtn"        id="ovvb-sort-sales" onclick="setOvVbSort('sales',this)">Sales</button>
         <button class="fbtn"        id="ovvb-sort-spend" onclick="setOvVbSort('spend',this)">Spend</button>
         <button class="fbtn"        id="ovvb-sort-tacos" onclick="setOvVbSort('tacos',this)">TACOS</button>
+        <button class="fbtn" onclick="exportVerticalCsv()" style="font-size:10px;padding:4px 10px">⬇ CSV</button>
       </span>
     </div>
     <table id="ov-vertical-breakdown">
@@ -334,6 +335,46 @@ function checkPW(){
     <div class="card-hdr"><span class="card-title">🏆 Top 20 by Vertical Rank</span><span class="card-sub" id="ov-date-lbl"></span></div>
     <table><thead><tr><th>#</th><th style="min-width:260px">Product</th><th style="white-space:nowrap;width:1%">Size</th><th>Brand</th><th>Vertical #</th><th>Category</th><th>Sub #</th><th>SP</th><th>Rating</th></tr></thead>
     <tbody id="ov-table"></tbody></table>
+  </div>
+
+  <!-- Downloads & Exports -->
+  <div class="card" style="margin-top:14px">
+    <div class="card-hdr">
+      <span class="card-title">⬇ Downloads &amp; Exports</span>
+      <span class="card-sub">Daily-grain CSVs of underlying data</span>
+    </div>
+    <div style="padding:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px">
+      <div style="padding:10px;background:rgba(255,255,255,.03);border-radius:6px">
+        <div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:4px">SALES</div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:8px">Per-day + per-SKU-per-day history</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <button class="fbtn" onclick="exportDailyTotalsCsv('sales')" style="font-size:10px">📅 Daily totals (all months)</button>
+          <button class="fbtn" onclick="exportSkuDailyCsv('sales')" style="font-size:10px">📦 SKU × Day (35K+ rows)</button>
+        </div>
+      </div>
+      <div style="padding:10px;background:rgba(255,255,255,.03);border-radius:6px">
+        <div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:4px">ADS</div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:8px">Daily totals with brand breakdown</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <button class="fbtn" onclick="exportDailyTotalsCsv('ads')" style="font-size:10px">📅 Daily totals + brand split</button>
+        </div>
+      </div>
+      <div style="padding:10px;background:rgba(255,255,255,.03);border-radius:6px">
+        <div style="font-size:11px;font-weight:700;color:var(--purple);margin-bottom:4px">TRAFFIC</div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:8px">Views/Clicks/Sales per day</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <button class="fbtn" onclick="exportDailyTotalsCsv('traffic')" style="font-size:10px">📅 Daily totals</button>
+          <button class="fbtn" onclick="exportSkuDailyCsv('traffic')" style="font-size:10px">📦 SKU × Day (43K+ rows)</button>
+        </div>
+      </div>
+      <div style="padding:10px;background:rgba(255,255,255,.03);border-radius:6px">
+        <div style="font-size:11px;font-weight:700;color:var(--yellow);margin-bottom:4px">MONTHLY TREND</div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:8px">13-month roll-up of all metrics</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <button class="fbtn" onclick="exportMonthlyTrendCsv()" style="font-size:10px">📈 Monthly trend</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Legacy analysis card (kept for compatibility) -->
@@ -614,6 +655,7 @@ function checkPW(){
     <div class="card-hdr">
       <span class="card-title" id="camp-table-title">🎯 Campaigns</span>
       <span class="card-sub" id="camp-table-count"></span>
+      <button class="fbtn" onclick="exportCampaignsCsv()" style="margin-left:auto;font-size:10px;padding:4px 10px">⬇ CSV</button>
     </div>
     <table>
       <thead><tr id="camp-table-hdr"></tr></thead>
@@ -1825,6 +1867,223 @@ function exportTabCsv(tab) {
   var suffix = brand !== 'ALL' ? ('_' + brandShort(brand)) : '';
   suffix += vertical !== 'ALL' ? ('_' + vertical) : '';
   downloadCsv(slim, 'fk_' + tab + suffix + '_' + curWin.label.replace(/\s/g,'') + '.csv');
+}
+
+// ── Campaigns tab CSV (campaigns / adgroups / skus depending on current view)
+function exportCampaignsCsv() {
+  if (!D || !D.hub) return;
+  var month = H.camp.month, brand = H.camp.brand || 'ALL', view = H.camp.view;
+  var cur = _campMonthData(month, brand);
+  var rows, fname;
+  if (view === 'campaign') {
+    rows = cur.campaigns.map(function(c){
+      return {
+        campaign_id: c.id, campaign_name: c.name, brand: c.brand,
+        multi_brand: Object.keys(c.brand_mix||{}).length > 1 ? 'yes' : '',
+        spend: Math.round(c.spend||0), revenue: Math.round(c.revenue||0),
+        roi: c.roi, units: c.units, clicks: c.clicks, views: c.views,
+        ctr: c.ctr, cvr: c.cvr,
+        adgroup_count: c.adgroup_count, sku_count: c.sku_count,
+      };
+    });
+    fname = 'fk_campaigns_' + month + (brand !== 'ALL' ? '_' + brandShort(brand) : '') + '.csv';
+  } else if (view === 'adgroup') {
+    rows = cur.adgroups.map(function(a){
+      return {
+        key: a.key, campaign_id: a.campaign_id, campaign_name: a.campaign_name,
+        adgroup_id: a.adgroup_id, adgroup_name: a.adgroup_name, brand: a.brand,
+        spend: Math.round(a.spend||0), revenue: Math.round(a.revenue||0),
+        roi: a.roi, units: a.units, clicks: a.clicks, views: a.views,
+        sku_count: a.sku_count,
+      };
+    });
+    fname = 'fk_adgroups_' + month + (brand !== 'ALL' ? '_' + brandShort(brand) : '') + '.csv';
+  } else {
+    rows = cur.skus.map(function(s){
+      return {
+        sku: s.sku, title: s.title, brand: s.brand,
+        spend: Math.round(s.spend||0), revenue: Math.round(s.revenue||0),
+        roi: s.roi, units: s.units, direct_units: s.direct_units, indirect_units: s.indirect_units,
+        clicks: s.clicks, views: s.views, cvr: s.cvr,
+        campaign_count: s.campaign_count, adgroup_count: s.adgroup_count,
+      };
+    });
+    fname = 'fk_camp_skus_' + month + (brand !== 'ALL' ? '_' + brandShort(brand) : '') + '.csv';
+  }
+  downloadCsv(rows, fname);
+}
+
+// ── Overview Vertical Breakdown CSV
+function exportVerticalCsv() {
+  if (!D || !D.hub) return;
+  var brand = H.ov.brand || 'ALL';
+  var curWin = resolveTimeWindow('ov');
+  if (!curWin) return;
+  var curAgg = aggregateWindow(curWin, brand);
+  var skuArr = Object.values(curAgg.skus);
+  if (curWin.granularity === 'day') reconcileAdsToCanon(skuArr, curWin, brand);
+  var groups = {};
+  skuArr.forEach(function(s){
+    var v = s.vertical || '(Unknown)';
+    if (!groups[v]) groups[v] = {vertical:v, skus:0, sales:0, units:0, spend:0, rev:0, ad_units:0, views:0, clicks:0, traffic_sales:0};
+    var g = groups[v];
+    var active = (s.sales > 0) || (s.ad_spend > 0) || ((s.views || 0) > 0);
+    if (active) g.skus += 1;
+    g.sales += s.sales || 0;
+    g.units += s.units || 0;
+    g.spend += s.ad_spend || 0;
+    g.rev   += s.ad_revenue || 0;
+    g.ad_units += s.ad_units || 0;
+    g.views += s.views || 0;
+    g.clicks+= s.clicks || 0;
+    g.traffic_sales += s.traffic_sales || 0;
+  });
+  var rows = Object.values(groups).map(function(g){
+    return {
+      vertical: g.vertical, skus: g.skus,
+      sales: Math.round(g.sales), units: g.units,
+      ad_spend: Math.round(g.spend), ad_revenue: Math.round(g.rev),
+      roi:   g.spend > 0 ? +(g.rev/g.spend).toFixed(2) : null,
+      tacos: (g.sales > 0 && g.spend > 0) ? +(g.spend/g.sales*100).toFixed(1) : null,
+      views: g.views, clicks: g.clicks, traffic_sales: g.traffic_sales,
+      cvr:   g.views > 0 ? +(g.traffic_sales/g.views*100).toFixed(2) : null,
+    };
+  }).filter(function(r){ return r.sales > 0 || r.ad_spend > 0 || r.skus > 0; })
+    .sort(function(a,b){ return (b.sales||0) - (a.sales||0); });
+  var suffix = (brand !== 'ALL' ? '_' + brandShort(brand) : '');
+  downloadCsv(rows, 'fk_vertical_breakdown' + suffix + '_' + curWin.label.replace(/\s/g,'') + '.csv');
+}
+
+// ── Daily-grain CSV exports (per-day totals + per-SKU-per-day)
+function exportDailyTotalsCsv(metric) {
+  // metric: 'sales' | 'ads' | 'traffic'
+  if (!D || !D.hub) return;
+  var hub = D.hub, hist = hub.history || {}, rows = [];
+  if (metric === 'sales') {
+    var daily = (hub.sales && hub.sales.daily || []).slice();
+    var curMonths = new Set(daily.map(function(d){return d.date.slice(0,7);}));
+    (hist.sales_daily || []).forEach(function(d){
+      if (!curMonths.has(d.date.slice(0,7))) daily.push(d);
+    });
+    daily.sort(function(a,b){return a.date < b.date ? -1 : 1;});
+    rows = daily.map(function(d){
+      return {date:d.date, net_sales:Math.round(d.net_sales||0), net_units:d.net_units||0, gmv:Math.round(d.gmv||0)};
+    });
+  } else if (metric === 'ads') {
+    var adsDaily = [];
+    if (hist.daily && hist.daily.all_days) adsDaily = hist.daily.all_days.slice();
+    if (hub.daily && hub.daily.days && hub.daily.days.length) {
+      var seen = new Set(hub.daily.days.map(function(d){return d.date;}));
+      adsDaily = adsDaily.filter(function(d){return !seen.has(d.date);});
+      hub.daily.days.forEach(function(d){adsDaily.push(d);});
+    }
+    adsDaily.sort(function(a,b){return a.date < b.date ? -1 : 1;});
+    rows = adsDaily.map(function(d){
+      var r = {date:d.date, spend:Math.round(d.spend||0), revenue:Math.round(d.revenue||0),
+               roi:d.roi||0, units:d.units||0, clicks:d.clicks||0, views:d.views||0};
+      var bb = d.by_brand || {};
+      ['BARE ANATOMY','Chemist at Play','SunScoop'].forEach(function(b){
+        var v = bb[b] || {};
+        r[brandShort(b)+'_spend']   = Math.round(v.spend || 0);
+        r[brandShort(b)+'_revenue'] = Math.round(v.revenue || 0);
+      });
+      return r;
+    });
+  } else if (metric === 'traffic') {
+    var tDaily = (hub.traffic && hub.traffic.daily || []).slice();
+    tDaily.sort(function(a,b){return a.date < b.date ? -1 : 1;});
+    rows = tDaily.map(function(d){
+      return {date:d.date, views:d.views||0, clicks:d.clicks||0, sales:d.sales||0, revenue:Math.round(d.revenue||0),
+              ctr: (d.views > 0 ? +(d.clicks/d.views*100).toFixed(2) : null),
+              cvr: (d.views > 0 ? +(d.sales/d.views*100).toFixed(2) : null)};
+    });
+  }
+  downloadCsv(rows, 'fk_' + metric + '_daily.csv');
+}
+
+function exportSkuDailyCsv(metric) {
+  // metric: 'sales' | 'traffic'
+  if (!D || !D.hub) return;
+  var hub = D.hub, hist = hub.history || {};
+  var rows = [];
+  var skuMeta = {};
+  (hub.skus || []).forEach(function(s){
+    skuMeta[s.sku] = {title:s.title, brand:s.brand, vertical:s.vertical||''};
+  });
+  (hist.skus || []).forEach(function(s){
+    if (!(s.sku in skuMeta)) skuMeta[s.sku] = {title:s.title||'', brand:s.brand||'', vertical:s.vertical||''};
+  });
+
+  if (metric === 'sales') {
+    // Current month: hub.skus[*].sales_daily
+    var seenKeys = new Set();
+    (hub.skus || []).forEach(function(s){
+      (s.sales_daily || []).forEach(function(r){
+        if (!r || !r.date) return;
+        var m = skuMeta[s.sku] || {};
+        var k = s.sku + '|' + r.date;
+        seenKeys.add(k);
+        rows.push({sku:s.sku, date:r.date, brand:m.brand, vertical:m.vertical,
+                   net_sales:Math.round(r.net_sales||0), net_units:r.net_units||0, gmv:Math.round(r.gmv||0)});
+      });
+    });
+    // History, dedup
+    var curMonths = new Set(rows.map(function(r){return r.date.slice(0,7);}));
+    (hist.sales_sku_daily || []).forEach(function(r){
+      if (!r || !r.date) return;
+      if (curMonths.has(r.date.slice(0,7))) return;
+      var m = skuMeta[r.sku] || {};
+      rows.push({sku:r.sku, date:r.date, brand:m.brand, vertical:m.vertical,
+                 net_sales:Math.round(r.net_sales||0), net_units:r.net_units||0, gmv:Math.round(r.gmv||0)});
+    });
+  } else if (metric === 'traffic') {
+    (hub.traffic && hub.traffic.sku_daily || []).forEach(function(r){
+      var m = skuMeta[r.sku] || {};
+      rows.push({sku:r.sku, date:r.date, brand:m.brand, vertical:m.vertical,
+                 views:r.views||0, clicks:r.clicks||0, sales:r.sales||0, revenue:Math.round(r.revenue||0)});
+    });
+    var curMonths = new Set(rows.map(function(r){return r.date.slice(0,7);}));
+    (hist.traffic_sku_daily || []).forEach(function(r){
+      if (curMonths.has(r.date.slice(0,7))) return;
+      var m = skuMeta[r.sku] || {};
+      rows.push({sku:r.sku, date:r.date, brand:m.brand, vertical:m.vertical,
+                 views:r.views||0, clicks:r.clicks||0, sales:r.sales||0, revenue:Math.round(r.revenue||0)});
+    });
+  }
+  rows.sort(function(a,b){
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    return a.sku < b.sku ? -1 : 1;
+  });
+  downloadCsv(rows, 'fk_' + metric + '_sku_daily.csv');
+}
+
+// ── Monthly trend CSV (Sales/Ads/Traffic by month)
+function exportMonthlyTrendCsv() {
+  if (!D || !D.hub || !D.hub.history) return;
+  var hist = D.hub.history;
+  var months = (hist.months || []).slice().sort();
+  var sBy = {}, aBy = {}, tBy = {};
+  (hist.totals?.sales || []).forEach(function(r){ sBy[r.month] = r; });
+  (hist.totals?.ads || []).forEach(function(r){ aBy[r.month] = r; });
+  (hist.totals?.traffic || []).forEach(function(r){ tBy[r.month] = r; });
+  var rows = months.map(function(m){
+    var s = sBy[m] || {}, a = aBy[m] || {}, t = tBy[m] || {};
+    return {
+      month: m,
+      net_sales: Math.round(s.net_sales||0),
+      net_units: s.net_units || 0,
+      gmv: Math.round(s.gross_sales || 0),
+      ad_spend: Math.round(a.spend||0),
+      ad_revenue: Math.round(a.revenue||0),
+      roi: a.roi || null,
+      tacos: a.tacos != null ? +a.tacos.toFixed(2) : null,
+      ad_units: a.units || 0,
+      views: t.impressions || 0,
+      clicks: t.clicks || 0,
+      traffic_sales: t.sales || 0,
+    };
+  });
+  downloadCsv(rows, 'fk_monthly_trend_' + months[0] + '_to_' + months[months.length-1] + '.csv');
 }
 
 // Delta helper: returns {delta, pct, arrow, color, html}
@@ -5085,15 +5344,16 @@ function renderOvCrossInsights(curWin, prevWin, brandFilter, verticalFilter) {
     );
   }
 
-  // 5. Rank drops (d-1)
-  var prods = D.latest.products.filter(function(p){return brandFilter==='ALL' || p.brand===brandFilter;});
+  // 5. Rank drops (d-1) — requires fk_data_processor.py output (D.latest, D.all_days).
+  //    Gracefully skip this block when rank tracker data isn't available.
+  var prods = (D.latest && D.latest.products) ? D.latest.products.filter(function(p){return brandFilter==='ALL' || p.brand===brandFilter;}) : [];
   var rkDrops = [];
-  if (D.all_days && D.all_days.length >= 2) {
+  if (D.all_days && D.all_days.length >= 2 && prods.length) {
     var curDay = D.all_days[D.all_days.length - 1];
     var prevDay = D.all_days[D.all_days.length - 2];
     var curMap = {}, prevMap = {};
-    curDay.products.forEach(function(p){ curMap[p.pid] = p.rank_v; });
-    prevDay.products.forEach(function(p){ prevMap[p.pid] = p.rank_v; });
+    (curDay.products || []).forEach(function(p){ curMap[p.pid] = p.rank_v; });
+    (prevDay.products || []).forEach(function(p){ prevMap[p.pid] = p.rank_v; });
     prods.forEach(function(p){
       if (curMap[p.pid] != null && prevMap[p.pid] != null) {
         var delta = curMap[p.pid] - prevMap[p.pid];
@@ -5108,16 +5368,103 @@ function renderOvCrossInsights(curWin, prevWin, brandFilter, verticalFilter) {
     );
   }
 
-  // 6. SP Mismatches
+  // 6. SP Mismatches — only if latest.products has sp_status
   var spMis = prods.filter(function(p){return p.sp_status === 'MISMATCH';});
-  if (spMis.length) {
-    html += block('💰 SP Mismatches', 'var(--red)',
-      spMis.slice(0,3).map(function(p){
-        return (p.title?p.title.slice(0,30):'—') + ' — ' + (p.sp_diff>0?'+':'') + p.sp_diff + ' diff';
-      }).concat(spMis.length > 3 ? ['<i>+'+(spMis.length-3)+' more</i>'] : [])
+  if (prods.length) {
+    if (spMis.length) {
+      html += block('💰 SP Mismatches', 'var(--red)',
+        spMis.slice(0,3).map(function(p){
+          return (p.title?p.title.slice(0,30):'—') + ' — ' + (p.sp_diff>0?'+':'') + p.sp_diff + ' diff';
+        }).concat(spMis.length > 3 ? ['<i>+'+(spMis.length-3)+' more</i>'] : [])
+      );
+    } else {
+      html += block('💰 SP Compliance', 'var(--green)', ['All SKUs matching expected SP ✓']);
+    }
+  }
+
+  // 7. High TACOS SKUs — burning money, low or no profit margin
+  var tacosOutliers = curSkus.filter(function(s){
+    return s.sales > 0 && s.ad_spend >= cutOv;
+  }).map(function(s){
+    s.tacos_pct = s.ad_spend / s.sales * 100;
+    return s;
+  }).sort(function(a,b){return b.tacos_pct - a.tacos_pct;}).slice(0,3);
+  if (tacosOutliers.length) {
+    html += block('🚨 High TACOS (Spend '+cutLabelOv+')', 'var(--orange)',
+      tacosOutliers.map(function(s){
+        var p = prevSkus[s.sku];
+        var pTacos = (p && p.sales > 0 && p.ad_spend > 0) ? p.ad_spend/p.sales*100 : null;
+        return '<code>'+s.sku+'</code> — ' + fmtV(s.tacos_pct, pTacos,
+          function(v){return v!=null?v.toFixed(1)+'%':'—';}, true);
+      })
     );
-  } else {
-    html += block('💰 SP Compliance', 'var(--green)', ['All SKUs matching expected SP ✓']);
+  }
+
+  // 8. Cancellation spike — SKUs with high cancel% eating into sales
+  var cancelOutliers = curSkus.filter(function(s){
+    return s.gmv > 50000 && s.cxl > 0;
+  }).map(function(s){
+    s.cancel_pct = s.cxl / s.gmv * 100;
+    return s;
+  }).sort(function(a,b){return b.cancel_pct - a.cancel_pct;}).slice(0,3);
+  if (cancelOutliers.length && cancelOutliers[0].cancel_pct > 10) {
+    html += block('❌ High Cancellation %', 'var(--red)',
+      cancelOutliers.map(function(s){
+        var p = prevSkus[s.sku];
+        var pCxl = (p && p.gmv > 0) ? p.cxl/p.gmv*100 : null;
+        return '<code>'+s.sku+'</code> — ' + fmtV(s.cancel_pct, pCxl,
+          function(v){return v!=null?v.toFixed(1)+'%':'—';}, true);
+      })
+    );
+  }
+
+  // 9. Vertical movers (if prev window exists, show biggest vertical sales shift)
+  if (prevWin) {
+    var curVertMap = {}, prevVertMap = {};
+    curSkus.forEach(function(s){
+      var v = s.vertical || '—';
+      curVertMap[v] = (curVertMap[v] || 0) + (s.sales || 0);
+    });
+    Object.values(prevSkus).forEach(function(s){
+      var v = s.vertical || '—';
+      prevVertMap[v] = (prevVertMap[v] || 0) + (s.sales || 0);
+    });
+    var movers = [];
+    Object.keys(curVertMap).forEach(function(v){
+      var cur = curVertMap[v], prev = prevVertMap[v] || 0;
+      if (cur < 50000 && prev < 50000) return;
+      var pct = prev > 0 ? (cur - prev) / prev * 100 : (cur > 0 ? 100 : 0);
+      if (Math.abs(pct) < 10) return;
+      movers.push({vertical:v, cur:cur, prev:prev, pct:pct});
+    });
+    movers.sort(function(a,b){return Math.abs(b.pct) - Math.abs(a.pct);});
+    var topMovers = movers.slice(0,3);
+    if (topMovers.length) {
+      html += block('🧭 Vertical Movers', 'var(--accent)',
+        topMovers.map(function(m){
+          var arrow = m.pct > 0 ? '▲' : '▼';
+          var col = m.pct > 0 ? 'var(--green)' : 'var(--red)';
+          return '<b>'+m.vertical+'</b> ' + fmtCr(m.cur) +
+            ' <span style="color:'+col+'">'+arrow+Math.abs(m.pct).toFixed(0)+'%</span>';
+        })
+      );
+    }
+  }
+
+  // 10. Discount outliers — SKUs selling way below MRP
+  var discOutliers = curSkus.filter(function(s){
+    return s.sales > 100000 && s.mrp && s.units > 0;
+  }).map(function(s){
+    s.disc = (s.mrp * s.units - s.sales) / (s.mrp * s.units) * 100;
+    return s;
+  }).filter(function(s){return s.disc > 0;})
+    .sort(function(a,b){return b.disc - a.disc;}).slice(0,3);
+  if (discOutliers.length && discOutliers[0].disc > 25) {
+    html += block('🏷️ Deepest Discounts (sales > ₹1L)', 'var(--yellow)',
+      discOutliers.map(function(s){
+        return '<code>'+s.sku+'</code> — ' + s.disc.toFixed(1) + '% off MRP';
+      })
+    );
   }
 
   html += '</div>';

@@ -280,7 +280,7 @@ function checkPW(){
       <span class="card-title">🏭 Warehouse & Channel</span>
       <span class="card-sub" id="ov-warehouse-sub"></span>
     </div>
-    <div id="ov-warehouse-body" style="padding:12px;display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:18px"></div>
+    <div id="ov-warehouse-body" style="padding:14px"></div>
   </div>
 
   <!-- Vertical Breakdown: roll-up by product vertical, ranked by selected metric -->
@@ -438,11 +438,6 @@ function checkPW(){
     <button class="fbtn ba"     onclick="setHubFilter('sales','brand','BARE ANATOMY',this)">BA</button>
     <button class="fbtn cap"    onclick="setHubFilter('sales','brand','Chemist at Play',this)">CAP</button>
     <button class="fbtn ss"     onclick="setHubFilter('sales','brand','SunScoop',this)">SS</button>
-    <div class="fsep"></div>
-    <span class="filter-label">Channel</span>
-    <button class="fbtn active" onclick="setHubFilter('sales','channel','ALL',this)">All</button>
-    <button class="fbtn"        onclick="setHubFilter('sales','channel','Main',this)">Main</button>
-    <button class="fbtn"        onclick="setHubFilter('sales','channel','Shopsy',this)">Shopsy</button>
     <div class="fsep"></div>
     <span class="filter-label">Day</span>
     <select class="fsel" id="sales-day-sel" onchange="setHubTime('sales','day')"><option value="">—</option></select>
@@ -823,7 +818,7 @@ function checkPW(){
 // mode: 'all' | 'day' | 'month' | 'year' | 'custom'
 var H = {
   ov:      {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', vbSort:'roi'},
-  sales:   {brand:'ALL', channel:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'net_sales', sortDesc:true, search:''},
+  sales:   {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'net_sales', sortDesc:true, search:''},
   ads:     {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'ad_spend',  sortDesc:true, view:'sku', search:''},
   traffic: {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'views',     sortDesc:true, search:''},
   camp:    {brand:'ALL', vertical:'ALL', month:'',   view:'campaign', sort:'spend', sortDesc:true, search:'', drill:null},
@@ -1697,6 +1692,52 @@ function downloadCsv(rows, filename) {
   setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
 }
 
+// Rescale per-SKU ad values so their sum matches canonical day totals from
+// hub.daily.days[].by_brand. Per-SKU values are MTD × brand-daily-ratio
+// (prorated). Summing them drifts ~5% from canonical because proration is
+// per-brand but rows are filtered to real SKUs only. Use this helper to
+// keep CSV export and SKU table display reconciled with KPI tiles.
+function reconcileAdsToCanon(rows, curWin, brand) {
+  if (!D || !D.hub || curWin.granularity !== 'day') return;
+  var hub = D.hub;
+  if (!hub.daily || !hub.daily.days) return;
+
+  var inWinFn = function(d){
+    if (curWin.singleDay) return d === curWin.singleDay;
+    if (curWin.dayRange)  return d >= curWin.dayRange[0] && d <= curWin.dayRange[1];
+    return false;
+  };
+  var canon = {spend:0, revenue:0, units:0, clicks:0};
+  hub.daily.days.forEach(function(d){
+    if (!inWinFn(d.date)) return;
+    var src = (brand === 'ALL') ? d : (d.by_brand && d.by_brand[brand]);
+    if (!src) return;
+    canon.spend   += src.spend   || 0;
+    canon.revenue += src.revenue || 0;
+    canon.units   += src.units   || 0;
+    canon.clicks  += src.clicks  || 0;
+  });
+  var pror = rows.reduce(function(a,s){
+    a.spend   += s.ad_spend   || 0;
+    a.revenue += s.ad_revenue || 0;
+    a.units   += s.ad_units   || 0;
+    a.clicks  += s.ad_clicks  || 0;
+    return a;
+  }, {spend:0, revenue:0, units:0, clicks:0});
+  var f = {
+    spend:   pror.spend   > 0 ? canon.spend   / pror.spend   : 1,
+    revenue: pror.revenue > 0 ? canon.revenue / pror.revenue : 1,
+    units:   pror.units   > 0 ? canon.units   / pror.units   : 1,
+    clicks:  pror.clicks  > 0 ? canon.clicks  / pror.clicks  : 1,
+  };
+  rows.forEach(function(s){
+    s.ad_spend   = (s.ad_spend   || 0) * f.spend;
+    s.ad_revenue = (s.ad_revenue || 0) * f.revenue;
+    s.ad_units   = (s.ad_units   || 0) * f.units;
+    s.ad_clicks  = (s.ad_clicks  || 0) * f.clicks;
+  });
+}
+
 // Tab-level CSV export: reads currently-rendered SKU table rows
 function exportTabCsv(tab) {
   if (!D || !D.hub) return;
@@ -1713,6 +1754,11 @@ function exportTabCsv(tab) {
   if (tab === 'ads')     rows = rows.filter(function(s){ return s.ad_spend > 0; });
   if (tab === 'traffic') rows = rows.filter(function(s){ return (s.views||0) > 0; });
 
+  // ── ADS RECONCILIATION ──
+  // Per-SKU ad values drift from canonical day totals (hub.daily.days).
+  // Rescale so CSV sums match KPI tiles.
+  if (tab === 'ads') reconcileAdsToCanon(rows, curWin, brand);
+
   // Reduce to the most meaningful columns per tab
   var slim = rows.map(function(s){
     var base = {sku:s.sku, title:s.title, brand:s.brand, vertical:s.vertical||'', mrp:s.mrp||'', sp:s.sp||''};
@@ -1721,8 +1767,11 @@ function exportTabCsv(tab) {
       cancellations:s.cxl, returns:s.rtn
     });
     if (tab === 'ads')     Object.assign(base, {
-      ad_spend:s.ad_spend, ad_revenue:s.ad_revenue, ad_units:s.ad_units,
-      ad_clicks:s.ad_clicks, sales:s.sales
+      ad_spend:Math.round(s.ad_spend),
+      ad_revenue:Math.round(s.ad_revenue),
+      ad_units:Math.round(s.ad_units),
+      ad_clicks:Math.round(s.ad_clicks),
+      sales:s.sales
     });
     if (tab === 'traffic') Object.assign(base, {
       views:s.views, clicks:s.clicks, ctr:s.ctr, traffic_sales:s.traffic_sales,
@@ -1789,27 +1838,10 @@ function renderSales() {
   var curAgg  = aggregateWindow(curWin, brand);
   var prevAgg = prevWin ? aggregateWindow(prevWin, brand) : null;
 
-  // Channel filter (Main / Shopsy) — applied after brand filter in aggregateWindow.
-  // Each SKU row has a .channel field ('Main' or 'Shopsy') populated by processor.
-  var channel = H.sales.channel || 'ALL';
-  if (channel !== 'ALL') {
-    var filterByChannel = function(skus){
-      var out = {};
-      Object.keys(skus).forEach(function(k){
-        var s = skus[k];
-        var ch = s.channel || (String(k).toUpperCase().startsWith('SHOPSY_') || String(k).toUpperCase().startsWith('SH_') ? 'Shopsy' : 'Main');
-        if (ch === channel) out[k] = s;
-      });
-      return out;
-    };
-    curAgg.skus  = filterByChannel(curAgg.skus);
-    if (prevAgg) prevAgg.skus = filterByChannel(prevAgg.skus);
-  }
-
-  // Brand/vertical/channel filter: rebuild totals from SKU rows (out.skus is already
+  // Brand or vertical filter: rebuild totals from SKU rows (out.skus is already
   // brand-filtered in aggregateWindow, but daily totals were summed from all-brand
   // day rows — rebuild from skus dict to match the filtered brand).
-  if (brand !== 'ALL' || vertical !== 'ALL' || channel !== 'ALL') {
+  if (brand !== 'ALL' || vertical !== 'ALL') {
     curAgg.totals  = rebuildTotalsFromSkusV(curAgg.skus, vertical);
     if (prevAgg) prevAgg.totals = rebuildTotalsFromSkusV(prevAgg.skus, vertical);
   }
@@ -2292,6 +2324,9 @@ function renderAds() {
     if (vertical !== 'ALL') rowsSkus = rowsSkus.filter(function(s){ return s.vertical === vertical; });
     var q = (document.getElementById('ads-search')?.value || '').toLowerCase().trim();
     if (q) rowsSkus = rowsSkus.filter(function(s){ return (s.sku||'').toLowerCase().includes(q) || (s.title||'').toLowerCase().includes(q); });
+
+    // Rescale per-SKU ad values so sums match KPI tiles (canonical from hub.daily.days)
+    reconcileAdsToCanon(rowsSkus, curWin, brand);
 
     rowsSkus.forEach(function(s){
       s.ad_roi = s.ad_spend > 0 ? s.ad_revenue/s.ad_spend : null;
@@ -2844,6 +2879,12 @@ function renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical) {
 
   var html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px">';
 
+  // Top spenders — ALWAYS shown (no threshold). This is the main fallback so card never renders empty.
+  var topSpend = skuArr.slice().sort(function(a,b){return b.ad_spend-a.ad_spend;}).slice(0,5);
+  html += '<div>' + insightBlock('💰 Top Spenders', 'var(--red)',
+    topSpend.map(function(s){ var p=prevSkus[s.sku]||{ad_spend:0}; return cmpSkuLine(s.sku, s.title, s.ad_spend, p.ad_spend, fmtCr, true); })
+  ) + '</div>';
+
   // Top ROI (spend in top 25% or ≥50K)
   var topRoi = skuArr.filter(function(s){return s.ad_spend>=highSpendCut && s.ad_roi!=null;}).sort(function(a,b){return b.ad_roi-a.ad_roi;}).slice(0,5);
   if (topRoi.length) {
@@ -2859,12 +2900,6 @@ function renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical) {
       worstRoi.map(function(s){ return cmpSkuLine(s.sku, s.title, s.ad_roi, prevRoi(s.sku), function(v){return v!=null?v.toFixed(2)+'x':'—';}); })
     ) + '</div>';
   }
-
-  // Top spenders — no threshold needed
-  var topSpend = skuArr.slice().sort(function(a,b){return b.ad_spend-a.ad_spend;}).slice(0,5);
-  html += '<div>' + insightBlock('💰 Top Spenders', 'var(--red)',
-    topSpend.map(function(s){ var p=prevSkus[s.sku]||{ad_spend:0}; return cmpSkuLine(s.sku, s.title, s.ad_spend, p.ad_spend, fmtCr, true); })
-  ) + '</div>';
 
   // Scale-up opportunities (mid spend with high ROI)
   var scale = skuArr.filter(function(s){return s.ad_spend>=midSpendCut && s.ad_spend<highSpendCut && s.ad_roi>=3;}).sort(function(a,b){return b.ad_roi-a.ad_roi;}).slice(0,5);
@@ -5007,32 +5042,49 @@ function renderOvWarehouse() {
   if (!D || !D.hub || !D.hub.sales) { body.innerHTML = '<div class="empty">No data</div>'; return; }
 
   var sales = D.hub.sales;
-  var brand = H.ov.brand || 'ALL';
   var byLoc = sales.by_location || [];
   var byCh  = sales.by_channel  || {};
   var byFul = sales.by_fulfillment || {};
 
-  // byLoc/byCh/byFul are MTD-wide (not brand filtered). Note this in sub.
-  if (sub) sub.textContent = 'Current month · all brands (warehouse/channel/fulfillment breakdown not brand-filterable from FK export)';
+  if (sub) sub.textContent = 'Current month · all brands';
 
   var totalSales = byLoc.reduce(function(a,r){return a + (r.net_sales||0);}, 0);
 
-  // Top 10 warehouses
-  var topN = byLoc.slice(0, 10);
-  var whHtml = '<div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">🏭 Top Warehouses (MTD)</div>';
-  whHtml += '<table style="width:100%;font-size:11px"><thead><tr>' +
-    '<th style="text-align:left">FC</th>' +
-    '<th style="text-align:right">Sales</th>' +
-    '<th style="text-align:right">Units</th>' +
-    '<th style="text-align:right">% Share</th>' +
+  // ── Shared table styling ──
+  var th = 'text-align:left;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;padding:4px 8px;border-bottom:1px solid rgba(255,255,255,.08);font-weight:600';
+  var thR = th + ';text-align:right';
+  var td = 'padding:6px 8px;font-size:12px;border-bottom:1px solid rgba(255,255,255,.04)';
+  var tdR = td + ';text-align:right';
+  var tdMono = td + ';font-family:"SF Mono","Courier New",monospace;font-size:11px;color:var(--text2)';
+
+  // ── Left: Top 10 Warehouses ──
+  var whHtml = '<div style="background:rgba(255,255,255,.02);border-radius:8px;padding:12px;border:1px solid rgba(255,255,255,.05)">' +
+    '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px">' +
+    '<span style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.6px">🏭 Top Warehouses</span>' +
+    '<span style="font-size:10px;color:var(--text3)">' + byLoc.length + ' FCs · ' + fmtCr(totalSales) + ' MTD</span>' +
+    '</div>';
+  whHtml += '<table style="width:100%;border-collapse:collapse">' +
+    '<thead><tr>' +
+    '<th style="' + th + '">FC</th>' +
+    '<th style="' + thR + '">Sales</th>' +
+    '<th style="' + thR + '">Units</th>' +
+    '<th style="' + thR + '">% Share</th>' +
     '</tr></thead><tbody>';
-  topN.forEach(function(r){
+  byLoc.slice(0, 10).forEach(function(r){
     var pct = totalSales > 0 ? r.net_sales/totalSales*100 : 0;
+    var pctColor = pct >= 20 ? 'var(--green)' : pct >= 10 ? 'var(--yellow)' : 'var(--text2)';
+    // Draw a mini bar under % share to visualize relative size
+    var barW = Math.min(100, pct * 3);  // 33% = full bar
     whHtml += '<tr>' +
-      '<td style="font-family:monospace;font-size:10px;color:var(--text2)">' + (r.location_id || '—') + '</td>' +
-      '<td style="text-align:right">' + fmtCr(r.net_sales) + '</td>' +
-      '<td style="text-align:right;color:var(--text2)">' + fmtImpr(r.net_units) + '</td>' +
-      '<td style="text-align:right;color:' + (pct >= 20 ? 'var(--green)' : pct >= 10 ? 'var(--yellow)' : 'var(--text2)') + '">' + pct.toFixed(1) + '%</td>' +
+      '<td style="' + tdMono + '">' + (r.location_id || '—') + '</td>' +
+      '<td style="' + tdR + '">' + fmtCr(r.net_sales) + '</td>' +
+      '<td style="' + tdR + ';color:var(--text2)">' + fmtImpr(r.net_units) + '</td>' +
+      '<td style="' + tdR + ';color:' + pctColor + ';font-weight:600">' +
+        pct.toFixed(1) + '%' +
+        '<div style="height:3px;background:rgba(255,255,255,.06);border-radius:2px;margin-top:3px;overflow:hidden">' +
+        '<div style="height:100%;width:' + barW + '%;background:' + pctColor + ';border-radius:2px"></div>' +
+        '</div>' +
+      '</td>' +
       '</tr>';
   });
   if (byLoc.length > 10) {
@@ -5040,66 +5092,72 @@ function renderOvWarehouse() {
     var restUnits = byLoc.slice(10).reduce(function(a,r){return a + r.net_units;}, 0);
     var restPct = totalSales > 0 ? rest/totalSales*100 : 0;
     whHtml += '<tr style="color:var(--text3)">' +
-      '<td><i>+' + (byLoc.length - 10) + ' more</i></td>' +
-      '<td style="text-align:right">' + fmtCr(rest) + '</td>' +
-      '<td style="text-align:right">' + fmtImpr(restUnits) + '</td>' +
-      '<td style="text-align:right">' + restPct.toFixed(1) + '%</td>' +
+      '<td style="' + td + ';font-style:italic">+' + (byLoc.length - 10) + ' smaller FCs</td>' +
+      '<td style="' + tdR + '">' + fmtCr(rest) + '</td>' +
+      '<td style="' + tdR + '">' + fmtImpr(restUnits) + '</td>' +
+      '<td style="' + tdR + '">' + restPct.toFixed(1) + '%</td>' +
       '</tr>';
   }
-  whHtml += '</tbody></table>';
+  whHtml += '</tbody></table></div>';
 
-  // Channel: Main vs Shopsy
-  var chHtml = '<div style="font-size:11px;font-weight:700;color:var(--purple);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">📣 Channel Split</div>';
+  // ── Right: Channel Split (stacked card) ──
   var chEntries = Object.entries(byCh).sort(function(a,b){return (b[1].net_sales||0) - (a[1].net_sales||0);});
   var chTotal = chEntries.reduce(function(a,e){return a + (e[1].net_sales||0);}, 0);
-  chHtml += '<table style="width:100%;font-size:11px"><thead><tr>' +
-    '<th style="text-align:left">Channel</th>' +
-    '<th style="text-align:right">Sales</th>' +
-    '<th style="text-align:right">Units</th>' +
-    '<th style="text-align:right">% Share</th>' +
-    '</tr></thead><tbody>';
+  var chHtml = '<div style="background:rgba(255,255,255,.02);border-radius:8px;padding:12px;border:1px solid rgba(255,255,255,.05)">' +
+    '<div style="font-size:11px;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">📣 Channel Split</div>';
   chEntries.forEach(function(e){
     var name = e[0], v = e[1];
     var pct = chTotal > 0 ? (v.net_sales||0)/chTotal*100 : 0;
-    chHtml += '<tr>' +
-      '<td><b style="color:' + (name === 'Main' ? 'var(--accent)' : 'var(--orange)') + '">' + name + '</b></td>' +
-      '<td style="text-align:right">' + fmtCr(v.net_sales || 0) + '</td>' +
-      '<td style="text-align:right;color:var(--text2)">' + fmtImpr(v.net_units || 0) + '</td>' +
-      '<td style="text-align:right">' + pct.toFixed(1) + '%</td>' +
-      '</tr>';
+    var color = name === 'Main' ? 'var(--accent)' : 'var(--orange)';
+    var cxl = v.net_sales ? (v.cancellations||0)/v.net_sales*100 : 0;
+    var rtn = v.net_sales ? (v.returns||0)/v.net_sales*100 : 0;
+    chHtml += '<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)">' +
+      '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px">' +
+      '<span style="font-weight:700;color:' + color + ';font-size:13px">' + name + '</span>' +
+      '<span style="font-size:13px;font-weight:600">' + fmtCr(v.net_sales || 0) + '</span>' +
+      '</div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3)">' +
+      '<span>' + fmtImpr(v.net_units || 0) + ' units · cxl ' + cxl.toFixed(1) + '% · return ' + rtn.toFixed(1) + '%</span>' +
+      '<span style="color:' + color + '">' + pct.toFixed(1) + '%</span>' +
+      '</div>' +
+      '<div style="height:4px;background:rgba(255,255,255,.06);border-radius:2px;margin-top:5px;overflow:hidden">' +
+      '<div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:2px"></div>' +
+      '</div>' +
+      '</div>';
   });
-  chHtml += '</tbody></table>';
-  // Add cancel/return diagnostics below
-  if (byCh.Main && byCh.Main.net_sales) {
-    var mainCxl = (byCh.Main.cancellations || 0) / byCh.Main.net_sales * 100;
-    var mainRtn = (byCh.Main.returns       || 0) / byCh.Main.net_sales * 100;
-    chHtml += '<div style="margin-top:8px;font-size:10px;color:var(--text3)">' +
-      'Main · cxl ' + mainCxl.toFixed(1) + '% · return ' + mainRtn.toFixed(1) + '%</div>';
-  }
+  chHtml += '</div>';
 
-  // Fulfillment: FBF vs NON_FBF
-  var fulHtml = '<div style="font-size:11px;font-weight:700;color:var(--yellow);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">📦 Fulfillment</div>';
+  // ── Right: Fulfillment Split ──
   var fulEntries = Object.entries(byFul).sort(function(a,b){return (b[1].net_sales||0) - (a[1].net_sales||0);});
   var fulTotal = fulEntries.reduce(function(a,e){return a + (e[1].net_sales||0);}, 0);
-  fulHtml += '<table style="width:100%;font-size:11px"><thead><tr>' +
-    '<th style="text-align:left">Type</th>' +
-    '<th style="text-align:right">Sales</th>' +
-    '<th style="text-align:right">Units</th>' +
-    '<th style="text-align:right">% Share</th>' +
-    '</tr></thead><tbody>';
+  var fulHtml = '<div style="background:rgba(255,255,255,.02);border-radius:8px;padding:12px;border:1px solid rgba(255,255,255,.05);margin-top:12px">' +
+    '<div style="font-size:11px;font-weight:700;color:var(--yellow);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">📦 Fulfillment</div>';
   fulEntries.forEach(function(e){
     var name = e[0], v = e[1];
     var pct = fulTotal > 0 ? (v.net_sales||0)/fulTotal*100 : 0;
-    fulHtml += '<tr>' +
-      '<td><b style="color:' + (name === 'FBF' ? 'var(--green)' : 'var(--red)') + '">' + name + '</b></td>' +
-      '<td style="text-align:right">' + fmtCr(v.net_sales || 0) + '</td>' +
-      '<td style="text-align:right;color:var(--text2)">' + fmtImpr(v.net_units || 0) + '</td>' +
-      '<td style="text-align:right">' + pct.toFixed(1) + '%</td>' +
-      '</tr>';
+    var color = name === 'FBF' ? 'var(--green)' : 'var(--red)';
+    fulHtml += '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)">' +
+      '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px">' +
+      '<span style="font-weight:700;color:' + color + ';font-size:12px">' + name + '</span>' +
+      '<span style="font-size:12px;font-weight:600">' + fmtCr(v.net_sales || 0) + '</span>' +
+      '</div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3)">' +
+      '<span>' + fmtImpr(v.net_units || 0) + ' units</span>' +
+      '<span style="color:' + color + '">' + pct.toFixed(1) + '%</span>' +
+      '</div>' +
+      '<div style="height:3px;background:rgba(255,255,255,.06);border-radius:2px;margin-top:4px;overflow:hidden">' +
+      '<div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:2px"></div>' +
+      '</div>' +
+      '</div>';
   });
-  fulHtml += '</tbody></table>';
+  fulHtml += '</div>';
 
-  body.innerHTML = whHtml + chHtml + fulHtml;
+  // ── 2-column layout: warehouse (left, wider) | channel + fulfillment stacked (right) ──
+  body.innerHTML =
+    '<div style="display:grid;grid-template-columns:1.6fr 1fr;gap:14px;align-items:start">' +
+    '<div>' + whHtml + '</div>' +
+    '<div>' + chHtml + fulHtml + '</div>' +
+    '</div>';
 }
 
 // Renders the Vertical Breakdown table from curAgg.skus at the currently

@@ -4730,13 +4730,36 @@ function drillAdGroup(key) {
     return Object.assign({sku: rec.sku, title: rec.title, brand: rec.brand}, m);
   }).sort(function(x,y){ return y.spend - x.spend; });
 
+  // Monthly trend for this AdGroup (last 13 months)
+  var monthsAllAG = fsn.months.slice().sort();
+  var agMonths = monthsAllAG.slice(-13);
+  var todayIsoAG = (new Date()).toISOString().slice(0,10);
+  var curMonthAG = todayIsoAG.slice(0,7);
+  var agSeries = agMonths.map(function(m){
+    var rec = a.months[m];
+    return rec ? {m:m, spend:rec.spend, revenue:rec.revenue, roi:rec.roi, units:rec.units} : {m:m, spend:0, revenue:0, roi:0, units:0};
+  });
+
   var lines = '';
+  // Summary row with comparison vs prev month
+  var prevMonth = _prevMonth(month);
+  var prevM = prevMonth ? a.months[prevMonth] : null;
+  function dArrow(cur, prev, invert) {
+    if (prev == null || prev === 0) return '';
+    var pct = (cur - prev) / prev * 100;
+    var better = invert ? pct < 0 : pct > 0;
+    return ' <span style="color:'+(better?'var(--green)':'var(--red)')+';font-size:10px">'+(pct>=0?'▲':'▼')+Math.abs(pct).toFixed(0)+'%</span>';
+  }
   lines += '<div style="background:var(--bg2);padding:10px;border-radius:6px;margin-bottom:12px;font-family:Courier New,monospace;font-size:12px">';
-  lines += 'Spend: <b style="color:var(--red)">'+fmtCr(curM.spend)+'</b> · ';
-  lines += 'Revenue: <b style="color:var(--green)">'+fmtCr(curM.revenue)+'</b> · ';
-  lines += 'ROI: <b style="color:var(--accent)">'+(curM.roi!=null?curM.roi.toFixed(2)+'x':'—')+'</b> · ';
+  lines += 'Spend: <b style="color:var(--red)">'+fmtCr(curM.spend)+'</b>' + (prevM ? dArrow(curM.spend, prevM.spend, true) : '') + ' · ';
+  lines += 'Revenue: <b style="color:var(--green)">'+fmtCr(curM.revenue)+'</b>' + (prevM ? dArrow(curM.revenue, prevM.revenue) : '') + ' · ';
+  lines += 'ROI: <b style="color:var(--accent)">'+(curM.roi!=null?curM.roi.toFixed(2)+'x':'—')+'</b>' + (prevM && prevM.roi ? dArrow(curM.roi, prevM.roi) : '') + ' · ';
   lines += 'Units: <b>'+fmtUnits(curM.units)+'</b> · ';
   lines += 'Active '+a.totals.months_active+' months</div>';
+
+  // Monthly trend chart (13 months)
+  lines += '<div style="color:var(--text3);font-size:11px;margin-bottom:6px">Monthly trend (last '+agMonths.length+' months)</div>';
+  lines += '<div style="background:var(--bg2);padding:12px;border-radius:6px;margin-bottom:12px"><canvas id="drill-ag-trend" height="140"></canvas></div>';
 
   lines += '<div style="color:var(--text3);font-size:11px;margin-bottom:6px">SKUs in '+monthLabel(month)+' ('+skus.length+')</div>';
   lines += '<table style="width:100%"><thead><tr><th>SKU</th><th>Product</th><th style="text-align:right">Spend</th><th style="text-align:right">Revenue</th><th style="text-align:right">ROI</th><th style="text-align:right">Units</th></tr></thead><tbody>';
@@ -4756,6 +4779,36 @@ function drillAdGroup(key) {
   body.innerHTML = lines;
   card.style.display = 'block';
   card.scrollIntoView({behavior:'smooth', block:'start'});
+
+  // Render the monthly trend chart after DOM update
+  setTimeout(function(){
+    var ctx = document.getElementById('drill-ag-trend');
+    if (!ctx) return;
+    var spendColors = agMonths.map(function(m){
+      return m === curMonthAG ? 'rgba(220,53,69,0.28)' : 'rgba(220,53,69,0.55)';
+    });
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: agMonths.map(function(m){ return monthLabel(m) + (m === curMonthAG ? ' *' : ''); }),
+        datasets: [
+          {label:'Spend (₹L)', data: agSeries.map(function(s){return (s.spend/1e5).toFixed(1);}),
+           backgroundColor:spendColors, yAxisID:'y'},
+          {label:'ROI', type:'line', data: agSeries.map(function(s){return s.roi;}),
+           borderColor:'rgba(0,212,255,1)', backgroundColor:'transparent', tension:0.2, pointRadius:2, yAxisID:'y1'},
+        ]
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{labels:{color:'#8892a4',font:{size:9}}}},
+        scales:{
+          x:{ticks:{color:'#8892a4',font:{size:8}}, grid:{color:'rgba(255,255,255,0.03)'}},
+          y:{ticks:{color:'#8892a4',font:{size:9}}, grid:{color:'rgba(255,255,255,0.03)'}, title:{display:true,text:'Spend (₹L)',color:'#8892a4',font:{size:9}}},
+          y1:{position:'right', ticks:{color:'#8892a4',font:{size:9}}, grid:{display:false}, title:{display:true,text:'ROI',color:'#8892a4',font:{size:9}}},
+        }
+      }
+    });
+  }, 80);
 }
 
 // ── Analysis: Top spenders, worst ROI, new launches, declining ─────────────

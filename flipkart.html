@@ -274,6 +274,15 @@ function checkPW(){
   <!-- Analysis sections container — auto-populated from ANALYSIS_REGISTRY. -->
   <div id="ov-analyses-container"></div>
 
+  <!-- Warehouse & Channel Breakdown -->
+  <div class="card" style="margin-top:18px">
+    <div class="card-hdr">
+      <span class="card-title">🏭 Warehouse & Channel</span>
+      <span class="card-sub" id="ov-warehouse-sub"></span>
+    </div>
+    <div id="ov-warehouse-body" style="padding:12px;display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:18px"></div>
+  </div>
+
   <!-- Vertical Breakdown: roll-up by product vertical, ranked by selected metric -->
   <div class="card" style="margin-top:18px">
     <div class="card-hdr">
@@ -429,6 +438,11 @@ function checkPW(){
     <button class="fbtn ba"     onclick="setHubFilter('sales','brand','BARE ANATOMY',this)">BA</button>
     <button class="fbtn cap"    onclick="setHubFilter('sales','brand','Chemist at Play',this)">CAP</button>
     <button class="fbtn ss"     onclick="setHubFilter('sales','brand','SunScoop',this)">SS</button>
+    <div class="fsep"></div>
+    <span class="filter-label">Channel</span>
+    <button class="fbtn active" onclick="setHubFilter('sales','channel','ALL',this)">All</button>
+    <button class="fbtn"        onclick="setHubFilter('sales','channel','Main',this)">Main</button>
+    <button class="fbtn"        onclick="setHubFilter('sales','channel','Shopsy',this)">Shopsy</button>
     <div class="fsep"></div>
     <span class="filter-label">Day</span>
     <select class="fsel" id="sales-day-sel" onchange="setHubTime('sales','day')"><option value="">—</option></select>
@@ -809,7 +823,7 @@ function checkPW(){
 // mode: 'all' | 'day' | 'month' | 'year' | 'custom'
 var H = {
   ov:      {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', vbSort:'roi'},
-  sales:   {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'net_sales', sortDesc:true, search:''},
+  sales:   {brand:'ALL', channel:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'net_sales', sortDesc:true, search:''},
   ads:     {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'ad_spend',  sortDesc:true, view:'sku', search:''},
   traffic: {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'views',     sortDesc:true, search:''},
   camp:    {brand:'ALL', vertical:'ALL', month:'',   view:'campaign', sort:'spend', sortDesc:true, search:'', drill:null},
@@ -1386,6 +1400,7 @@ function aggregateWindow(win, brand) {
         listing_id: s.listing_id || '',
         mrp: s.mrp, sp: s.sp,
         vertical: s.vertical || '', category: s.category || '',
+        channel: s.channel || (String(s.sku||'').toUpperCase().startsWith('SHOPSY_') || String(s.sku||'').toUpperCase().startsWith('SH_') ? 'Shopsy' : 'Main'),
         // Zero out — will be filled from sales_daily + sku_daily below
         sales: 0, units: 0, gmv: 0, gross_units: 0, cxl: 0, rtn: 0,
         views: 0, clicks: 0, traffic_sales: 0, traffic_revenue: 0,
@@ -1774,10 +1789,27 @@ function renderSales() {
   var curAgg  = aggregateWindow(curWin, brand);
   var prevAgg = prevWin ? aggregateWindow(prevWin, brand) : null;
 
-  // Brand or vertical filter: rebuild totals from SKU rows (out.skus is already
+  // Channel filter (Main / Shopsy) — applied after brand filter in aggregateWindow.
+  // Each SKU row has a .channel field ('Main' or 'Shopsy') populated by processor.
+  var channel = H.sales.channel || 'ALL';
+  if (channel !== 'ALL') {
+    var filterByChannel = function(skus){
+      var out = {};
+      Object.keys(skus).forEach(function(k){
+        var s = skus[k];
+        var ch = s.channel || (String(k).toUpperCase().startsWith('SHOPSY_') || String(k).toUpperCase().startsWith('SH_') ? 'Shopsy' : 'Main');
+        if (ch === channel) out[k] = s;
+      });
+      return out;
+    };
+    curAgg.skus  = filterByChannel(curAgg.skus);
+    if (prevAgg) prevAgg.skus = filterByChannel(prevAgg.skus);
+  }
+
+  // Brand/vertical/channel filter: rebuild totals from SKU rows (out.skus is already
   // brand-filtered in aggregateWindow, but daily totals were summed from all-brand
   // day rows — rebuild from skus dict to match the filtered brand).
-  if (brand !== 'ALL' || vertical !== 'ALL') {
+  if (brand !== 'ALL' || vertical !== 'ALL' || channel !== 'ALL') {
     curAgg.totals  = rebuildTotalsFromSkusV(curAgg.skus, vertical);
     if (prevAgg) prevAgg.totals = rebuildTotalsFromSkusV(prevAgg.skus, vertical);
   }
@@ -4569,6 +4601,9 @@ function renderOverview() {
 
   try { renderOvVerticalBreakdown(); }
   catch (err) { console.error('renderOvVerticalBreakdown failed:', err); }
+
+  try { renderOvWarehouse(); }
+  catch (err) { console.error('renderOvWarehouse failed:', err); }
 }
 
 // ── Overview EXTRAS section (below analyses) ───────────────────────────────
@@ -4772,8 +4807,10 @@ function renderOvCrossInsights(curWin, prevWin, brandFilter, verticalFilter) {
     (D.hub.traffic && D.hub.traffic.sku_daily && D.hub.traffic.sku_daily.length) ||
     (D.hub.history && D.hub.history.traffic_sku_daily && D.hub.history.traffic_sku_daily.length)));
 
-  // Ads still MTD-only at SKU level
-  var canShowAdsDelta = monthModeBoth;
+  // Ads: day-mode enabled when hub.daily.days is present (brand-tagged daily
+  // ads rows exist). Campaign-level daily data lets us compute day-over-day
+  // ads deltas even though per-SKU daily ads aren't available.
+  var canShowAdsDelta = monthModeBoth || (dayModeBoth && D.hub && D.hub.daily && D.hub.daily.days && D.hub.daily.days.length);
 
   function fmtV(cur, prevV, fmt, invert, canCompare) {
     var ok = canCompare !== undefined ? canCompare : canShowSalesDelta;
@@ -4960,6 +4997,111 @@ function setOvVbSort(metric, btn) {
   try { renderOvVerticalBreakdown(); } catch(e){ console.error('Vertical breakdown render failed:', e); }
 }
 
+// Renders Warehouse / FC performance + Channel (Main vs Shopsy) + Fulfillment
+// (FBF vs NON_FBF) breakdowns. Pulls from hub.sales.by_location,
+// hub.sales.by_channel, hub.sales.by_fulfillment — all MTD from current run.
+function renderOvWarehouse() {
+  var body = document.getElementById('ov-warehouse-body');
+  var sub  = document.getElementById('ov-warehouse-sub');
+  if (!body) return;
+  if (!D || !D.hub || !D.hub.sales) { body.innerHTML = '<div class="empty">No data</div>'; return; }
+
+  var sales = D.hub.sales;
+  var brand = H.ov.brand || 'ALL';
+  var byLoc = sales.by_location || [];
+  var byCh  = sales.by_channel  || {};
+  var byFul = sales.by_fulfillment || {};
+
+  // byLoc/byCh/byFul are MTD-wide (not brand filtered). Note this in sub.
+  if (sub) sub.textContent = 'Current month · all brands (warehouse/channel/fulfillment breakdown not brand-filterable from FK export)';
+
+  var totalSales = byLoc.reduce(function(a,r){return a + (r.net_sales||0);}, 0);
+
+  // Top 10 warehouses
+  var topN = byLoc.slice(0, 10);
+  var whHtml = '<div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">🏭 Top Warehouses (MTD)</div>';
+  whHtml += '<table style="width:100%;font-size:11px"><thead><tr>' +
+    '<th style="text-align:left">FC</th>' +
+    '<th style="text-align:right">Sales</th>' +
+    '<th style="text-align:right">Units</th>' +
+    '<th style="text-align:right">% Share</th>' +
+    '</tr></thead><tbody>';
+  topN.forEach(function(r){
+    var pct = totalSales > 0 ? r.net_sales/totalSales*100 : 0;
+    whHtml += '<tr>' +
+      '<td style="font-family:monospace;font-size:10px;color:var(--text2)">' + (r.location_id || '—') + '</td>' +
+      '<td style="text-align:right">' + fmtCr(r.net_sales) + '</td>' +
+      '<td style="text-align:right;color:var(--text2)">' + fmtImpr(r.net_units) + '</td>' +
+      '<td style="text-align:right;color:' + (pct >= 20 ? 'var(--green)' : pct >= 10 ? 'var(--yellow)' : 'var(--text2)') + '">' + pct.toFixed(1) + '%</td>' +
+      '</tr>';
+  });
+  if (byLoc.length > 10) {
+    var rest = byLoc.slice(10).reduce(function(a,r){return a + r.net_sales;}, 0);
+    var restUnits = byLoc.slice(10).reduce(function(a,r){return a + r.net_units;}, 0);
+    var restPct = totalSales > 0 ? rest/totalSales*100 : 0;
+    whHtml += '<tr style="color:var(--text3)">' +
+      '<td><i>+' + (byLoc.length - 10) + ' more</i></td>' +
+      '<td style="text-align:right">' + fmtCr(rest) + '</td>' +
+      '<td style="text-align:right">' + fmtImpr(restUnits) + '</td>' +
+      '<td style="text-align:right">' + restPct.toFixed(1) + '%</td>' +
+      '</tr>';
+  }
+  whHtml += '</tbody></table>';
+
+  // Channel: Main vs Shopsy
+  var chHtml = '<div style="font-size:11px;font-weight:700;color:var(--purple);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">📣 Channel Split</div>';
+  var chEntries = Object.entries(byCh).sort(function(a,b){return (b[1].net_sales||0) - (a[1].net_sales||0);});
+  var chTotal = chEntries.reduce(function(a,e){return a + (e[1].net_sales||0);}, 0);
+  chHtml += '<table style="width:100%;font-size:11px"><thead><tr>' +
+    '<th style="text-align:left">Channel</th>' +
+    '<th style="text-align:right">Sales</th>' +
+    '<th style="text-align:right">Units</th>' +
+    '<th style="text-align:right">% Share</th>' +
+    '</tr></thead><tbody>';
+  chEntries.forEach(function(e){
+    var name = e[0], v = e[1];
+    var pct = chTotal > 0 ? (v.net_sales||0)/chTotal*100 : 0;
+    chHtml += '<tr>' +
+      '<td><b style="color:' + (name === 'Main' ? 'var(--accent)' : 'var(--orange)') + '">' + name + '</b></td>' +
+      '<td style="text-align:right">' + fmtCr(v.net_sales || 0) + '</td>' +
+      '<td style="text-align:right;color:var(--text2)">' + fmtImpr(v.net_units || 0) + '</td>' +
+      '<td style="text-align:right">' + pct.toFixed(1) + '%</td>' +
+      '</tr>';
+  });
+  chHtml += '</tbody></table>';
+  // Add cancel/return diagnostics below
+  if (byCh.Main && byCh.Main.net_sales) {
+    var mainCxl = (byCh.Main.cancellations || 0) / byCh.Main.net_sales * 100;
+    var mainRtn = (byCh.Main.returns       || 0) / byCh.Main.net_sales * 100;
+    chHtml += '<div style="margin-top:8px;font-size:10px;color:var(--text3)">' +
+      'Main · cxl ' + mainCxl.toFixed(1) + '% · return ' + mainRtn.toFixed(1) + '%</div>';
+  }
+
+  // Fulfillment: FBF vs NON_FBF
+  var fulHtml = '<div style="font-size:11px;font-weight:700;color:var(--yellow);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">📦 Fulfillment</div>';
+  var fulEntries = Object.entries(byFul).sort(function(a,b){return (b[1].net_sales||0) - (a[1].net_sales||0);});
+  var fulTotal = fulEntries.reduce(function(a,e){return a + (e[1].net_sales||0);}, 0);
+  fulHtml += '<table style="width:100%;font-size:11px"><thead><tr>' +
+    '<th style="text-align:left">Type</th>' +
+    '<th style="text-align:right">Sales</th>' +
+    '<th style="text-align:right">Units</th>' +
+    '<th style="text-align:right">% Share</th>' +
+    '</tr></thead><tbody>';
+  fulEntries.forEach(function(e){
+    var name = e[0], v = e[1];
+    var pct = fulTotal > 0 ? (v.net_sales||0)/fulTotal*100 : 0;
+    fulHtml += '<tr>' +
+      '<td><b style="color:' + (name === 'FBF' ? 'var(--green)' : 'var(--red)') + '">' + name + '</b></td>' +
+      '<td style="text-align:right">' + fmtCr(v.net_sales || 0) + '</td>' +
+      '<td style="text-align:right;color:var(--text2)">' + fmtImpr(v.net_units || 0) + '</td>' +
+      '<td style="text-align:right">' + pct.toFixed(1) + '%</td>' +
+      '</tr>';
+  });
+  fulHtml += '</tbody></table>';
+
+  body.innerHTML = whHtml + chHtml + fulHtml;
+}
+
 // Renders the Vertical Breakdown table from curAgg.skus at the currently
 // selected Overview window + brand. If a vertical filter is active on OV,
 // we still show ALL verticals (this card exists to compare verticals).
@@ -5101,12 +5243,14 @@ function populateOvSelectors() {
   if (ySel) ySel.innerHTML = ['<option value="">Pick year</option>']
     .concat(years.map(function(y){return '<option value="'+y+'">'+y+'</option>';})).join('');
 
-  // Day dropdown — merge all daily data sources (sales + ads + traffic)
-  var dayPool = new Set();
-  if (hub.sales && hub.sales.daily) hub.sales.daily.forEach(function(d){ dayPool.add(d.date); });
-  if (hub.history && hub.history.daily && hub.history.daily.all_days) hub.history.daily.all_days.forEach(function(d){ dayPool.add(d.date); });
-  if (hub.daily && hub.daily.days) hub.daily.days.forEach(function(d){ dayPool.add(d.date); });
-  var days = Array.from(dayPool).sort();
+  // Day dropdown — only offer dates where we have SALES data (required for
+  // meaningful TACOS / cross-tab insights). Ads-only days (like today partial)
+  // cause divide-by-zero and empty insights, so we hide them here.
+  // Tab-specific dropdowns (sales/ads/traffic) still use their own datasets.
+  var salesDays = new Set();
+  if (hub.sales && hub.sales.daily) hub.sales.daily.forEach(function(d){ salesDays.add(d.date); });
+  if (hub.history && hub.history.sales_daily) hub.history.sales_daily.forEach(function(d){ salesDays.add(d.date); });
+  var days = Array.from(salesDays).sort();
   var dSel = document.getElementById('ov-day-sel');
   if (dSel) dSel.innerHTML = ['<option value="">Pick day</option>']
     .concat(days.slice().reverse().map(function(d){return '<option value="'+d+'">'+fmtDate(d)+'</option>';})).join('');

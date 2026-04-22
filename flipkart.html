@@ -221,6 +221,7 @@ function checkPW(){
   <button class="nav-tab" onclick="showPage('traffic',this)">🔍 Traffic</button>
   <button class="nav-tab" onclick="showPage('ads',this)">📣 Ads</button>
   <button class="nav-tab" onclick="showPage('placement',this)">📍 Placement</button>
+  <button class="nav-tab" onclick="showPage('stock',this)">📦 Stock</button>
   <button class="nav-tab" onclick="showPage('campaigns',this)">🎯 Campaigns</button>
   <button class="nav-tab" onclick="showPage('rankings',this)">🏆 Rankings</button>
   <button class="nav-tab" onclick="showPage('sp',this)">💰 SP Compliance</button>
@@ -688,7 +689,10 @@ function checkPW(){
     <span class="filter-label">Vertical</span>
     <select class="fsel" id="pl-vertical-sel" onchange="setPlacementVertical()" style="min-width:130px"><option value="ALL">All Verticals</option></select>
     <div class="fsep"></div>
-    <span id="pl-window-lbl" style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace">Current MTD · Placement data is current-month only</span>
+    <span class="filter-label">Month</span>
+    <select class="fsel" id="pl-month-sel" onchange="setPlacementMonth()" style="min-width:130px"><option value="CURRENT">Current (MTD)</option></select>
+    <div class="fsep"></div>
+    <span id="pl-window-lbl" style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace"></span>
   </div>
 
   <!-- Hero KPI tiles for placement summary -->
@@ -698,6 +702,12 @@ function checkPW(){
   <div class="chart-grid" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
     <div class="chart-card"><div class="chart-title">Ad Spend Share · by Placement</div><div class="chart-wrap"><canvas id="ch-pl-spend"></canvas></div></div>
     <div class="chart-card"><div class="chart-title">ROI · by Placement</div><div class="chart-wrap"><canvas id="ch-pl-roi"></canvas></div></div>
+  </div>
+
+  <!-- MoM trend — only rendered when historical placement data is available -->
+  <div class="chart-card" id="pl-mom-card" style="margin-bottom:14px;display:none">
+    <div class="chart-title">Placement Spend · last 13 months <span id="pl-mom-sub" style="color:var(--text3);font-size:10px;margin-left:8px"></span></div>
+    <div class="chart-wrap" style="height:320px"><canvas id="ch-pl-mom"></canvas></div>
   </div>
 
   <!-- Placement summary table -->
@@ -779,6 +789,120 @@ function checkPW(){
       <span class="card-sub" id="pl-insights-sub"></span>
     </div>
     <div id="pl-insights" style="padding:12px"></div>
+  </div>
+</div>
+
+<!-- ═══ STOCK TAB (SOH / DoC / Warehouse distribution) ═════════════════════ -->
+<!-- Data source: D.hub.soh (built by FK_Hub_Processor.process_soh from the
+     Current Inventory CSV downloaded by FK_SOH_Downloader.py). Enrichment on
+     D.hub.skus[].soh + .doc_days happens in the same processor run.
+     Shape:
+       D.hub.soh = {
+         total_soh, sku_count, warehouse_count, date_snapshot,
+         by_brand:     {brand: units},
+         by_warehouse: [{warehouse, brand, soh, sku_count}],
+         by_sku:       [{sku, title, brand, fsn, sp, total_soh,
+                         warehouses:[{warehouse, soh}]}]
+       }
+     DoC is computed per-SKU in the processor against the Sales window DRR;
+     for SKUs with SOH but no sales the dashboard shows DoC as "∞" (overstock). -->
+<div class="page" id="page-stock">
+  <div class="filters">
+    <span class="filter-label">Brand</span>
+    <button class="fbtn active" id="stk-brand-all" onclick="setStockBrand('ALL',this)">All</button>
+    <button class="fbtn ba"     id="stk-brand-ba"  onclick="setStockBrand('BARE ANATOMY',this)">BA</button>
+    <button class="fbtn cap"    id="stk-brand-cap" onclick="setStockBrand('Chemist at Play',this)">CAP</button>
+    <button class="fbtn ss"     id="stk-brand-ss"  onclick="setStockBrand('SunScoop',this)">SS</button>
+    <div class="fsep"></div>
+    <span class="filter-label">Warehouse</span>
+    <select class="fsel" id="stk-wh-sel" onchange="setStockWarehouse()" style="min-width:180px">
+      <option value="ALL">All Warehouses</option>
+    </select>
+    <div class="fsep"></div>
+    <span class="filter-label">DoC</span>
+    <button class="fbtn active" id="stk-doc-all"      onclick="setStockDoc('ALL',this)">All</button>
+    <button class="fbtn"        id="stk-doc-critical" onclick="setStockDoc('CRITICAL',this)" style="color:#ff5a5a">Critical &lt;15d</button>
+    <button class="fbtn"        id="stk-doc-low"      onclick="setStockDoc('LOW',this)" style="color:#ffaa3d">Low 15–30d</button>
+    <button class="fbtn"        id="stk-doc-healthy"  onclick="setStockDoc('HEALTHY',this)" style="color:#5fd98a">Healthy 30–60d</button>
+    <button class="fbtn"        id="stk-doc-over"     onclick="setStockDoc('OVER',this)" style="color:#6ab0ff">Overstock 60+d</button>
+    <div class="fsep"></div>
+    <input type="text" id="stk-search" class="fsel" placeholder="Search SKU / title..." oninput="setStockSearch(this.value)" style="min-width:200px">
+    <div class="fsep"></div>
+    <span id="stk-window-lbl" style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace"></span>
+  </div>
+
+  <!-- KPI strip: total SOH, SKU/warehouse counts, critical-DoC count -->
+  <div class="stat-grid" id="stock-kpi" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))"></div>
+
+  <!-- Charts row: SOH by Brand (doughnut) + SOH by Warehouse (horizontal bar) -->
+  <div class="chart-grid" style="grid-template-columns:1fr 2fr;margin-bottom:14px">
+    <div class="chart-card">
+      <div class="chart-title">SOH · by Brand</div>
+      <div class="chart-wrap"><canvas id="ch-stk-brand"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">SOH · by Warehouse (top 12, brand-stacked)</div>
+      <div class="chart-wrap" style="height:340px"><canvas id="ch-stk-wh"></canvas></div>
+    </div>
+  </div>
+
+  <!-- DoC distribution bar — count of SKUs per DoC bucket -->
+  <div class="chart-card" style="margin-bottom:14px">
+    <div class="chart-title">DoC Distribution · SKU count per bucket</div>
+    <div class="chart-wrap" style="height:220px"><canvas id="ch-stk-doc"></canvas></div>
+  </div>
+
+  <!-- SKU table. Sort toggles via th onclick; table re-renders in place. -->
+  <div class="card" style="margin-bottom:18px">
+    <div class="card-hdr">
+      <span class="card-title">📦 SKU-level Stock &amp; DoC</span>
+      <span class="card-sub" id="stk-summary-sub"></span>
+      <button class="fbtn" onclick="exportStockCSV()" style="margin-left:auto;font-size:11px">⬇ CSV</button>
+    </div>
+    <table>
+      <thead><tr>
+        <th style="min-width:140px;cursor:pointer" onclick="setStockSort('sku')">SKU</th>
+        <th style="min-width:260px;cursor:pointer" onclick="setStockSort('title')">Title</th>
+        <th style="cursor:pointer" onclick="setStockSort('brand')">Brand</th>
+        <th class="num" style="cursor:pointer" onclick="setStockSort('soh')">SOH</th>
+        <th class="num" style="cursor:pointer" onclick="setStockSort('net_units')">30D Units</th>
+        <th class="num" style="cursor:pointer" onclick="setStockSort('drr')">DRR</th>
+        <th class="num" style="cursor:pointer" onclick="setStockSort('doc')">DoC</th>
+        <th class="num" style="cursor:pointer" onclick="setStockSort('whcount')">Warehouses</th>
+        <th style="min-width:80px">Detail</th>
+      </tr></thead>
+      <tbody id="stk-sku-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Warehouse breakdown detail (hidden until a SKU row's "Detail" is clicked) -->
+  <div class="card" id="stk-wh-detail-card" style="display:none;margin-bottom:18px">
+    <div class="card-hdr">
+      <span class="card-title">🏭 <span id="stk-wh-detail-title">Warehouse breakdown</span></span>
+      <button class="fbtn" onclick="closeStockDetail()" style="margin-left:auto;font-size:11px">✕ Close</button>
+    </div>
+    <table>
+      <thead><tr><th>Warehouse</th><th class="num">Units</th><th class="num">% of SKU SOH</th></tr></thead>
+      <tbody id="stk-wh-detail-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Warehouse summary: brand-wise split per warehouse -->
+  <div class="card" style="margin-bottom:18px">
+    <div class="card-hdr">
+      <span class="card-title">🏭 Warehouse Summary</span>
+      <span class="card-sub" id="stk-wh-summary-sub"></span>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Warehouse</th>
+        <th>Brand</th>
+        <th class="num">SOH Units</th>
+        <th class="num">SKU Count</th>
+        <th class="num">% of Total</th>
+      </tr></thead>
+      <tbody id="stk-wh-body"></tbody>
+    </table>
   </div>
 </div>
 
@@ -864,7 +988,12 @@ var H = {
   ads:     {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'ad_spend',  sortDesc:true, view:'sku', search:''},
   traffic: {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'views',     sortDesc:true, search:''},
   camp:    {brand:'ALL', vertical:'ALL', month:'',   view:'campaign', sort:'spend', sortDesc:true, search:'', drill:null},
-  placement: {brand:'ALL', type:'ALL', vertical:'ALL', sort:'spend', sortDesc:true},
+  placement: {brand:'ALL', type:'ALL', vertical:'ALL', month:'CURRENT', sort:'spend', sortDesc:true},
+  // Stock tab state. docBucket filters the SKU table to one of:
+  //   ALL, CRITICAL (<15d), LOW (15-30d), HEALTHY (30-60d), OVER (60+d or ∞)
+  // selectedSku drives the per-warehouse detail card (null = hidden).
+  stock:   {brand:'ALL', warehouse:'ALL', docBucket:'ALL', search:'',
+            sort:'soh', sortDesc:true, selectedSku:null},
 };
 
 // ── Formatters ──────────────────────────────────────────────────────────────
@@ -907,6 +1036,25 @@ try {
     });
   }
 } catch (e) { console.warn('doughnutPercent plugin reg failed:', e); }
+
+// Global Chart.js defaults: make hover show ALL datasets at the hovered x-axis
+// point (not just the closest one). Applies to every chart on the dashboard
+// without needing per-chart configuration. Doughnut/pie charts aren't
+// cartesian so they're unaffected by this.
+try {
+  if (typeof Chart !== 'undefined' && Chart.defaults) {
+    Chart.defaults.interaction = Chart.defaults.interaction || {};
+    Chart.defaults.interaction.mode = 'index';
+    Chart.defaults.interaction.intersect = false;
+    // Plugin-specific: the tooltip plugin reads its own interaction config,
+    // so mirror it there too.
+    Chart.defaults.plugins = Chart.defaults.plugins || {};
+    Chart.defaults.plugins.tooltip = Chart.defaults.plugins.tooltip || {};
+    Chart.defaults.plugins.tooltip.mode = 'index';
+    Chart.defaults.plugins.tooltip.intersect = false;
+  }
+} catch (e) { console.warn('chart defaults failed:', e); }
+
 function fmtCr(v) {
   if (v == null || isNaN(v) || v === 0) return '—';
   if (v >= 1e7) return '₹' + (v/1e7).toFixed(2) + 'Cr';
@@ -1197,6 +1345,50 @@ function populateHubDateSelectors() {
 
 // ── Core time-window resolver ──────────────────────────────────────────────
 // Returns { granularity: 'day'|'month', dailySlice: [], monthlySlice: [], label, months: Set }
+
+// Defensive sync: reconcile the Day/Month/Year/Custom dropdowns with H[tab]
+// state before resolving the time window. If anything caused them to drift
+// (tab switch race, rehydration, user typing into a disabled field) the UI's
+// visible selection always wins and we propagate it into state. Called at the
+// start of each tab's render so the Window header ALWAYS matches the active
+// dropdown the user sees.
+function syncTabStateFromDOM(tab) {
+  if (!H[tab]) return;
+  var day   = document.getElementById(tab+'-day-sel');
+  var month = document.getElementById(tab+'-month-sel');
+  var year  = document.getElementById(tab+'-year-sel');
+  var from  = document.getElementById(tab+'-from-sel');
+  var to    = document.getElementById(tab+'-to-sel');
+  var dVal = day   && day.value   || '';
+  var mVal = month && month.value || '';
+  var yVal = year  && year.value  || '';
+  var fVal = from  && from.value  || '';
+  var tVal = to    && to.value    || '';
+  // Exactly one of day/month/year/custom should be active — pick by priority
+  // matching what setHubTime would set. Day wins if present.
+  if (dVal) {
+    if (H[tab].mode !== 'day' || H[tab].day !== dVal) {
+      H[tab].mode = 'day'; H[tab].day = dVal;
+      H[tab].month = ''; H[tab].year = ''; H[tab].from = ''; H[tab].to = '';
+    }
+  } else if (mVal) {
+    if (H[tab].mode !== 'month' || H[tab].month !== mVal) {
+      H[tab].mode = 'month'; H[tab].month = mVal;
+      H[tab].day = ''; H[tab].year = ''; H[tab].from = ''; H[tab].to = '';
+    }
+  } else if (yVal) {
+    if (H[tab].mode !== 'year' || H[tab].year !== yVal) {
+      H[tab].mode = 'year'; H[tab].year = yVal;
+      H[tab].day = ''; H[tab].month = ''; H[tab].from = ''; H[tab].to = '';
+    }
+  } else if (fVal && tVal) {
+    if (H[tab].mode !== 'custom' || H[tab].from !== fVal || H[tab].to !== tVal) {
+      H[tab].mode = 'custom'; H[tab].from = fVal; H[tab].to = tVal;
+      H[tab].day = ''; H[tab].month = ''; H[tab].year = '';
+    }
+  }
+}
+
 function resolveTimeWindow(tab) {
   var state = H[tab];
   var hub = D.hub;
@@ -2134,6 +2326,7 @@ function renderSales() {
   var hist = hub.history || {};
   var brand = H.sales.brand;
   var vertical = H.sales.vertical || 'ALL';
+  syncTabStateFromDOM('sales');
   var curWin  = resolveTimeWindow('sales');
   var prevWin = resolvePrevWindow('sales');
 
@@ -2254,42 +2447,54 @@ function renderSales() {
   // ── Trend chart
   // When user selects a single day, show last 30 days ending on that day so the
   // chart isn't just one bar. Otherwise respect the selected window.
-  var chartLabels=[], chartSales=[], chartGmv=[];
+  //
+  // We also compute daily discount% = (MRP base − Net Sales) / MRP base × 100
+  // to overlay on the chart. MRP base comes from per-SKU MRP × net_units since
+  // per-day per-SKU gross_units isn't persisted; this slightly underreports
+  // disc% (by the cancellation %) but trend movement is what matters.
+  var chartLabels=[], chartSales=[], chartGmv=[], chartDisc=[];
   var useDaily = (curWin.granularity === 'day') ||
                  (curWin.months && curWin.months.size === 1 && (hub.sales && hub.sales.daily && hub.sales.daily.length));
   if (useDaily) {
     // When brand filter is active, aggregate per-day from SKU-day data so the
     // trend respects the brand. Otherwise use the all-brand daily rollup.
     var dailyAll;
+    // Lookup: sku → {brand, mrp}. Used both for brand-filter path AND to
+    // compute the disc% overlay on the all-brand path.
+    var skuMeta = {};
+    (hub.skus || []).forEach(function(s){ skuMeta[s.sku] = {brand: s.brand, mrp: +s.mrp || 0}; });
+    ((hub.history && hub.history.skus) || []).forEach(function(s){
+      if (!(s.sku in skuMeta)) skuMeta[s.sku] = {brand: s.brand, mrp: +s.mrp || 0};
+    });
+
     if (brand && brand !== 'ALL') {
-      // Build date → {net_sales, gmv} from SKU-day sources, filtered by brand
+      // Build date → {net_sales, gmv, mrp_base} from SKU-day sources, filtered by brand
       var byDate = {};
       // Current-month per-SKU per-day
       (hub.skus || []).forEach(function(s){
         if (s.brand !== brand) return;
+        var mrp = +s.mrp || 0;
         (s.sales_daily || []).forEach(function(r){
           if (!r || !r.date) return;
-          var e = byDate[r.date] || {date: r.date, net_sales: 0, gmv: 0};
+          var e = byDate[r.date] || {date: r.date, net_sales: 0, gmv: 0, mrp_base: 0};
           e.net_sales += r.net_sales || 0;
           e.gmv       += r.gmv       || 0;
+          e.mrp_base  += (r.net_units || 0) * mrp;
           byDate[r.date] = e;
         });
       });
       // Historical per-SKU per-day — dedup months already in current hub
       var curMonthsSet = new Set(Object.keys(byDate).map(function(d){return d.slice(0,7);}));
-      var skuBrand = {};
-      (hub.skus || []).forEach(function(s){ skuBrand[s.sku] = s.brand; });
-      // For historical SKUs not in current hub, consult hist.skus
-      var histSkus = (hub.history && hub.history.skus) || [];
-      histSkus.forEach(function(s){ if (!(s.sku in skuBrand)) skuBrand[s.sku] = s.brand; });
       var histSkuDaily = (hub.history && hub.history.sales_sku_daily) || [];
       histSkuDaily.forEach(function(r){
         if (!r || !r.date) return;
         if (curMonthsSet.has(r.date.slice(0,7))) return;
-        if (skuBrand[r.sku] !== brand) return;
-        var e = byDate[r.date] || {date: r.date, net_sales: 0, gmv: 0};
+        var meta = skuMeta[r.sku];
+        if (!meta || meta.brand !== brand) return;
+        var e = byDate[r.date] || {date: r.date, net_sales: 0, gmv: 0, mrp_base: 0};
         e.net_sales += r.net_sales || 0;
         e.gmv       += r.gmv       || 0;
+        e.mrp_base  += (r.net_units || 0) * meta.mrp;
         byDate[r.date] = e;
       });
       dailyAll = Object.values(byDate);
@@ -2305,6 +2510,29 @@ function renderSales() {
           if (!seenSD.has(d.date)) dailyAll.push(d);
         });
       }
+      // Enrich with mrp_base from per-SKU daily (current + historical). Doing
+      // it as a second pass keeps the all-brand fast-path intact while still
+      // surfacing disc% on the trend overlay.
+      var mrpByDate = {};
+      (hub.skus || []).forEach(function(s){
+        var mrp = +s.mrp || 0;
+        (s.sales_daily || []).forEach(function(r){
+          if (!r || !r.date) return;
+          mrpByDate[r.date] = (mrpByDate[r.date] || 0) + (r.net_units || 0) * mrp;
+        });
+      });
+      ((hub.history && hub.history.sales_sku_daily) || []).forEach(function(r){
+        if (!r || !r.date) return;
+        // Dedup months: skip historical rows for any month that current hub already covers
+        if (mrpByDate[r.date] != null && r.date.slice(0,7) === Object.keys(mrpByDate).map(function(k){return k.slice(0,7);}).sort().pop()) {
+          // Already summed from current hub
+          return;
+        }
+        var meta = skuMeta[r.sku];
+        if (!meta) return;
+        mrpByDate[r.date] = (mrpByDate[r.date] || 0) + (r.net_units || 0) * meta.mrp;
+      });
+      dailyAll.forEach(function(d){ d.mrp_base = mrpByDate[d.date] || 0; });
     }
     dailyAll.sort(function(a,b){ return a.date < b.date ? -1 : 1; });
 
@@ -2326,12 +2554,29 @@ function renderSales() {
     chartLabels = rows.map(function(d){ return fmtDate(d.date); });
     chartSales  = rows.map(function(d){ return +((d.net_sales||0)/1e5).toFixed(2); });
     chartGmv    = rows.map(function(d){ return +((d.gmv||0)/1e5).toFixed(2); });
+    chartDisc   = rows.map(function(d){
+      var base = d.mrp_base || 0;
+      if (base <= 0) return null;
+      var pct = (base - (d.net_sales || 0)) / base * 100;
+      // Cap to reasonable range — weird artifacts when mrp_base undercounts
+      if (pct < 0 || pct > 95) return null;
+      return +pct.toFixed(1);
+    });
   } else {
     var series = brand === 'ALL' ? (hist.totals?.sales || []) : (hist.by_brand?.[brand]?.sales || []);
     var rowsM = series.filter(function(r){ return curWin.months.has(r.month); });
     chartLabels = rowsM.map(function(r){ return monthLabel(r.month); });
     chartSales  = rowsM.map(function(r){ return +((r.net_sales||0)/1e5).toFixed(1); });
     chartGmv    = rowsM.map(function(r){ return +((r.gross_sales||0)/1e5).toFixed(1); });
+    chartDisc   = rowsM.map(function(r){
+      var gross = r.gross_sales || 0;
+      var net   = r.net_sales || 0;
+      if (gross <= 0) return null;
+      // Month-level disc% uses (gross - net) / gross — this is the available
+      // proxy at history granularity since historical per-SKU MRP-bases aren't
+      // recomputed per month.
+      return +((gross - net) / gross * 100).toFixed(1);
+    });
   }
 
   dChart('sales-trend');
@@ -2339,13 +2584,15 @@ function renderSales() {
   charts['sales-trend'] = new Chart(document.getElementById('ch-sales-trend').getContext('2d'), {
     type: useDaily ? 'line' : 'bar',
     data:{labels:chartLabels, datasets:[
-      {label:'Sales (₹L)', data:chartSales, backgroundColor:'rgba(62,207,142,.2)', borderColor:'#3ecf8e', borderWidth:2, fill:true, tension:.35, pointRadius:2, order:1},
+      {label:'Sales (₹L)', data:chartSales, backgroundColor:'rgba(62,207,142,.2)', borderColor:'#3ecf8e', borderWidth:2, fill:true, tension:.35, pointRadius:2, order:1, yAxisID:'y'},
+      {label:'Disc %', data:chartDisc, type:'line', borderColor:'#f5a524', backgroundColor:'rgba(245,165,36,.08)', borderWidth:2, fill:false, tension:.35, pointRadius:2, spanGaps:true, order:0, yAxisID:'y1'},
     ]},
     options:{responsive:true, maintainAspectRatio:false,
       plugins:{legend:{labels:{color:'#8892a4',font:{size:10},boxWidth:10}}},
       scales:{
         x:{ticks:{color:'#4a5168',font:{size:9}, maxRotation:0, autoSkip:true, maxTicksLimit:15}, grid:{display:false}},
-        y:{ticks:{color:'#4a5168',font:{size:9},callback:function(v){return '₹'+v+'L'}}, grid:{color:'rgba(255,255,255,.05)'}},
+        y:{position:'left', ticks:{color:'#4a5168',font:{size:9},callback:function(v){return '₹'+v+'L'}}, grid:{color:'rgba(255,255,255,.05)'}},
+        y1:{position:'right', ticks:{color:'#f5a524',font:{size:9},callback:function(v){return v+'%'}}, grid:{display:false}, beginAtZero:true},
       }}
   });
 
@@ -2482,6 +2729,7 @@ function renderAds() {
   var hist = hub.history || {};
   var brand = H.ads.brand;
   var vertical = H.ads.vertical || 'ALL';
+  syncTabStateFromDOM('ads');
   var curWin  = resolveTimeWindow('ads');
   var prevWin = resolvePrevWindow('ads');
   var curAgg  = aggregateWindow(curWin, brand);
@@ -2869,6 +3117,7 @@ function renderTraffic() {
   var hist = hub.history || {};
   var brand = H.traffic.brand;
   var vertical = H.traffic.vertical || 'ALL';
+  syncTabStateFromDOM('traffic');
   var curWin  = resolveTimeWindow('traffic');
   var prevWin = resolvePrevWindow('traffic');
   var curAgg  = aggregateWindow(curWin, brand);
@@ -3142,41 +3391,25 @@ function renderSalesAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical) 
     top.map(function(s){ var p=prevSkus[s.sku]||{sales:0}; return cmpSkuLine(s.sku, s.title, s.sales, p.sales, fmtCr); })
   ) + '</div>';
 
-  // Biggest gainers (by absolute sales delta)
+  // Biggest gainers — ranked by ABSOLUTE ₹ delta, not % growth, and only SKUs
+  // that have meaningful sales in at least one of cur/prev (so a SKU going from
+  // ₹5 → ₹500 doesn't show up as "10000% gainer" just because the base was tiny).
   var gainers = skuArr.map(function(s){ var p=prevSkus[s.sku]||{sales:0}; return {s:s,cur:s.sales,prev:p.sales,delta:s.sales-p.sales}; })
-    .filter(function(x){ return x.delta > 0 && x.prev > 0; })
-    .sort(function(a,b){ return (b.delta/b.prev) - (a.delta/a.prev); }).slice(0,5);
+    .filter(function(x){ return x.delta > 0 && (x.cur > 10000 || x.prev > 10000); })
+    .sort(function(a,b){ return b.delta - a.delta; }).slice(0,5);
   if (gainers.length) {
-    html += '<div>' + insightBlock('📈 Biggest Gainers (% growth)', 'var(--green)',
+    html += '<div>' + insightBlock('📈 Biggest Gainers (₹ growth)', 'var(--green)',
       gainers.map(function(g){ return cmpSkuLine(g.s.sku, g.s.title, g.cur, g.prev, fmtCr); })
     ) + '</div>';
   }
 
-  // Biggest decliners
+  // Biggest decliners — same absolute-₹ approach, magnitude of loss
   var decliners = skuArr.map(function(s){ var p=prevSkus[s.sku]||{sales:0}; return {s:s,cur:s.sales,prev:p.sales,delta:s.sales-p.sales}; })
-    .filter(function(x){ return x.delta < 0 && x.prev > 0; })
-    .sort(function(a,b){ return (a.delta/a.prev) - (b.delta/b.prev); }).slice(0,5);
+    .filter(function(x){ return x.delta < 0 && (x.cur > 10000 || x.prev > 10000); })
+    .sort(function(a,b){ return a.delta - b.delta; }).slice(0,5);
   if (decliners.length) {
-    html += '<div>' + insightBlock('📉 Biggest Decliners (% drop)', 'var(--red)',
+    html += '<div>' + insightBlock('📉 Biggest Decliners (₹ drop)', 'var(--red)',
       decliners.map(function(g){ return cmpSkuLine(g.s.sku, g.s.title, g.cur, g.prev, fmtCr); })
-    ) + '</div>';
-  }
-
-  // Top cancel rates
-  var topCxl = skuArr.filter(function(s){return s.gmv > 50000;}).sort(function(a,b){return b.cancel_pct-a.cancel_pct;}).slice(0,5);
-  if (topCxl.length) {
-    html += '<div>' + insightBlock('🚨 Top Cancel Rates (Sales>₹50K)', 'var(--red)',
-      topCxl.map(function(s){ var p=prevSkus[s.sku]||{}; var pCxl = (p.gmv>0) ? p.cxl/p.gmv*100 : null;
-        return cmpSkuLine(s.sku, s.title, s.cancel_pct, pCxl, function(v){return v!=null?v.toFixed(1)+'%':'—';}, true); })
-    ) + '</div>';
-  }
-
-  // Top return rates
-  var topRtn = skuArr.filter(function(s){return s.gmv > 50000;}).sort(function(a,b){return b.return_pct-a.return_pct;}).slice(0,5);
-  if (topRtn.length) {
-    html += '<div>' + insightBlock('↩️ Top Return Rates (Sales>₹50K)', 'var(--orange)',
-      topRtn.map(function(s){ var p=prevSkus[s.sku]||{}; var pRtn = (p.gmv>0) ? p.rtn/p.gmv*100 : null;
-        return cmpSkuLine(s.sku, s.title, s.return_pct, pRtn, function(v){return v!=null?v.toFixed(1)+'%':'—';}, true); })
     ) + '</div>';
   }
 
@@ -3237,27 +3470,11 @@ function renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical) {
     topSpend.map(function(s){ var p=prevSkus[s.sku]||{ad_spend:0}; return cmpSkuLine(s.sku, s.title, s.ad_spend, p.ad_spend, fmtCr, true); })
   ) + '</div>';
 
-  // Top ROI (spend in top 25% or ≥50K)
-  var topRoi = skuArr.filter(function(s){return s.ad_spend>=highSpendCut && s.ad_roi!=null;}).sort(function(a,b){return b.ad_roi-a.ad_roi;}).slice(0,5);
-  if (topRoi.length) {
-    html += '<div>' + insightBlock('🚀 Top ROI (Spend ' + highSpendLabel + ')', 'var(--green)',
-      topRoi.map(function(s){ return cmpSkuLine(s.sku, s.title, s.ad_roi, prevRoi(s.sku), function(v){return v!=null?v.toFixed(2)+'x':'—';}); })
-    ) + '</div>';
-  }
-
-  // Worst ROI (same cutoff)
+  // Worst ROI (spend threshold)
   var worstRoi = skuArr.filter(function(s){return s.ad_spend>=highSpendCut && s.ad_roi!=null;}).sort(function(a,b){return a.ad_roi-b.ad_roi;}).slice(0,5);
   if (worstRoi.length) {
     html += '<div>' + insightBlock('🩸 Worst ROI (Spend ' + highSpendLabel + ')', 'var(--red)',
       worstRoi.map(function(s){ return cmpSkuLine(s.sku, s.title, s.ad_roi, prevRoi(s.sku), function(v){return v!=null?v.toFixed(2)+'x':'—';}); })
-    ) + '</div>';
-  }
-
-  // Scale-up opportunities (mid spend with high ROI)
-  var scale = skuArr.filter(function(s){return s.ad_spend>=midSpendCut && s.ad_spend<highSpendCut && s.ad_roi>=3;}).sort(function(a,b){return b.ad_roi-a.ad_roi;}).slice(0,5);
-  if (scale.length) {
-    html += '<div>' + insightBlock('📈 Scale-Up Opportunities', 'var(--yellow)',
-      scale.map(function(s){ return cmpSkuLine(s.sku, s.title, s.ad_roi, prevRoi(s.sku), function(v){return v!=null?v.toFixed(2)+'x':'—';}); })
     ) + '</div>';
   }
 
@@ -3399,22 +3616,14 @@ function renderTrafficAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical
     topClicks.map(function(s){ var p=prevSkus[s.sku]||{clicks:0}; return cmpSkuLine(s.sku, s.title, s.clicks, p.clicks, fmtImpr); })
   ) + '</div>';
 
-  // Top CTR
-  var ctrAvail = skuArr.filter(function(s){return s.ctr != null && s.views > 1000;});
-  if (ctrAvail.length) {
-    var topCtr = ctrAvail.slice().sort(function(a,b){return b.ctr-a.ctr;}).slice(0,5);
-    html += '<div>' + insightBlock('🎯 Top CTR (views>1K)', 'var(--green)',
-      topCtr.map(function(s){ var p=prevSkus[s.sku]||{}; var pCtr = (p.views>0)?p.clicks/p.views*100:null;
-        return cmpSkuLine(s.sku, s.title, s.ctr, pCtr, function(v){return v!=null?v.toFixed(2)+'%':'—';}); })
-    ) + '</div>';
-  }
-
-  // Low CTR high views
-  var lowCtr = skuArr.filter(function(s){return s.ctr != null && s.views > 10000 && s.ctr < 3;}).sort(function(a,b){return a.ctr-b.ctr;}).slice(0,5);
-  if (lowCtr.length) {
-    html += '<div>' + insightBlock('⚠️ Low CTR, High Views', 'var(--red)',
-      lowCtr.map(function(s){ var p=prevSkus[s.sku]||{}; var pCtr = (p.views>0)?p.clicks/p.views*100:null;
-        return cmpSkuLine(s.sku, s.title, s.ctr, pCtr, function(v){return v!=null?v.toFixed(2)+'%':'—';}); })
+  // Top CVR — purchases / clicks. More actionable than CTR because it signals
+  // listings where the product page converts well once a shopper lands.
+  var cvrAvail = skuArr.filter(function(s){ return s.clicks > 100 && s.cvr != null; });
+  if (cvrAvail.length) {
+    var topCvr = cvrAvail.slice().sort(function(a,b){return b.cvr - a.cvr;}).slice(0,5);
+    html += '<div>' + insightBlock('🎯 Top CVR (clicks>100)', 'var(--green)',
+      topCvr.map(function(s){ var p=prevSkus[s.sku]||{}; var pCvr = (p.clicks>0) ? (p.traffic_sales||0)/p.clicks*100 : null;
+        return cmpSkuLine(s.sku, s.title, s.cvr, pCvr, function(v){return v!=null?v.toFixed(2)+'%':'—';}); })
     ) + '</div>';
   }
 
@@ -3843,6 +4052,7 @@ function showPage(name, btn) {
   if (name === 'traffic' && D) safeRun(renderTraffic, 'renderTraffic');
   if (name === 'campaigns' && D) safeRun(renderCampaigns, 'renderCampaigns');
   if (name === 'placement' && D) safeRun(renderPlacement, 'renderPlacement');
+  if (name === 'stock'     && D) safeRun(renderStock,     'renderStock');
 }
 
 function safeRun(fn,name){try{fn();}catch(e){console.error(name+' failed:',e);}}
@@ -3863,6 +4073,8 @@ function renderAll(){
   safeRun(renderTraffic,'renderTraffic');
   safeRun(renderCampaigns,'renderCampaigns');
   safeRun(renderPlacement,'renderPlacement');
+  safeRun(populateStockWarehouseSelector, 'populateStockWarehouseSelector');
+  safeRun(renderStock, 'renderStock');
   // Re-render Overview now that tab data is ready (registry-driven analyses
   // need all the per-tab render functions to exist first)
   safeRun(renderOverview,'renderOverview-final');
@@ -3872,6 +4084,462 @@ function renderAll(){
     safeRun(()=>buildSPAnalysis(D.latest.date),'buildSPAnalysis');
     safeRun(()=>buildRatingAnalysis(D.latest.date),'buildRatingAnalysis');
   },100);
+}
+
+// ══ STOCK TAB (SOH / DoC / Warehouses) ═══════════════════════════════════
+// Data: D.hub.soh (snapshot) + D.hub.skus[].soh/.doc_days (enriched at
+// processor time against the sales-window DRR). Dashboard only mirrors what
+// the backend computed — no DoC re-calculation here.
+//
+// UX design: SKU table is the primary view; filters narrow it; a row's
+// "Detail" button pops a per-warehouse breakdown card. Brand doughnut + the
+// stacked warehouse bar chart at the top show the mix at a glance.
+//
+// DoC buckets (same thresholds as the processor DoC colour bands):
+//   CRITICAL  <15d   red
+//   LOW       15-30  orange
+//   HEALTHY   30-60  green
+//   OVER      60+    blue  (also includes SKUs with SOH but no sales → ∞)
+
+function setStockBrand(v, btn) {
+  H.stock.brand = v;
+  ['all','ba','cap','ss'].forEach(k => {
+    var el = document.getElementById('stk-brand-'+k);
+    if (el) el.classList.remove('active');
+  });
+  if (btn) btn.classList.add('active');
+  populateStockWarehouseSelector();  // warehouse list is brand-dependent
+  renderStock();
+}
+function setStockWarehouse() {
+  var sel = document.getElementById('stk-wh-sel');
+  H.stock.warehouse = sel ? sel.value : 'ALL';
+  renderStock();
+}
+function setStockDoc(v, btn) {
+  H.stock.docBucket = v;
+  ['all','critical','low','healthy','over'].forEach(k => {
+    var el = document.getElementById('stk-doc-'+k);
+    if (el) el.classList.remove('active');
+  });
+  if (btn) btn.classList.add('active');
+  renderStock();
+}
+function setStockSearch(v) {
+  H.stock.search = (v || '').toLowerCase();
+  renderStock();
+}
+function setStockSort(field) {
+  // Map UI field → sort key used by the sort comparator below
+  if (H.stock.sort === field) H.stock.sortDesc = !H.stock.sortDesc;
+  else { H.stock.sort = field; H.stock.sortDesc = true; }
+  renderStock();
+}
+function closeStockDetail() {
+  H.stock.selectedSku = null;
+  var card = document.getElementById('stk-wh-detail-card');
+  if (card) card.style.display = 'none';
+}
+
+// Classify DoC (days-of-cover) number into a bucket. Accepts null/undefined
+// as OVER since a SKU with stock but no sales velocity is effectively dead
+// stock — still want it visible under the "Overstock" filter.
+function docBucketOf(doc) {
+  if (doc == null || !isFinite(doc)) return 'OVER';
+  if (doc < 15)  return 'CRITICAL';
+  if (doc < 30)  return 'LOW';
+  if (doc < 60)  return 'HEALTHY';
+  return 'OVER';
+}
+function docColorOf(bucket) {
+  switch (bucket) {
+    case 'CRITICAL': return '#ff5a5a';
+    case 'LOW':      return '#ffaa3d';
+    case 'HEALTHY':  return '#5fd98a';
+    case 'OVER':     return '#6ab0ff';
+    default:         return 'var(--text2)';
+  }
+}
+function fmtDoc(doc) {
+  if (doc == null) return '∞';
+  if (!isFinite(doc)) return '∞';
+  if (doc >= 999) return '999+';
+  return doc.toFixed(1) + 'd';
+}
+
+function populateStockWarehouseSelector() {
+  var sel = document.getElementById('stk-wh-sel');
+  if (!sel || !D || !D.hub || !D.hub.soh) return;
+  var brand = H.stock.brand;
+  var warehouses = {};
+  (D.hub.soh.by_warehouse || []).forEach(function(w) {
+    if (brand !== 'ALL' && w.brand !== brand) return;
+    warehouses[w.warehouse] = (warehouses[w.warehouse] || 0) + (w.soh || 0);
+  });
+  var sorted = Object.keys(warehouses).sort(function(a,b){ return warehouses[b] - warehouses[a]; });
+  var cur = H.stock.warehouse;
+  var opts = ['<option value="ALL">All Warehouses</option>'];
+  sorted.forEach(function(w) {
+    opts.push('<option value="'+escHtml(w)+'"'+(cur===w?' selected':'')+'>'+escHtml(w)+' ('+fmtUnits(warehouses[w])+')</option>');
+  });
+  sel.innerHTML = opts.join('');
+  // If previously-selected warehouse no longer valid after brand change, reset
+  if (cur !== 'ALL' && sorted.indexOf(cur) === -1) {
+    H.stock.warehouse = 'ALL';
+    sel.value = 'ALL';
+  }
+}
+
+// Export the currently-filtered SKU table to CSV. Mirrors the visible columns
+// plus an extra Warehouse-Split column (pipe-delimited) for offline analysis.
+function exportStockCSV() {
+  if (!D || !D.hub || !D.hub.soh) return;
+  var rows = buildStockRows();
+  var hdr = ['SKU','Title','Brand','SOH','30D Units','DRR','DoC (days)','Warehouses','Warehouse Split'];
+  var lines = [hdr.join(',')];
+  rows.forEach(function(r) {
+    var whSplit = (r.warehouses || []).map(function(w){ return w.warehouse+':'+w.soh; }).join('|');
+    lines.push([
+      '"'+(r.sku||'').replace(/"/g,'""')+'"',
+      '"'+(r.title||'').replace(/"/g,'""')+'"',
+      '"'+(r.brand||'').replace(/"/g,'""')+'"',
+      r.soh||0, r.net_units||0,
+      r.drr!=null?r.drr.toFixed(2):'', r.doc!=null?r.doc.toFixed(1):'',
+      (r.warehouses||[]).length,
+      '"'+whSplit+'"'
+    ].join(','));
+  });
+  var blob = new Blob([lines.join('\n')], {type:'text/csv'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'fk_stock_' + (D.hub.soh.date_snapshot||'export') + '.csv';
+  a.click();
+}
+
+// Build the filtered+sorted SKU rows used by both the table renderer and the
+// CSV export. Each row combines hub.soh.by_sku (title/warehouses) with the
+// enriched hub.skus entries (net_units/drr/doc_days).
+function buildStockRows() {
+  if (!D || !D.hub || !D.hub.soh) return [];
+  var soh = D.hub.soh;
+  var f = H.stock;
+
+  // Build {sku: unified hub row} index so we can look up 30D units + DoC
+  var hubIdx = {};
+  (D.hub.skus || []).forEach(function(s){ hubIdx[s.sku] = s; });
+
+  // Warehouse filter needs the per-SKU warehouse list; if a warehouse is
+  // chosen, we sum only that warehouse's SOH per SKU.
+  var rows = (soh.by_sku || []).map(function(s) {
+    var hubRow = hubIdx[s.sku] || {};
+    var warehouses = s.warehouses || [];
+    var soh_val = s.total_soh;
+    if (f.warehouse !== 'ALL') {
+      var wEntry = warehouses.find(function(w){ return w.warehouse === f.warehouse; });
+      soh_val = wEntry ? wEntry.soh : 0;
+    }
+    var nu = hubRow.net_units || 0;
+    // DRR uses the processor's hub.sales window; read it off sales block.
+    var windowDays = 30;
+    if (D.hub.sales && D.hub.sales.date_from && D.hub.sales.date_to) {
+      var dFrom = new Date(D.hub.sales.date_from);
+      var dTo   = new Date(D.hub.sales.date_to);
+      var ms = dTo - dFrom;
+      if (ms > 0) windowDays = Math.max(1, Math.round(ms/86400000) + 1);
+    }
+    var drr = nu > 0 ? nu / windowDays : 0;
+    // Recompute DoC locally so warehouse filter works (if a warehouse is
+    // picked we only have that warehouse's SOH). If ALL, prefer backend
+    // doc_days for consistency.
+    var doc;
+    if (f.warehouse === 'ALL' && hubRow.doc_days != null) {
+      doc = hubRow.doc_days;
+    } else {
+      doc = drr > 0 ? (soh_val / drr) : null;
+    }
+    return {
+      sku:        s.sku,
+      title:      s.title,
+      brand:      s.brand,
+      fsn:        s.fsn,
+      sp:         s.sp,
+      soh:        soh_val,
+      net_units:  nu,
+      drr:        drr,
+      doc:        doc,
+      warehouses: warehouses,
+      bucket:     docBucketOf(doc),
+      whcount:    warehouses.length,
+    };
+  });
+
+  // Filters
+  rows = rows.filter(function(r) {
+    if (f.brand !== 'ALL' && r.brand !== f.brand) return false;
+    if (f.warehouse !== 'ALL' && r.soh <= 0) return false;
+    if (f.docBucket !== 'ALL' && r.bucket !== f.docBucket) return false;
+    if (f.search) {
+      var q = f.search;
+      if (!((r.sku||'').toLowerCase().indexOf(q) >= 0 ||
+            (r.title||'').toLowerCase().indexOf(q) >= 0)) return false;
+    }
+    return true;
+  });
+
+  // Sort. 'doc' is tricky: null (no sales) should rank to the end in desc
+  // order, not top. Treat null as Infinity for sort math.
+  rows.sort(function(a,b) {
+    var fld = f.sort;
+    var av = a[fld], bv = b[fld];
+    if (fld === 'doc') { if (av == null) av = Infinity; if (bv == null) bv = Infinity; }
+    if (typeof av === 'string') av = av.toLowerCase();
+    if (typeof bv === 'string') bv = bv.toLowerCase();
+    if (av < bv) return f.sortDesc ? 1 : -1;
+    if (av > bv) return f.sortDesc ? -1 : 1;
+    return 0;
+  });
+  return rows;
+}
+
+function renderStock() {
+  if (!D || !D.hub) return;
+  var body = document.getElementById('stk-sku-body');
+  if (!body) return;
+  var soh = D.hub.soh;
+  if (!soh || !soh.by_sku) {
+    body.innerHTML = '<tr><td colspan="9" style="padding:20px;text-align:center;color:var(--text3)">No SOH data — run FK_SOH_Downloader.py</td></tr>';
+    document.getElementById('stock-kpi').innerHTML = '';
+    return;
+  }
+
+  // ── Window label ──
+  var lbl = document.getElementById('stk-window-lbl');
+  if (lbl) lbl.textContent = 'snapshot ' + (soh.date_snapshot || '—');
+
+  var rows = buildStockRows();
+  var f = H.stock;
+
+  // ── KPI strip ──
+  var totalSoh = rows.reduce(function(s,r){return s + (r.soh||0);}, 0);
+  var bucketCounts = {CRITICAL:0, LOW:0, HEALTHY:0, OVER:0};
+  rows.forEach(function(r){ bucketCounts[r.bucket] = (bucketCounts[r.bucket]||0) + 1; });
+  var whCount = 0;
+  var whSet = {};
+  rows.forEach(function(r){
+    (r.warehouses || []).forEach(function(w){
+      if (f.warehouse !== 'ALL' && w.warehouse !== f.warehouse) return;
+      whSet[w.warehouse] = 1;
+    });
+  });
+  whCount = Object.keys(whSet).length;
+
+  function kpiTile(label, value, sub, color) {
+    return '<div class="stat-card"><div class="stat-label">'+label+'</div>'+
+           '<div class="stat-value" style="color:'+(color||'var(--text)')+'">'+value+'</div>'+
+           '<div class="stat-sub">'+(sub||'')+'</div></div>';
+  }
+  var kpis = [
+    kpiTile('Total SOH',       fmtUnits(totalSoh), 'units in stock',   'var(--accent)'),
+    kpiTile('SKUs',            rows.length,        'after filter',     'var(--text)'),
+    kpiTile('Warehouses',      whCount,            'with stock',       'var(--text2)'),
+    kpiTile('Critical (<15d)', bucketCounts.CRITICAL || 0, 'DoC < 15', '#ff5a5a'),
+    kpiTile('Low (15-30d)',    bucketCounts.LOW || 0,      'DoC 15-30','#ffaa3d'),
+    kpiTile('Healthy (30-60d)',bucketCounts.HEALTHY || 0,  'DoC 30-60','#5fd98a'),
+    kpiTile('Overstock (60+)', bucketCounts.OVER || 0,     '60+ or ∞', '#6ab0ff'),
+  ];
+  document.getElementById('stock-kpi').innerHTML = kpis.join('');
+
+  // ── Brand doughnut ──
+  renderStockBrandChart(soh, f.brand);
+
+  // ── Warehouse stacked bar (top 12) ──
+  renderStockWarehouseChart(soh, f.brand);
+
+  // ── DoC distribution bar ──
+  renderStockDocChart(rows);
+
+  // ── SKU table ──
+  var html = [];
+  if (rows.length === 0) {
+    html.push('<tr><td colspan="9" style="padding:20px;text-align:center;color:var(--text3)">No SKUs match filters</td></tr>');
+  } else {
+    // Cap at 500 rows for performance; user can filter/sort or CSV-export
+    var shown = rows.slice(0, 500);
+    shown.forEach(function(r) {
+      var docStyle = 'color:'+docColorOf(r.bucket)+';font-weight:'+(r.bucket==='CRITICAL'?'700':'500');
+      html.push(
+        '<tr>'+
+          '<td style="font-family:\'Courier New\',monospace;font-size:11px">'+escHtml(r.sku)+'</td>'+
+          '<td style="max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(r.title)+'">'+escHtml(r.title)+'</td>'+
+          '<td>'+brandPill(r.brand)+'</td>'+
+          '<td class="num" style="font-weight:600">'+fmtUnits(r.soh)+'</td>'+
+          '<td class="num">'+(r.net_units ? fmtUnits(r.net_units) : '—')+'</td>'+
+          '<td class="num">'+(r.drr > 0 ? r.drr.toFixed(1) : '—')+'</td>'+
+          '<td class="num" style="'+docStyle+'">'+fmtDoc(r.doc)+'</td>'+
+          '<td class="num">'+(r.warehouses ? r.warehouses.length : 0)+'</td>'+
+          '<td><button class="fbtn" style="font-size:10px;padding:2px 8px" onclick="showStockDetail(\''+encodeURIComponent(r.sku)+'\')">View</button></td>'+
+        '</tr>'
+      );
+    });
+    if (rows.length > 500) {
+      html.push('<tr><td colspan="9" style="padding:8px;text-align:center;color:var(--text3);font-size:11px">showing first 500 of '+rows.length+' — refine filters to narrow further</td></tr>');
+    }
+  }
+  body.innerHTML = html.join('');
+  var sub = document.getElementById('stk-summary-sub');
+  if (sub) sub.textContent = rows.length + ' SKU' + (rows.length===1?'':'s') + ' · ' + fmtUnits(totalSoh) + ' units';
+
+  // ── Warehouse summary table ──
+  renderStockWarehouseTable(soh, f);
+
+  // ── If a SKU was previously selected, redraw its detail card ──
+  if (f.selectedSku) showStockDetail(encodeURIComponent(f.selectedSku));
+}
+
+function showStockDetail(skuEncoded) {
+  var sku = decodeURIComponent(skuEncoded);
+  H.stock.selectedSku = sku;
+  if (!D || !D.hub || !D.hub.soh) return;
+  var sohRow = (D.hub.soh.by_sku || []).find(function(s){ return s.sku === sku; });
+  if (!sohRow) return;
+  var card = document.getElementById('stk-wh-detail-card');
+  var title = document.getElementById('stk-wh-detail-title');
+  var body  = document.getElementById('stk-wh-detail-body');
+  if (!card || !body) return;
+  title.textContent = 'Warehouse breakdown · ' + sku + ' (' + fmtUnits(sohRow.total_soh) + ' units)';
+  var total = sohRow.total_soh || 1;
+  var html = (sohRow.warehouses || []).map(function(w) {
+    var pct = (w.soh / total * 100);
+    return '<tr>'+
+      '<td style="font-family:\'Courier New\',monospace;font-size:11px">'+escHtml(w.warehouse)+'</td>'+
+      '<td class="num">'+fmtUnits(w.soh)+'</td>'+
+      '<td class="num">'+pct.toFixed(1)+'%</td>'+
+      '</tr>';
+  }).join('');
+  body.innerHTML = html || '<tr><td colspan="3" style="padding:12px;text-align:center;color:var(--text3)">No warehouse entries</td></tr>';
+  card.style.display = 'block';
+}
+
+function renderStockWarehouseTable(soh, f) {
+  var body = document.getElementById('stk-wh-body');
+  if (!body) return;
+  var entries = (soh.by_warehouse || []).slice();
+  if (f.brand !== 'ALL') entries = entries.filter(function(w){ return w.brand === f.brand; });
+  if (f.warehouse !== 'ALL') entries = entries.filter(function(w){ return w.warehouse === f.warehouse; });
+  var total = entries.reduce(function(s,w){return s + (w.soh||0);}, 0) || 1;
+  var html = entries.slice(0, 60).map(function(w) {
+    return '<tr>'+
+      '<td style="font-family:\'Courier New\',monospace;font-size:11px">'+escHtml(w.warehouse)+'</td>'+
+      '<td>'+brandPill(w.brand)+'</td>'+
+      '<td class="num" style="font-weight:600">'+fmtUnits(w.soh)+'</td>'+
+      '<td class="num">'+w.sku_count+'</td>'+
+      '<td class="num">'+((w.soh/total)*100).toFixed(1)+'%</td>'+
+      '</tr>';
+  }).join('');
+  body.innerHTML = html || '<tr><td colspan="5" style="padding:12px;text-align:center;color:var(--text3)">No matches</td></tr>';
+  var sub = document.getElementById('stk-wh-summary-sub');
+  if (sub) sub.textContent = entries.length + ' brand-warehouse combos · ' + fmtUnits(total) + ' units';
+}
+
+// ── Stock charts (brand doughnut + warehouse stacked bar + DoC bar) ────────
+var _chStkBrand, _chStkWh, _chStkDoc;
+function renderStockBrandChart(soh, brandFilter) {
+  var cvs = document.getElementById('ch-stk-brand');
+  if (!cvs) return;
+  if (_chStkBrand) { try { _chStkBrand.destroy(); } catch(e){} }
+  // When a specific brand is filtered, we still show the full split for
+  // context — it's a tiny chart, ignoring the filter makes the context clearer
+  var brands = soh.by_brand || {};
+  var labels = Object.keys(brands);
+  var data = labels.map(function(b){ return brands[b]; });
+  var brandColors = { 'BARE ANATOMY':'#ef5d7a', 'Chemist at Play':'#6ab0ff', 'SunScoop':'#f9d76a' };
+  var colors = labels.map(function(b){ return brandColors[b] || '#888'; });
+  _chStkBrand = new Chart(cvs.getContext('2d'), {
+    type: 'doughnut',
+    data: { labels: labels, datasets: [{ data: data, backgroundColor: colors, borderWidth: 0 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '55%',
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#8892a4', font: {size:10}, boxWidth: 10 } },
+        tooltip: { callbacks: { label: function(ctx) { return ctx.label + ': ' + fmtUnits(ctx.parsed) + ' units'; } } }
+      }
+    }
+  });
+}
+
+function renderStockWarehouseChart(soh, brandFilter) {
+  var cvs = document.getElementById('ch-stk-wh');
+  if (!cvs) return;
+  if (_chStkWh) { try { _chStkWh.destroy(); } catch(e){} }
+  // Build warehouse→{brand: soh} map, then pick top 12 warehouses by total
+  var wh = {};
+  (soh.by_warehouse || []).forEach(function(w) {
+    if (brandFilter !== 'ALL' && w.brand !== brandFilter) return;
+    if (!wh[w.warehouse]) wh[w.warehouse] = {};
+    wh[w.warehouse][w.brand] = (wh[w.warehouse][w.brand] || 0) + (w.soh || 0);
+  });
+  var totals = Object.keys(wh).map(function(w) {
+    var sum = 0; Object.keys(wh[w]).forEach(function(b){ sum += wh[w][b]; });
+    return { warehouse: w, total: sum };
+  }).sort(function(a,b){ return b.total - a.total; }).slice(0, 12);
+  var labels = totals.map(function(x){ return x.warehouse; });
+  var brandColors = { 'BARE ANATOMY':'#ef5d7a', 'Chemist at Play':'#6ab0ff', 'SunScoop':'#f9d76a' };
+  var brands = brandFilter === 'ALL' ? ['BARE ANATOMY','Chemist at Play','SunScoop'] : [brandFilter];
+  var datasets = brands.map(function(b) {
+    return {
+      label: b,
+      data: labels.map(function(w){ return (wh[w] && wh[w][b]) || 0; }),
+      backgroundColor: brandColors[b] || '#888',
+      borderWidth: 0,
+    };
+  });
+  _chStkWh = new Chart(cvs.getContext('2d'), {
+    type: 'bar',
+    data: { labels: labels, datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: {
+        legend: { position: 'bottom', labels: { color:'#8892a4', font:{size:10}, boxWidth:10 } },
+        tooltip: { mode: 'index', callbacks: {
+          label: function(ctx){ return ctx.dataset.label + ': ' + fmtUnits(ctx.parsed.x); }
+        } }
+      },
+      scales: {
+        x: { stacked: true, ticks: { color:'#4a5168', font:{size:10}, callback: function(v){ return fmtUnits(v); } },
+             grid: { color: 'rgba(255,255,255,.05)' } },
+        y: { stacked: true, ticks: { color:'#8892a4', font:{size:10} }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+function renderStockDocChart(rows) {
+  var cvs = document.getElementById('ch-stk-doc');
+  if (!cvs) return;
+  if (_chStkDoc) { try { _chStkDoc.destroy(); } catch(e){} }
+  var buckets = ['CRITICAL','LOW','HEALTHY','OVER'];
+  var labels = ['Critical (<15d)','Low (15-30d)','Healthy (30-60d)','Overstock (60+ / ∞)'];
+  var counts = buckets.map(function(b){ return rows.filter(function(r){return r.bucket===b;}).length; });
+  var sohSum = buckets.map(function(b){ return rows.filter(function(r){return r.bucket===b;}).reduce(function(s,r){return s+(r.soh||0);}, 0); });
+  _chStkDoc = new Chart(cvs.getContext('2d'), {
+    type: 'bar',
+    data: { labels: labels, datasets: [
+      { label: 'SKU count', data: counts, backgroundColor: ['#ff5a5a','#ffaa3d','#5fd98a','#6ab0ff'], borderWidth: 0, yAxisID: 'y' },
+      { label: 'SOH units', data: sohSum, type: 'line', borderColor:'#fff', backgroundColor:'rgba(255,255,255,.1)', yAxisID: 'y1', tension: 0.3, pointRadius: 4 },
+    ] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { color:'#8892a4', font:{size:10}, boxWidth:10 } },
+        tooltip: { mode: 'index' },
+      },
+      scales: {
+        x: { ticks: { color:'#8892a4', font:{size:10} }, grid: { display: false } },
+        y:  { position: 'left',  ticks: { color:'#4a5168', font:{size:10} }, grid: { color:'rgba(255,255,255,.05)' }, title: { display: true, text:'SKUs', color:'#8892a4', font:{size:10} } },
+        y1: { position: 'right', ticks: { color:'#4a5168', font:{size:10}, callback: function(v){return fmtUnits(v);} }, grid: { display: false }, title: { display: true, text:'Units', color:'#8892a4', font:{size:10} } },
+      }
+    }
+  });
 }
 
 // ══ CAMPAIGNS TAB (FSN-powered) ═════════════════════════════════════════
@@ -4053,6 +4721,14 @@ function setPlacementVertical() {
   renderPlacement();
 }
 
+// Month selector: CURRENT = live MTD data (hub.ads.placements), or a YYYY-MM
+// string to pull from hub.history.placement_by_month for closed-month analysis.
+function setPlacementMonth() {
+  var sel = document.getElementById('pl-month-sel');
+  H.placement.month = sel ? (sel.value || 'CURRENT') : 'CURRENT';
+  renderPlacement();
+}
+
 function populatePlacementVerticalSelector() {
   var sel = document.getElementById('pl-vertical-sel');
   if (!sel || !D || !D.hub) return;
@@ -4109,20 +4785,56 @@ function renderPlacement() {
   var ads = D.hub.ads;
   var brand = H.placement.brand || 'ALL';
   var typeFilter = H.placement.type || 'ALL';
+  var monthSel = H.placement.month || 'CURRENT';
 
-  // Window label — MTD always (placement data is current month only)
-  var from = ads.date_from || '', to = ads.date_to || '';
+  // Populate month dropdown every render — cheap, and captures newly archived
+  // months as history fills in. First option is always Current (MTD), then
+  // last 13 historical months in reverse-chronological order so the user can
+  // jump straight to the latest closed month without scrolling.
+  var hist = (D.hub.history || {});
+  var pMonths = (hist.placement_by_month && typeof hist.placement_by_month === 'object')
+    ? Object.keys(hist.placement_by_month).sort().reverse().slice(0, 13) : [];
+  var mSel = document.getElementById('pl-month-sel');
+  if (mSel) {
+    var opts = ['<option value="CURRENT">Current (MTD)</option>'];
+    pMonths.forEach(function(m){ opts.push('<option value="'+m+'">'+monthLabel(m)+'</option>'); });
+    // Only rebuild options if the set changed — avoids clobbering the user's
+    // current selection on re-render
+    if (mSel.options.length !== opts.length) {
+      mSel.innerHTML = opts.join('');
+      mSel.value = monthSel;
+    }
+  }
+
+  // ── Pick data source: current MTD vs historical month ──
+  // Historical placement_by_month is aggregated already at Placement Type level
+  // (no campaign-level detail), so brand filter falls back to ALL for those
+  // months — we notify the user via the sub-label.
+  var placements, byBrand, byCamp;
+  var windowLabel;
+  if (monthSel === 'CURRENT') {
+    placements = ads.placements || [];
+    byBrand    = ads.placement_by_brand || [];
+    byCamp     = ads.placement_by_campaign || [];
+    var from = ads.date_from || '', to = ads.date_to || '';
+    windowLabel = from && to ? ('MTD · ' + from + ' → ' + to) : '';
+  } else {
+    // Historical month: use placement_by_month rows directly; no brand or
+    // campaign split available (data is aggregated at Placement Type level only)
+    placements = (hist.placement_by_month && hist.placement_by_month[monthSel]) || [];
+    byBrand = [];  // no brand split for historical
+    byCamp  = [];  // no campaign split for historical
+    windowLabel = 'Historical · ' + monthLabel(monthSel) + ' (type-level only, no brand split)';
+  }
   var lbl = document.getElementById('pl-window-lbl');
-  if (lbl) lbl.textContent = from && to ? ('MTD · ' + from + ' → ' + to) : '';
+  if (lbl) lbl.textContent = windowLabel;
 
   // ── Compute KPI totals ──
-  var placements = ads.placements || [];
-  var byBrand    = ads.placement_by_brand || [];
-  var byCamp     = ads.placement_by_campaign || [];
 
   // Filter rows: if brand != ALL use placement_by_brand rows; else use placements
   var filteredRows;
-  if (brand === 'ALL') {
+  if (brand === 'ALL' || monthSel !== 'CURRENT') {
+    // Historical months ignore brand filter since data is type-only
     filteredRows = placements.slice();
   } else {
     filteredRows = byBrand.filter(function(r){ return r.brand === brand; });
@@ -4231,6 +4943,83 @@ function renderPlacement() {
     });
   }
 
+  // ── MoM trend chart (placement × last 13 months) ──
+  // Stacked bar chart with one dataset per placement type, x-axis = months.
+  // Hidden when no historical data is present so MTD-only users don't see
+  // an empty card. Honors the current Placement Type filter — picking a
+  // single placement shrinks the chart to just that line.
+  var momCard = document.getElementById('pl-mom-card');
+  var cvsMom  = document.getElementById('ch-pl-mom');
+  var momData = (D.hub.history && D.hub.history.placement_by_month) || null;
+  var momMonths = momData ? Object.keys(momData).sort() : [];
+  // Include the current MTD as the rightmost month so the chart extends
+  // through today — aggregate current by Placement Type from hub.ads.placements.
+  var curMonth = (D.hub.window && D.hub.window.from) ? D.hub.window.from.slice(0, 7) : null;
+  if (curMonth && !momMonths.includes(curMonth) && ads.placements && ads.placements.length) {
+    momMonths.push(curMonth);
+    momData = Object.assign({}, momData || {});
+    momData[curMonth] = ads.placements.slice();
+  }
+  // Keep last 13 months only
+  if (momMonths.length > 13) momMonths = momMonths.slice(-13);
+
+  if (momCard && cvsMom && momMonths.length >= 2) {
+    momCard.style.display = '';
+    // Collect the union of placement types seen across the window (sorted by
+    // total spend over the window so biggest contributors render on top of the
+    // stack for readability).
+    var typeTotals = {};
+    momMonths.forEach(function(m){
+      (momData[m] || []).forEach(function(r){
+        if (typeFilter !== 'ALL' && r.type !== typeFilter) return;
+        typeTotals[r.type] = (typeTotals[r.type] || 0) + (r.spend || 0);
+      });
+    });
+    var allTypes = Object.keys(typeTotals).sort(function(a,b){ return typeTotals[b] - typeTotals[a]; });
+    // Palette matches the doughnut on the same page
+    var pltPalette = {
+      'Top of Search Listings Page':   'rgba(79,142,247,.85)',
+      'Product Page':                   'rgba(62,207,142,.85)',
+      'Rest of Search Listings Page':   'rgba(245,165,36,.85)',
+      'Top of Browse Listings Page':    'rgba(167,139,250,.85)',
+      'Rest of Browse Listings Page':   'rgba(239,101,101,.85)',
+      'Home Page':                       'rgba(20,184,166,.85)',
+    };
+    var datasets = allTypes.map(function(t){
+      return {
+        label: t.replace(' Listings Page',''),
+        data: momMonths.map(function(m){
+          var r = (momData[m] || []).find(function(x){ return x.type === t; });
+          return r ? +((r.spend || 0) / 1e5).toFixed(2) : 0;
+        }),
+        backgroundColor: pltPalette[t] || 'rgba(156,163,175,.75)',
+        borderWidth: 0,
+      };
+    });
+    var labels = momMonths.map(function(m){ return monthLabel(m); });
+    // Destroy previous chart instance to avoid canvas residue on re-render
+    if (charts['pl-mom']) { try { charts['pl-mom'].destroy(); } catch(e){} }
+    charts['pl-mom'] = new Chart(cvsMom.getContext('2d'), {
+      type:'bar',
+      data:{ labels: labels, datasets: datasets },
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:'bottom', labels:{ color:'#8892a4', font:{size:10}, boxWidth:10, padding:8 } },
+          tooltip:{ callbacks:{ label:function(ctx){ return ctx.dataset.label + ': ₹' + ctx.parsed.y + 'L'; } } }
+        },
+        scales:{
+          x:{ stacked:true, ticks:{color:'#4a5168', font:{size:10}}, grid:{display:false} },
+          y:{ stacked:true, ticks:{color:'#4a5168', font:{size:10}, callback:function(v){return '₹'+v+'L';}},
+              grid:{color:'rgba(255,255,255,.05)'} },
+        }
+      }
+    });
+    var sub = document.getElementById('pl-mom-sub');
+    if (sub) sub.textContent = momMonths[0] + ' → ' + momMonths[momMonths.length-1] +
+      (typeFilter !== 'ALL' ? ' · ' + typeFilter : '');
+  } else if (momCard) {
+    momCard.style.display = 'none';
+  }
+
   // ── Summary table (placements × current brand filter) ──
   var summaryRows;
   if (brand === 'ALL') {
@@ -4337,20 +5126,15 @@ function renderPlacementInsights(placements, byBrand, byCamp, brand, typeFilter,
 
   var chunks = [];
 
-  // Block 1: Best ROI placements (for current brand)
+  // Worst ROI placements — single card (Best ROI removed per user request,
+  // kept Worst since declining placements are actionable while top performers
+  // are already visible in the summary table above).
   var rowsForBrand;
   if (brand === 'ALL') rowsForBrand = placements;
   else rowsForBrand = byBrand.filter(function(r){return r.brand === brand;});
 
   var scored = rowsForBrand.filter(function(r){return (r.spend||0) > 5000;});
   if (scored.length) {
-    var byRoi = scored.slice().sort(function(a,b){return (b.roi||0) - (a.roi||0);});
-    chunks.push(insightBlock('🚀 Best ROI Placements (spend > ₹5K)', 'var(--green)',
-      byRoi.slice(0,3).map(function(r){
-        return '<strong>'+r.type+'</strong> — ROI '+(r.roi!=null?r.roi.toFixed(2)+'x':'—') +
-          ' <span style="color:var(--text3)">· Spend '+fmtCr(r.spend)+' · Rev '+fmtCr(r.total_revenue)+'</span>';
-      })
-    ));
     var worst = scored.slice().sort(function(a,b){return (a.roi||999)-(b.roi||999);});
     chunks.push(insightBlock('⚠️ Worst ROI Placements (spend > ₹5K)', 'var(--red)',
       worst.slice(0,3).map(function(r){
@@ -5074,16 +5858,6 @@ function renderCampAnalysis(cur, prev, month) {
   }).join('');
   if (!h2) h2 = '<div class="empty">No low-ROI campaigns with significant spend</div>';
 
-  // Best ROI (spend > ₹20K) — compare ROI to prev
-  var bestRoi = cur.campaigns.filter(function(c){ return c.spend > 20000 && c.roi != null; })
-    .sort(function(a,b){return (b.roi||0)-(a.roi||0);}).slice(0,5);
-  var h3 = bestRoi.map(function(c){
-    var p = prevOf(c.id);
-    return cmpLine(c.name.slice(0,36), c.roi, p && p.roi != null ? p.roi : null,
-      function(v){return v!=null ? v.toFixed(2)+'x' : '—';}, false);
-  }).join('');
-  if (!h3) h3 = '<div class="empty">—</div>';
-
   // New this month (not seen in prev) — no prev comparison
   var newThis = cur.campaigns.filter(function(c){ return !prev.campaigns.find(function(p){ return p.id === c.id; }); })
     .sort(function(a,b){return b.spend-a.spend;}).slice(0,5);
@@ -5119,7 +5893,6 @@ function renderCampAnalysis(cur, prev, month) {
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px">' +
     card('💰 Top Spenders',   'var(--red)',    h1) +
     card('⚠️ Worst ROI',       'var(--orange)', h2) +
-    card('🚀 Best ROI',        'var(--green)',  h3) +
     card('🆕 New This Month',  'var(--accent)', h4) +
     card('📉 Biggest Decliners','var(--yellow)',h5) +
     card('🔥 High TACOS Alert','var(--red)',    h6) +
@@ -5587,18 +6360,8 @@ function renderOvCrossInsights(curWin, prevWin, brandFilter, verticalFilter) {
     );
   }
 
-  // 3. Top ROI
-  var bestRoi = withSpend.slice().sort(function(a,b){return b.ad_roi - a.ad_roi;}).slice(0,3);
-  if (bestRoi.length) {
-    html += block('🚀 Top Ad ROI (spend ' + cutLabelOv + ')', 'var(--green)',
-      bestRoi.map(function(s){
-        var p = prevSkus[s.sku];
-        var pRoi = (p && p.ad_spend > 0) ? p.ad_revenue/p.ad_spend : null;
-        return '<code>'+s.sku+'</code> — ' + fmtV(s.ad_roi, pRoi, function(v){return v!=null?v.toFixed(2)+'x':'—';});
-      })
-    );
-  }
-
+  // 3. Top Ad ROI — removed per user request (Best ROI no longer shown).
+  // Worst ROI above is actionable; celebrating winners takes space without driving decisions.
   // 4. Top traffic
   var topViews = curSkus.filter(function(s){return (s.views||0) > 0;})
     .sort(function(a,b){return b.views - a.views;}).slice(0,3);
@@ -5685,54 +6448,9 @@ function renderOvCrossInsights(curWin, prevWin, brandFilter, verticalFilter) {
     );
   }
 
-  // 9. Vertical movers (if prev window exists, show biggest vertical sales shift)
-  if (prevWin) {
-    var curVertMap = {}, prevVertMap = {};
-    curSkus.forEach(function(s){
-      var v = s.vertical || '—';
-      curVertMap[v] = (curVertMap[v] || 0) + (s.sales || 0);
-    });
-    Object.values(prevSkus).forEach(function(s){
-      var v = s.vertical || '—';
-      prevVertMap[v] = (prevVertMap[v] || 0) + (s.sales || 0);
-    });
-    var movers = [];
-    Object.keys(curVertMap).forEach(function(v){
-      var cur = curVertMap[v], prev = prevVertMap[v] || 0;
-      if (cur < 50000 && prev < 50000) return;
-      var pct = prev > 0 ? (cur - prev) / prev * 100 : (cur > 0 ? 100 : 0);
-      if (Math.abs(pct) < 10) return;
-      movers.push({vertical:v, cur:cur, prev:prev, pct:pct});
-    });
-    movers.sort(function(a,b){return Math.abs(b.pct) - Math.abs(a.pct);});
-    var topMovers = movers.slice(0,3);
-    if (topMovers.length) {
-      html += block('🧭 Vertical Movers', 'var(--accent)',
-        topMovers.map(function(m){
-          var arrow = m.pct > 0 ? '▲' : '▼';
-          var col = m.pct > 0 ? 'var(--green)' : 'var(--red)';
-          return '<b>'+m.vertical+'</b> ' + fmtCr(m.cur) +
-            ' <span style="color:'+col+'">'+arrow+Math.abs(m.pct).toFixed(0)+'%</span>';
-        })
-      );
-    }
-  }
-
-  // 10. Discount outliers — SKUs selling way below MRP
-  var discOutliers = curSkus.filter(function(s){
-    return s.sales > 100000 && s.mrp && s.units > 0;
-  }).map(function(s){
-    s.disc = (s.mrp * s.units - s.sales) / (s.mrp * s.units) * 100;
-    return s;
-  }).filter(function(s){return s.disc > 0;})
-    .sort(function(a,b){return b.disc - a.disc;}).slice(0,3);
-  if (discOutliers.length && discOutliers[0].disc > 25) {
-    html += block('🏷️ Deepest Discounts (sales > ₹1L)', 'var(--yellow)',
-      discOutliers.map(function(s){
-        return '<code>'+s.sku+'</code> — ' + s.disc.toFixed(1) + '% off MRP';
-      })
-    );
-  }
+  // 9. Vertical Movers and 10. Deepest Discounts — removed per user request.
+  // Vertical aggregation and off-MRP depth are better viewed in the dedicated
+  // Sales/Placement pages where they're first-class rather than sidebars here.
 
   html += '</div>';
   el.innerHTML = html;

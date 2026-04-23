@@ -2705,7 +2705,7 @@ function compareSkus(curSkus, prevSkus, metricField, n, asc) {
     var delta = curV - prevV;
     var pct = prevV > 0 ? (delta / prevV * 100) : (curV > 0 ? 100 : 0);
     rows.push({
-      sku: c.sku, title: c.title, brand: c.brand,
+      sku: c.sku, title: c.title, clean_name: c.clean_name, brand: c.brand,
       cur: curV, prev: prevV, delta: delta, pct: pct
     });
   });
@@ -7222,7 +7222,7 @@ function renderCampTable(cur, prev, month) {
       var roi = r.roi != null ? r.roi.toFixed(2) + 'x' : '—';
       return '<tr>' +
         '<td class="pid">'+(r.sku||'—')+'</td>' +
-        '<td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.title||'')+'">'+(r.title||'—').slice(0,48)+'</td>' +
+        '<td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(displayTooltip(r))+'">'+escHtml(displayName(r, 48))+'</td>' +
         '<td>'+brandPill(r.brand)+'</td>' +
         monoR(fmtCr(r.spend) + (prev_r ? deltaSpan(r.spend, prev_r.spend, true) : ''), 'var(--red)') +
         monoR(fmtCr(r.revenue) + (prev_r ? deltaSpan(r.revenue, prev_r.revenue) : ''), 'var(--green)') +
@@ -7419,9 +7419,10 @@ function drillAdGroup(key) {
   var skuList = curM.skus || [];
   var skus = skuList.map(function(s){
     var rec = fsn.skus.find(function(x){ return x.sku === s; });
-    if (!rec || !rec.months || !rec.months[month]) return {sku:s, title:'—', brand:'—', spend:0,revenue:0,roi:null,units:0};
+    if (!rec || !rec.months || !rec.months[month]) return {sku:s, title:'—', clean_name:'', brand:'—', spend:0,revenue:0,roi:null,units:0};
     var m = rec.months[month];
-    return Object.assign({sku: rec.sku, title: rec.title, brand: rec.brand}, m);
+    // Include clean_name so displayName(s) resolves to it (not falling back to title)
+    return Object.assign({sku: rec.sku, title: rec.title, clean_name: rec.clean_name, brand: rec.brand}, m);
   }).sort(function(x,y){ return y.spend - x.spend; });
 
   // Monthly trend for this AdGroup (last 13 months)

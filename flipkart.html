@@ -652,6 +652,9 @@ function checkPW(){
     <span class="filter-label">Month</span>
     <select class="fsel" id="camp-month-sel" onchange="setCampMonth()"></select>
     <div class="fsep"></div>
+    <span class="filter-label">Vertical</span>
+    <select class="fsel" id="camp-vertical-sel" onchange="setCampVertical()"><option value="ALL">All Verticals</option></select>
+    <div class="fsep"></div>
     <span class="filter-label">View</span>
     <button class="fbtn active" id="camp-view-camp"    onclick="setCampView('campaign',this)">Campaigns</button>
     <button class="fbtn"        id="camp-view-sku"     onclick="setCampView('sku',this)">SKUs</button>
@@ -938,16 +941,26 @@ function checkPW(){
     <div id="stk-insights" style="padding:12px"></div>
   </div>
 
-  <!-- Warehouse breakdown detail (hidden until a SKU row's "Detail" is clicked) -->
+  <!-- Full SKU drill-down: all velocity, pipeline, unsellable + warehouse split
+       Hidden until a Stock row's "View" button is clicked. Exposes every
+       SOH column (22+ fields) per SKU so ops can see exactly where stock is,
+       where it's stuck, and what's in the pipeline. -->
   <div class="card" id="stk-wh-detail-card" style="display:none;margin-bottom:18px">
     <div class="card-hdr">
-      <span class="card-title">🏭 <span id="stk-wh-detail-title">Warehouse breakdown</span></span>
+      <span class="card-title">🔍 <span id="stk-wh-detail-title">SKU breakdown</span></span>
+      <span class="card-sub" id="stk-wh-detail-meta"></span>
       <button class="fbtn" onclick="closeStockDetail()" style="margin-left:auto;font-size:11px">✕ Close</button>
     </div>
-    <table>
-      <thead><tr><th>Warehouse</th><th class="num">Units</th><th class="num">% of SKU SOH</th></tr></thead>
-      <tbody id="stk-wh-detail-body"></tbody>
-    </table>
+    <!-- 4-col grid: Velocity · Pipeline (Inbound) · Reserved · Unsellable -->
+    <div id="stk-detail-grid" style="padding:14px;display:grid;grid-template-columns:repeat(4,1fr);gap:14px"></div>
+    <!-- Warehouse split table kept at bottom -->
+    <div style="padding:0 14px 14px 14px">
+      <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">🏭 Warehouse Split</div>
+      <table>
+        <thead><tr><th>Warehouse</th><th class="num">SOH</th><th class="num">% of SKU</th></tr></thead>
+        <tbody id="stk-wh-detail-body"></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- Warehouse summary: brand-wise split per warehouse -->
@@ -2351,8 +2364,8 @@ function exportTabCsv(tab) {
 // ── Campaigns tab CSV (campaigns / adgroups / skus depending on current view)
 function exportCampaignsCsv() {
   if (!D || !D.hub) return;
-  var month = H.camp.month, brand = H.camp.brand || 'ALL', view = H.camp.view;
-  var cur = _campMonthData(month, brand);
+  var month = H.camp.month, brand = H.camp.brand || 'ALL', vertical = H.camp.vertical || 'ALL', view = H.camp.view;
+  var cur = _campMonthData(month, brand, vertical);
   var rows, fname;
   if (view === 'campaign') {
     rows = cur.campaigns.map(function(c){
@@ -2969,7 +2982,7 @@ function renderSales() {
   }
 
   document.getElementById('sales-sku-body').innerHTML = skusArr.length === 0
-    ? '<tr><td colspan="16" class="empty">No SKUs with sales in this window</td></tr>'
+    ? '<tr><td colspan="14" class="empty">No SKUs with sales in this window</td></tr>'
     : skusArr.map(function(s){
         var link = fkProductUrl(s);
         var titleCell = link
@@ -4354,6 +4367,7 @@ function renderAll(){
   safeRun(populateHubDateSelectors, 'populateHubDateSelectors');
   safeRun(populateOvSelectors, 'populateOvSelectors');
   safeRun(populateCampMonthSelector, 'populateCampMonthSelector');
+  safeRun(populateCampVerticalSelector, 'populateCampVerticalSelector');
   safeRun(populatePlacementTypeSelector, 'populatePlacementTypeSelector');
   safeRun(populatePlacementVerticalSelector, 'populatePlacementVerticalSelector');
   // Populate vertical dropdowns for Sales/Ads/Traffic/Overview
@@ -4936,22 +4950,131 @@ function showStockDetail(skuEncoded) {
   if (!D || !D.hub || !D.hub.soh) return;
   var sohRow = (D.hub.soh.by_sku || []).find(function(s){ return s.sku === sku; });
   if (!sohRow) return;
+  // Also fetch the enriched hub SKU row for DRR, DoC, clean_name, etc.
+  var hubRow = ((D.hub.skus || []).find(function(s){ return s.sku === sku; })) || {};
   var card = document.getElementById('stk-wh-detail-card');
   var title = document.getElementById('stk-wh-detail-title');
+  var meta = document.getElementById('stk-wh-detail-meta');
+  var grid = document.getElementById('stk-detail-grid');
   var body  = document.getElementById('stk-wh-detail-body');
   if (!card || !body) return;
-  title.textContent = 'Warehouse breakdown · ' + sku + ' (' + fmtUnits(sohRow.total_soh) + ' units)';
+
+  var name = sohRow.clean_name || hubRow.clean_name || sohRow.title || sku;
+  title.textContent = name;
+  if (meta) {
+    var metaParts = [];
+    metaParts.push('<span style="font-family:Courier New,monospace;font-size:10px;color:var(--text3)">'+escHtml(sku)+'</span>');
+    if (sohRow.brand) metaParts.push(brandPill(sohRow.brand));
+    if (sohRow.range) metaParts.push('<span style="font-size:11px;color:var(--text2)">'+escHtml(sohRow.range)+'</span>');
+    if (sohRow.lifecycle) metaParts.push('<span style="font-size:10px;color:var(--text3);padding:2px 6px;border:1px solid var(--border2);border-radius:4px">'+escHtml(sohRow.lifecycle)+'</span>');
+    if (sohRow.fulfilment_type) metaParts.push('<span style="font-size:10px;color:#4f8ef7">'+escHtml(sohRow.fulfilment_type)+'</span>');
+    if (sohRow.f_assured === 'Yes' || sohRow.f_assured === true) metaParts.push('<span style="font-size:10px;color:#5fd98a">✓ F-Assured</span>');
+    if (sohRow.live_anywhere === 'No' || sohRow.live_anywhere === false) metaParts.push('<span style="font-size:10px;color:#f05252">⚠ Not Live</span>');
+    meta.innerHTML = metaParts.join(' · ');
+  }
+
+  // Helpers for detail blocks
+  function block(icon, title, color, rows) {
+    return '<div style="border:1px solid var(--border2);border-radius:8px;padding:10px">'+
+      '<div style="font-size:10px;font-weight:700;color:'+color+';margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">'+
+        icon+' '+title+'</div>'+
+      rows.map(function(r){
+        var lbl = r[0], val = r[1], col = r[2] || 'var(--text)';
+        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:11px">'+
+          '<span style="color:var(--text2)">'+lbl+'</span>'+
+          '<span style="font-weight:600;color:'+col+'">'+val+'</span></div>';
+      }).join('')+
+    '</div>';
+  }
+  function u(n) { return n ? fmtUnits(n) : '—'; }
+
+  var drrColor = (hubRow.drr_units && hubRow.drr_units > 0) ? '#5fd98a' : 'var(--text3)';
+  var docColor = docColorOf(docBucketOf(hubRow.doc_days));
+  var docTxt   = fmtDoc(hubRow.doc_days);
+
+  // VELOCITY block
+  var velRows = [
+    ['Total SOH', fmtUnits(sohRow.total_soh || 0), 'var(--accent)'],
+    ['7D sales',  u(sohRow.sales_7d)],
+    ['14D sales', u(sohRow.sales_14d)],
+    ['30D sales', u(sohRow.sales_30d), '#5fd98a'],
+    ['60D sales', u(sohRow.sales_60d)],
+    ['90D sales', u(sohRow.sales_90d)],
+    ['DRR (daily)', hubRow.drr_units > 0 ? hubRow.drr_units.toFixed(2) : '—', drrColor],
+    ['DoC', docTxt, docColor],
+  ];
+
+  // INBOUND pipeline block
+  var inbTot = sohRow.inbound_total || 0;
+  var inbRows = [
+    ['Total inbound', u(inbTot), inbTot > 0 ? '#4f8ef7' : 'var(--text3)'],
+    ['B2B scheduled', u(sohRow.b2b_scheduled)],
+    ['B2B shipped',   u(sohRow.b2b_shipped)],
+    ['B2B receiving', u(sohRow.b2b_receiving)],
+    ['TRF scheduled', u(sohRow.trf_scheduled)],
+    ['TRF shipped',   u(sohRow.trf_shipped)],
+    ['TRF receiving', u(sohRow.trf_receiving)],
+  ];
+
+  // RESERVED block
+  var resTot = sohRow.reserved_total || 0;
+  var resRows = [
+    ['Total reserved',    u(resTot), resTot > 0 ? '#a78bfa' : 'var(--text3)'],
+    ['Reserved (orders)', u(sohRow.reserved_orders)],
+    ['Reserved (internal)', u(sohRow.reserved_internal)],
+    ['Returns processing',  u(sohRow.returns_processing)],
+    ['Orders dispatch',     u(sohRow.orders_dispatch)],
+    ['Recalls dispatch',    u(sohRow.recalls_dispatch)],
+  ];
+
+  // UNSELLABLE block — breakdown by category
+  var unsTot = sohRow.unsellable_total || 0;
+  var unsCol = unsTot > 100 ? '#f05252' : (unsTot > 0 ? '#f5a524' : 'var(--text3)');
+  var unsRows = [
+    ['Total unsellable', u(unsTot), unsCol],
+    ['Damaged',          u(sohRow.damaged), sohRow.damaged > 50 ? '#f05252' : 'var(--text)'],
+    ['QC reject',        u(sohRow.qc_reject)],
+    ['Catalog reject',   u(sohRow.catalog_reject)],
+    ['Returns reject',   u(sohRow.returns_reject)],
+    ['Seller return rej.', u(sohRow.seller_return_reject)],
+    ['Misc',             u(sohRow.misc)],
+  ];
+
+  if (grid) {
+    grid.innerHTML = [
+      block('📊','Velocity','#5fd98a',velRows),
+      block('🚚','Inbound Pipeline','#4f8ef7',inbRows),
+      block('🔒','Reserved','#a78bfa',resRows),
+      block('⚠️','Unsellable','#f05252',unsRows),
+    ].join('');
+  }
+
+  // Warehouse split
   var total = sohRow.total_soh || 1;
-  var html = (sohRow.warehouses || []).map(function(w) {
-    var pct = (w.soh / total * 100);
-    return '<tr>'+
-      '<td style="font-family:\'Courier New\',monospace;font-size:11px">'+escHtml(w.warehouse)+'</td>'+
-      '<td class="num">'+fmtUnits(w.soh)+'</td>'+
-      '<td class="num">'+pct.toFixed(1)+'%</td>'+
+  var html = (sohRow.warehouses || [])
+    .slice()
+    .sort(function(a,b){ return (b.soh||0) - (a.soh||0); })
+    .map(function(w) {
+      var pct = (w.soh / total * 100);
+      var barW = Math.max(2, Math.min(100, pct));
+      return '<tr>'+
+        '<td style="font-family:Courier New,monospace;font-size:11px">'+escHtml(w.warehouse)+'</td>'+
+        '<td class="num" style="font-weight:600">'+fmtUnits(w.soh)+'</td>'+
+        '<td class="num" style="width:160px">'+
+          '<div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">'+
+            '<div style="width:80px;height:6px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden">'+
+              '<div style="height:100%;width:'+barW.toFixed(0)+'%;background:var(--accent)"></div>'+
+            '</div>'+
+            '<span>'+pct.toFixed(1)+'%</span>'+
+          '</div>'+
+        '</td>'+
       '</tr>';
-  }).join('');
+    }).join('');
   body.innerHTML = html || '<tr><td colspan="3" style="padding:12px;text-align:center;color:var(--text3)">No warehouse entries</td></tr>';
   card.style.display = 'block';
+
+  // Scroll into view smoothly
+  setTimeout(function(){ card.scrollIntoView({behavior:'smooth', block:'nearest'}); }, 50);
 }
 
 function renderStockWarehouseTable(soh, f) {
@@ -5649,15 +5772,39 @@ function setCampMonth() {
 
 function setCampView(view, btn) {
   H.camp.view = view;
-  document.getElementById('camp-view-camp').classList.remove('active');
-  document.getElementById('camp-view-ag').classList.remove('active');
-  document.getElementById('camp-view-sku').classList.remove('active');
+  ['camp-view-camp','camp-view-ag','camp-view-sku'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.classList.remove('active');
+  });
   btn.classList.add('active');
   // Smart default sort
   H.camp.sort = 'spend';
   H.camp.sortDesc = true;
   H.camp.drill = null;
   renderCampaigns();
+}
+
+// Vertical filter for Campaigns tab. Restricts to SKUs in the chosen vertical;
+// since campaigns span many SKUs, we filter by whether campaign contains ANY sku in that vertical.
+function setCampVertical() {
+  var sel = document.getElementById('camp-vertical-sel');
+  if (sel) {
+    H.camp.vertical = sel.value || 'ALL';
+    renderCampaigns();
+  }
+}
+function populateCampVerticalSelector() {
+  var sel = document.getElementById('camp-vertical-sel');
+  if (!sel || !D || !D.hub || !D.hub.skus) return;
+  var verticals = new Set();
+  D.hub.skus.forEach(function(s){
+    if (s.vertical && s.vertical !== 'nan') verticals.add(s.vertical);
+  });
+  var current = H.camp.vertical || 'ALL';
+  var html = '<option value="ALL">All Verticals</option>';
+  Array.from(verticals).sort().forEach(function(v){
+    html += '<option value="'+v+'"'+(v===current?' selected':'')+'>'+v+'</option>';
+  });
+  sel.innerHTML = html;
 }
 
 function sortCamp(col) {
@@ -5672,7 +5819,7 @@ function clearCampDrill() {
 }
 
 // Build arrays for selected month, filtered by brand
-function _campMonthData(month, brand) {
+function _campMonthData(month, brand, vertical) {
   var fsn = _fsn();
   if (!fsn) return {campaigns:[], adgroups:[], skus:[], totals:null};
 
@@ -5728,6 +5875,23 @@ function _campMonthData(month, brand) {
     });
     adgroups  = adgroups.filter(function(a){ return a.brand === brand; });
     skus      = skus.filter(function(s){ return s.brand === brand; });
+  }
+
+  // Vertical filter — join against hub.skus[].vertical. Build a set of SKU codes
+  // in the selected vertical, then keep only campaigns/adgroups/skus that touch
+  // those SKUs. Campaigns are kept if ANY of their skus[] match the vertical.
+  if (vertical && vertical !== 'ALL' && D.hub && D.hub.skus) {
+    var vSet = new Set();
+    D.hub.skus.forEach(function(hs){
+      if (hs.vertical === vertical && hs.sku) vSet.add(hs.sku);
+    });
+    skus      = skus.filter(function(s){ return vSet.has(s.sku); });
+    campaigns = campaigns.filter(function(c){
+      return (c.skus || []).some(function(s){ return vSet.has(s.sku || s); });
+    });
+    adgroups  = adgroups.filter(function(a){
+      return (a.skus || []).some(function(s){ return vSet.has(s.sku || s); });
+    });
   }
 
   // Monthly totals (take from totals series + brand filter if applicable)
@@ -6270,8 +6434,8 @@ function renderCampaigns() {
   var prevMonth = _prevMonth(month);
   var brand = H.camp.brand;
 
-  var cur  = _campMonthData(month, brand);
-  var prev = prevMonth ? _campMonthData(prevMonth, brand) : {campaigns:[], adgroups:[], skus:[], totals:null};
+  var cur  = _campMonthData(month, brand, vertical);
+  var prev = prevMonth ? _campMonthData(prevMonth, brand, vertical) : {campaigns:[], adgroups:[], skus:[], totals:null};
 
   // Window label
   document.getElementById('camp-window').textContent =
@@ -7964,8 +8128,8 @@ registerAnalysis({
       if (body) body.innerHTML = '<div class="empty">No campaign data for this window</div>';
       return;
     }
-    var cur  = _campMonthData(month, brand);
-    var prev = _prevMonth(month) ? _campMonthData(_prevMonth(month), brand) : {campaigns:[], adgroups:[], skus:[], totals:null};
+    var cur  = _campMonthData(month, brand, H.camp.vertical);
+    var prev = _prevMonth(month) ? _campMonthData(_prevMonth(month), brand, H.camp.vertical) : {campaigns:[], adgroups:[], skus:[], totals:null};
     moveAnalysisToOverview('camp', function(){
       renderCampAnalysis(cur, prev, month);
     });

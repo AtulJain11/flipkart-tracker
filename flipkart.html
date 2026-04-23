@@ -221,8 +221,8 @@ function checkPW(){
   <button class="nav-tab" onclick="showPage('prod',this)">🔬 Product Analysis</button>
   <button class="nav-tab" onclick="showPage('traffic',this)">🔍 Traffic</button>
   <button class="nav-tab" onclick="showPage('ads',this)">📣 Ads</button>
-  <button class="nav-tab" onclick="showPage('placement',this)">📍 Placement</button>
   <button class="nav-tab" onclick="showPage('campaigns',this)">🎯 Campaigns</button>
+  <button class="nav-tab" onclick="showPage('placement',this)">📍 Placement</button>
   <button class="nav-tab" onclick="showPage('stock',this)">📦 Stock</button>
   <button class="nav-tab" onclick="showPage('rankings',this)">🏆 Rankings</button>
   <button class="nav-tab" onclick="showPage('sp',this)">💰 SP Compliance</button>
@@ -645,8 +645,24 @@ function checkPW(){
     <button class="fbtn cap"    onclick="setHubFilter('camp','brand','Chemist at Play',this)">CAP</button>
     <button class="fbtn ss"     onclick="setHubFilter('camp','brand','SunScoop',this)">SS</button>
     <div class="fsep"></div>
+    <span class="filter-label">Day</span>
+    <select class="fsel" id="camp-day-sel" onchange="setCampDay()"><option value="">—</option></select>
     <span class="filter-label">Month</span>
     <select class="fsel" id="camp-month-sel" onchange="setCampMonth()"></select>
+    <div class="fsep"></div>
+    <span class="filter-label">Custom</span>
+    <input type="date" class="fsel" id="camp-from-sel" onchange="setCampCustom()" style="min-width:130px">
+    <span style="color:var(--text3);font-size:10px">→</span>
+    <input type="date" class="fsel" id="camp-to-sel" onchange="setCampCustom()" style="min-width:130px">
+    <button class="fbtn" onclick="clearHubTime('camp')" style="font-size:10px;padding:4px 8px">Reset</button>
+    <div class="fsep"></div>
+    <span class="filter-label">Compare</span>
+    <button class="fbtn" id="camp-cmp-btn" onclick="toggleCompare('camp')" style="font-size:10px;padding:4px 8px" title="Compare against custom date range">vs…</button>
+    <span id="camp-cmp-inputs" style="display:none;align-items:center;gap:4px">
+      <input type="date" class="fsel" id="camp-cmp-from" onchange="setCompareDate('camp')" style="min-width:130px">
+      <span style="color:var(--text3);font-size:10px">→</span>
+      <input type="date" class="fsel" id="camp-cmp-to"   onchange="setCompareDate('camp')" style="min-width:130px">
+    </span>
     <div class="fsep"></div>
     <span class="filter-label">Vertical</span>
     <select class="fsel" id="camp-vertical-sel" onchange="setCampVertical()"><option value="ALL">All Verticals</option></select>
@@ -1168,7 +1184,7 @@ var H = {
   ads:     {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'ad_spend',  sortDesc:true, view:'sku', search:'', cmp:{on:false, from:'', to:''}},
   traffic: {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'views',     sortDesc:true, search:'', cmp:{on:false, from:'', to:''}},
   prod:    {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'net_sales', sortDesc:true, search:'', lifecycle:'ALL', range:'ALL', cmp:{on:false, from:'', to:''}},
-  camp:    {brand:'ALL', vertical:'ALL', month:'',   view:'campaign', sort:'spend', sortDesc:true, search:'', drill:null},
+  camp:    {brand:'ALL', vertical:'ALL', mode:'month', month:'', day:'', year:'', from:'', to:'', view:'campaign', sort:'spend', sortDesc:true, search:'', drill:null, cmp:{on:false, from:'', to:''}},
   placement: {brand:'ALL', type:'ALL', vertical:'ALL', month:'CURRENT', sort:'spend', sortDesc:true},
   // Stock tab state. docBucket filters the SKU table to one of:
   //   ALL, CRITICAL (<15d), LOW (15-30d), HEALTHY (30-60d), OVER (60+d or ∞)
@@ -1664,6 +1680,18 @@ function populateHubDateSelectors() {
   applyTabDefault('traffic', daysT);
   // Product Analysis uses sales days (most accurate TACOS) with ads-day fallback
   applyTabDefault('prod',    daysS.length ? daysS : daysA);
+
+  // After defaults, restore ALL dropdown values from state so re-render
+  // doesn't revert any of them to the "Pick day" / "Pick month" placeholder.
+  // This is critical — populateHubDateSelectors runs on every render via renderAll,
+  // and innerHTML assignment clears any previously-set .value.
+  ['sales','ads','traffic','prod'].forEach(function(tab){
+    if (!H[tab]) return;
+    ['day','month','year','from','to'].forEach(function(k){
+      var el = document.getElementById(tab+'-'+k+'-sel');
+      if (el && H[tab][k]) el.value = H[tab][k];
+    });
+  });
 
   // Preset custom date bounds to the min/max available
   if (months.length) {
@@ -5435,11 +5463,20 @@ function sortProd(field) {
 function buildProdRankMap() {
   var m = {};
   if (!D || !D.latest || !D.latest.products) return m;
-  // Build FSN (PID) → SKU fallback map using SOH data (FSN column = FK PID)
+  // Build FSN/PID → SKU bridge from all available sources:
+  //   1) SOH data: by_sku[].fsn → sku
+  //   2) hub.skus: skus[].pid → sku (newer processor enrichment writes pid)
+  //   3) hub.skus: skus[].fsn → sku (fallback)
   var pidToSku = {};
   if (D.hub && D.hub.soh && D.hub.soh.by_sku) {
     D.hub.soh.by_sku.forEach(function(s){
       if (s.fsn && s.sku) pidToSku[s.fsn] = s.sku;
+    });
+  }
+  if (D.hub && D.hub.skus) {
+    D.hub.skus.forEach(function(s){
+      if (s.pid && s.sku && !pidToSku[s.pid]) pidToSku[s.pid] = s.sku;
+      if (s.fsn && s.sku && !pidToSku[s.fsn]) pidToSku[s.fsn] = s.sku;
     });
   }
   D.latest.products.forEach(function(p){
@@ -5527,14 +5564,14 @@ function renderProd() {
   var prevAnchor = winAnchor(prevWin);
   // CURRENT rank snapshotted at window's last day. When rank_history has data for
   // that day, we use it; otherwise we fall back to latest rank (skuToPid).
+  // Per-SKU fallback: if rankAtDay didn't find a snapshot for this SKU, use latest.
   var curRankMap = rankAtDay(curAnchor);
-  if (!Object.keys(curRankMap).length) {
-    // rank_history unavailable → fall back to latest
-    Object.keys(skuToPid).forEach(function(sku){
+  Object.keys(skuToPid).forEach(function(sku){
+    if (!curRankMap[sku]) {
       var r = skuToPid[sku];
       if (r.rank_v != null) curRankMap[sku] = {rank_v: r.rank_v, rank_sub: r.rank_sub};
-    });
-  }
+    }
+  });
   var prevRankMap = rankAtDay(prevAnchor);
   var rankMap = curRankMap;  // alias so downstream code continues to work
 
@@ -5973,21 +6010,87 @@ function populateCampMonthSelector() {
   var fsn = _fsn();
   if (!fsn || !fsn.months || !fsn.months.length) {
     sel.innerHTML = '<option value="">No FSN data</option>';
-    return;
+  } else {
+    var months = fsn.months.slice().sort().reverse();  // latest first
+    sel.innerHTML = months.map(function(m){
+      return '<option value="'+m+'">'+monthLabel(m)+'</option>';
+    }).join('');
+    // Default to latest (only if no day/custom mode active)
+    if (H.camp.mode === 'month' && (!H.camp.month || months.indexOf(H.camp.month) === -1)) {
+      H.camp.month = months[0];
+    }
+    sel.value = H.camp.month || '';
   }
-  var months = fsn.months.slice().sort().reverse();  // latest first
-  sel.innerHTML = months.map(function(m){
-    return '<option value="'+m+'">'+monthLabel(m)+'</option>';
-  }).join('');
-  // Default to latest
-  if (!H.camp.month || months.indexOf(H.camp.month) === -1) {
-    H.camp.month = months[0];
+
+  // ALSO populate camp-day-sel from hub.daily.campaigns dates (current month)
+  var daySel = document.getElementById('camp-day-sel');
+  if (daySel) {
+    var daySet = new Set();
+    if (D.hub && D.hub.daily && D.hub.daily.campaigns) {
+      D.hub.daily.campaigns.forEach(function(c){
+        Object.keys(c.days || {}).forEach(function(d){ daySet.add(d); });
+      });
+    }
+    var days = Array.from(daySet).sort();  // ascending
+    var dayOpts = '<option value="">—</option>' +
+      days.slice().reverse().map(function(d){
+        return '<option value="'+d+'">'+fmtDate(d)+'</option>';
+      }).join('');
+    daySel.innerHTML = dayOpts;
+    if (H.camp.mode === 'day' && H.camp.day) daySel.value = H.camp.day;
   }
-  sel.value = H.camp.month;
+  // Custom-range min/max bounds (optional nicety)
+  if (D.hub && D.hub.daily && D.hub.daily.campaigns) {
+    var allDays = new Set();
+    D.hub.daily.campaigns.forEach(function(c){ Object.keys(c.days||{}).forEach(function(d){allDays.add(d);}); });
+    var sortedDays = Array.from(allDays).sort();
+    if (sortedDays.length) {
+      var fromEl = document.getElementById('camp-from-sel');
+      var toEl   = document.getElementById('camp-to-sel');
+      if (fromEl) { fromEl.min = sortedDays[0]; fromEl.max = sortedDays[sortedDays.length-1]; }
+      if (toEl)   { toEl.min   = sortedDays[0]; toEl.max   = sortedDays[sortedDays.length-1]; }
+      if (H.camp.from) fromEl && (fromEl.value = H.camp.from);
+      if (H.camp.to)   toEl   && (toEl.value   = H.camp.to);
+    }
+  }
 }
 
 function setCampMonth() {
   H.camp.month = document.getElementById('camp-month-sel').value;
+  // Clear competing time selections — only one mode active at a time
+  H.camp.day = ''; H.camp.from = ''; H.camp.to = '';
+  var dSel = document.getElementById('camp-day-sel'); if (dSel) dSel.value = '';
+  var fSel = document.getElementById('camp-from-sel'); if (fSel) fSel.value = '';
+  var tSel = document.getElementById('camp-to-sel');   if (tSel) tSel.value = '';
+  H.camp.mode = 'month';
+  H.camp.drill = null;
+  renderCampaigns();
+}
+
+// Day-level filter — uses hub.daily.campaigns[*].days[YYYY-MM-DD] (current month only)
+function setCampDay() {
+  H.camp.day = document.getElementById('camp-day-sel').value;
+  if (!H.camp.day) { H.camp.mode = 'month'; renderCampaigns(); return; }
+  H.camp.month = ''; H.camp.from = ''; H.camp.to = '';
+  var mSel = document.getElementById('camp-month-sel'); if (mSel) mSel.value = '';
+  var fSel = document.getElementById('camp-from-sel'); if (fSel) fSel.value = '';
+  var tSel = document.getElementById('camp-to-sel');   if (tSel) tSel.value = '';
+  H.camp.mode = 'day';
+  H.camp.drill = null;
+  renderCampaigns();
+}
+
+// Custom date range — aggregates days within hub.daily.campaigns (current month).
+// For ranges crossing months, falls back to monthly granularity.
+function setCampCustom() {
+  var from = document.getElementById('camp-from-sel').value;
+  var to   = document.getElementById('camp-to-sel').value;
+  if (!from || !to) return;
+  H.camp.from = from; H.camp.to = to;
+  H.camp.day = ''; H.camp.month = '';
+  var dSel = document.getElementById('camp-day-sel'); if (dSel) dSel.value = '';
+  var mSel = document.getElementById('camp-month-sel'); if (mSel) mSel.value = '';
+  H.camp.mode = 'custom';
   H.camp.drill = null;
   renderCampaigns();
 }
@@ -6038,6 +6141,111 @@ function sortCamp(col) {
 function clearCampDrill() {
   H.camp.drill = null;
   document.getElementById('camp-drill-card').style.display = 'none';
+}
+
+// Navigate from an insight link (e.g. Ads tab's "Top Campaigns" block) into
+// the Campaigns tab with the chosen campaign pre-drilled. Switches tabs,
+// syncs the campaign view, and triggers a render.
+function gotoCampDrill(campaignId) {
+  H.camp.drill = campaignId;
+  H.camp.view  = 'campaign';
+  // Reset view buttons
+  ['camp-view-camp','camp-view-ag','camp-view-sku'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.classList.remove('active');
+  });
+  var cvc = document.getElementById('camp-view-camp'); if (cvc) cvc.classList.add('active');
+  // Switch to Campaigns tab — find the nav button
+  var navBtn = null;
+  document.querySelectorAll('.nav-tab').forEach(function(b){
+    if ((b.getAttribute('onclick')||'').indexOf("'campaigns'") >= 0) navBtn = b;
+  });
+  if (navBtn) showPage('campaigns', navBtn);
+  else safeRun(renderCampaigns, 'renderCampaigns');
+}
+
+// ── Campaign-level DAY window aggregation ───────────────────────────────
+// Aggregates hub.daily.campaigns[] across a day or day-range.
+// Note: daily data lives in hub.daily (current month only). For historical,
+// FSN monthly data is used via _campMonthData.
+// Returns same shape as _campMonthData: {campaigns, adgroups, skus, totals}
+// Note: adgroup-level daily data isn't available — adgroups[] returns empty.
+function _campDayWindowData(fromDay, toDay, brand, vertical) {
+  var daily = (D.hub && D.hub.daily) ? D.hub.daily : null;
+  if (!daily || !daily.campaigns) return {campaigns:[], adgroups:[], skus:[], totals:null};
+  var camps = [];
+  var totSp = 0, totRv = 0, totU = 0, totC = 0, totV = 0;
+  daily.campaigns.forEach(function(cObj){
+    var sp = 0, rv = 0, u = 0, cl = 0, vw = 0;
+    var days = cObj.days || {};
+    Object.keys(days).forEach(function(d){
+      if (d < fromDay || d > toDay) return;
+      var r = days[d];
+      sp += r.spend||0; rv += r.revenue||0; u += r.units||0; cl += r.clicks||0; vw += r.views||0;
+    });
+    if (sp === 0 && rv === 0 && u === 0 && cl === 0 && vw === 0) return;
+    totSp += sp; totRv += rv; totU += u; totC += cl; totV += vw;
+    camps.push({
+      id: cObj.id, name: cObj.name, brand: cObj.brand,
+      brand_mix: cObj.brand_mix || {},
+      spend: Math.round(sp), revenue: Math.round(rv),
+      roi: sp > 0 ? rv/sp : null,
+      units: u, clicks: cl, views: vw,
+      ctr: vw > 0 ? cl/vw*100 : null,
+      cvr: cl > 0 ? u/cl*100 : null,
+      sku_count: (cObj.skus||[]).length, adgroup_count: 0,
+      skus: cObj.skus || [], adgroups: [],
+    });
+  });
+
+  // Brand filter
+  if (brand && brand !== 'ALL') {
+    camps = camps.filter(function(c){
+      if (c.brand === brand) return true;
+      var bm = c.brand_mix || {};
+      return !!bm[brand];
+    });
+  }
+  // Vertical filter (via SKU→vertical from hub.skus)
+  if (vertical && vertical !== 'ALL' && D.hub && D.hub.skus) {
+    var vSet = new Set();
+    D.hub.skus.forEach(function(hs){
+      if (hs.vertical === vertical && hs.sku) vSet.add(hs.sku);
+    });
+    camps = camps.filter(function(c){
+      return (c.skus || []).some(function(s){ return vSet.has(s.sku || s); });
+    });
+  }
+
+  // Rebuild totals after filters
+  if (brand !== 'ALL' || (vertical && vertical !== 'ALL')) {
+    totSp = 0; totRv = 0; totU = 0; totC = 0; totV = 0;
+    camps.forEach(function(c){
+      totSp += c.spend; totRv += c.revenue; totU += c.units;
+      totC += c.clicks; totV += c.views;
+    });
+  }
+
+  camps.sort(function(a,b){ return b.spend - a.spend; });
+
+  // Totals — also need net_sales for TACOS. Pull from aggregateWindow if available.
+  var netSales = 0;
+  try {
+    var w = {granularity:'day', dayRange:[fromDay, toDay], months:new Set([fromDay.slice(0,7), toDay.slice(0,7)])};
+    if (fromDay === toDay) { w.singleDay = fromDay; delete w.dayRange; }
+    var agg = aggregateWindow(w, brand);
+    netSales = agg && agg.totals ? (agg.totals.sales || 0) : 0;
+  } catch(e) { netSales = 0; }
+
+  var totals = {
+    spend: totSp, revenue: totRv,
+    roi: totSp > 0 ? totRv/totSp : null,
+    units: totU, clicks: totC, views: totV,
+    net_sales: netSales,
+    tacos: netSales > 0 ? (totSp/netSales)*100 : null,
+  };
+  // Day-mode SKU breakdown not available (ads_daily is campaign-grain only).
+  // skus[] and adgroups[] remain empty — UI should fall back gracefully.
+  return {campaigns: camps, adgroups: [], skus: [], totals: totals};
 }
 
 // Build arrays for selected month, filtered by brand
@@ -6650,19 +6858,53 @@ function renderCampaigns() {
     return;
   }
 
-  // Make sure month is populated (in case this fires before populateCampMonthSelector)
-  if (!H.camp.month) H.camp.month = fsn.months[fsn.months.length - 1];
-  var month = H.camp.month;
-  var prevMonth = _prevMonth(month);
   var brand = H.camp.brand;
   var vertical = H.camp.vertical || 'ALL';
 
-  var cur  = _campMonthData(month, brand, vertical);
-  var prev = prevMonth ? _campMonthData(prevMonth, brand, vertical) : {campaigns:[], adgroups:[], skus:[], totals:null};
+  // Pick window source based on mode. Priority: custom > day > month.
+  // Custom compare (H.camp.cmp.on) handled separately below for prev window.
+  var cur, prev, winLabel;
+  var mode = H.camp.mode || 'month';
+  if (mode === 'day' && H.camp.day) {
+    cur = _campDayWindowData(H.camp.day, H.camp.day, brand, vertical);
+    // Default prev = previous day
+    var dt = new Date(H.camp.day + 'T00:00:00Z');
+    dt.setUTCDate(dt.getUTCDate() - 1);
+    var pd = dt.toISOString().slice(0,10);
+    prev = _campDayWindowData(pd, pd, brand, vertical);
+    winLabel = 'Day · ' + fmtDate(H.camp.day) + ' · vs ' + fmtDate(pd);
+  } else if (mode === 'custom' && H.camp.from && H.camp.to) {
+    cur = _campDayWindowData(H.camp.from, H.camp.to, brand, vertical);
+    // Prev = preceding equal-length window
+    var d1 = new Date(H.camp.from + 'T00:00:00Z');
+    var d2 = new Date(H.camp.to   + 'T00:00:00Z');
+    var lenMs = d2 - d1;
+    var pTo = new Date(d1.getTime() - 86400000);
+    var pFrom = new Date(pTo.getTime() - lenMs);
+    prev = _campDayWindowData(pFrom.toISOString().slice(0,10), pTo.toISOString().slice(0,10), brand, vertical);
+    winLabel = 'Custom · ' + fmtDate(H.camp.from) + ' → ' + fmtDate(H.camp.to);
+  } else {
+    // Default: month (use current selection, or latest available)
+    if (!H.camp.month) H.camp.month = fsn.months[fsn.months.length - 1];
+    var month = H.camp.month;
+    var prevMonth = _prevMonth(month);
+    cur = _campMonthData(month, brand, vertical);
+    prev = prevMonth ? _campMonthData(prevMonth, brand, vertical) : {campaigns:[], adgroups:[], skus:[], totals:null};
+    winLabel = monthLabel(month);
+  }
 
-  // Window label
+  // Custom compare override (user picked specific compare dates via vs… button)
+  if (H.camp.cmp && H.camp.cmp.on && H.camp.cmp.from && H.camp.cmp.to) {
+    prev = _campDayWindowData(H.camp.cmp.from, H.camp.cmp.to, brand, vertical);
+    winLabel += ' · vs ' + fmtDate(H.camp.cmp.from) + ' → ' + fmtDate(H.camp.cmp.to) + ' (custom)';
+  }
+
   document.getElementById('camp-window').textContent =
-    monthLabel(month) + (brand !== 'ALL' ? ' · '+brandShort(brand) : '') + ' · ' + cur.campaigns.length + ' campaigns';
+    winLabel + (brand !== 'ALL' ? ' · '+brandShort(brand) : '') + ' · ' + cur.campaigns.length + ' campaigns';
+
+  // For downstream code that expects `month` variable, use current month for chart rendering
+  var month = H.camp.month || (fsn.months[fsn.months.length - 1]);
+  var prevMonth = _prevMonth(month);
 
   // ── KPI tiles ──
   var t  = cur.totals  || {spend:0,revenue:0,roi:0,units:0,clicks:0,views:0,net_sales:0,tacos:null};
@@ -7484,10 +7726,6 @@ function renderOverview() {
     ovKpi('Clicks',    fmtImpr(t.clicks), 'traffic clicks',                               'var(--text2)',  pt ? makeDelta(t.clicks, pt.clicks) : null),
   ];
   document.getElementById('ov-hero-stats').innerHTML = kpis.join('');
-
-  // ── CROSS-TAB INSIGHTS (above analyses, brand + window aware) ──
-  try { renderOvCrossInsights(curWin, prevWin, brand, vertical); }
-  catch (err) { console.error('renderOvCrossInsights failed:', err); }
 
   // ── ANALYSIS SECTIONS from registry ──
   var container = document.getElementById('ov-analyses-container');
@@ -8390,22 +8628,6 @@ registerAnalysis({
   }
 });
 registerAnalysis({
-  id: 'placement', icon: '📍', title: 'Placement Insights',
-  render: function(curWin, prevWin) {
-    syncOvToTab('placement');
-    // Placement data is month-granular, stored in D.hub.fsn + D.hub.history.fsn
-    var brand = H.ov.brand || 'ALL';
-    moveAnalysisToOverview('placement', function(){
-      // Trigger a render of placement-insights into the mirror container
-      var body = document.getElementById('placement-analysis');
-      // Lightweight: call the existing renderPlacement() which populates placement-analysis
-      if (typeof renderPlacement === 'function') {
-        try { renderPlacement(); } catch(e) { console.error('placement render:', e); }
-      }
-    });
-  }
-});
-registerAnalysis({
   id: 'camp', icon: '🎯', title: 'Campaign Insights',
   render: function(curWin, prevWin) {
     syncOvToTab('camp');
@@ -8424,6 +8646,22 @@ registerAnalysis({
     var prev = _prevMonth(month) ? _campMonthData(_prevMonth(month), brand, H.camp.vertical) : {campaigns:[], adgroups:[], skus:[], totals:null};
     moveAnalysisToOverview('camp', function(){
       renderCampAnalysis(cur, prev, month);
+    });
+  }
+});
+registerAnalysis({
+  id: 'placement', icon: '📍', title: 'Placement Insights',
+  render: function(curWin, prevWin) {
+    syncOvToTab('placement');
+    // Placement data is month-granular, stored in D.hub.fsn + D.hub.history.fsn
+    var brand = H.ov.brand || 'ALL';
+    moveAnalysisToOverview('placement', function(){
+      // Trigger a render of placement-insights into the mirror container
+      var body = document.getElementById('placement-analysis');
+      // Lightweight: call the existing renderPlacement() which populates placement-analysis
+      if (typeof renderPlacement === 'function') {
+        try { renderPlacement(); } catch(e) { console.error('placement render:', e); }
+      }
     });
   }
 });

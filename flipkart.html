@@ -222,6 +222,7 @@ function checkPW(){
   <button class="nav-tab" onclick="showPage('ads',this)">📣 Ads</button>
   <button class="nav-tab" onclick="showPage('placement',this)">📍 Placement</button>
   <button class="nav-tab" onclick="showPage('stock',this)">📦 Stock</button>
+  <button class="nav-tab" onclick="showPage('prod',this)">🔬 Product Analysis</button>
   <button class="nav-tab" onclick="showPage('campaigns',this)">🎯 Campaigns</button>
   <button class="nav-tab" onclick="showPage('rankings',this)">🏆 Rankings</button>
   <button class="nav-tab" onclick="showPage('sp',this)">💰 SP Compliance</button>
@@ -256,6 +257,14 @@ function checkPW(){
     <input class="fsel" type="date" id="ov-to-sel" onchange="setOvTime('custom')" style="width:140px">
     <div class="fsep"></div>
     <button class="fbtn" onclick="clearOvTime()">Reset</button>
+    <div class="fsep"></div>
+    <span class="filter-label">Compare</span>
+    <button class="fbtn" id="ov-cmp-btn" onclick="toggleCompare('ov')" style="font-size:10px;padding:4px 8px" title="Compare against custom date range">vs…</button>
+    <span id="ov-cmp-inputs" style="display:none;align-items:center;gap:4px">
+      <input type="date" class="fsel" id="ov-cmp-from" onchange="setCompareDate('ov')" style="min-width:130px">
+      <span style="color:var(--text3);font-size:10px">→</span>
+      <input type="date" class="fsel" id="ov-cmp-to"   onchange="setCompareDate('ov')" style="min-width:130px">
+    </span>
     <div class="fsep"></div>
     <span class="filter-label">Vertical</span>
     <select class="fsel" id="ov-vertical-sel" onchange="setOvVertical()"><option value="ALL">All Verticals</option></select>
@@ -494,6 +503,14 @@ function checkPW(){
     <input type="date" class="fsel" id="sales-to-sel"   onchange="setHubTime('sales','custom')" style="min-width:135px">
     <button class="fbtn" onclick="clearHubTime('sales')" style="font-size:10px;padding:4px 8px">Reset</button>
     <div class="fsep"></div>
+    <span class="filter-label">Compare</span>
+    <button class="fbtn" id="sales-cmp-btn" onclick="toggleCompare('sales')" style="font-size:10px;padding:4px 8px" title="Compare against custom date range">vs…</button>
+    <span id="sales-cmp-inputs" style="display:none;align-items:center;gap:4px">
+      <input type="date" class="fsel" id="sales-cmp-from" onchange="setCompareDate('sales')" style="min-width:130px">
+      <span style="color:var(--text3);font-size:10px">→</span>
+      <input type="date" class="fsel" id="sales-cmp-to"   onchange="setCompareDate('sales')" style="min-width:130px">
+    </span>
+    <div class="fsep"></div>
     <span class="filter-label">Vertical</span>
     <select class="fsel" id="sales-vertical-sel" onchange="setHubVertical('sales')"><option value="ALL">All Verticals</option></select>
     <div class="fsep"></div>
@@ -567,6 +584,14 @@ function checkPW(){
     <span style="color:var(--text3);font-size:10px">→</span>
     <input type="date" class="fsel" id="ads-to-sel"   onchange="setHubTime('ads','custom')" style="min-width:135px">
     <button class="fbtn" onclick="clearHubTime('ads')" style="font-size:10px;padding:4px 8px">Reset</button>
+    <div class="fsep"></div>
+    <span class="filter-label">Compare</span>
+    <button class="fbtn" id="ads-cmp-btn" onclick="toggleCompare('ads')" style="font-size:10px;padding:4px 8px" title="Compare against custom date range">vs…</button>
+    <span id="ads-cmp-inputs" style="display:none;align-items:center;gap:4px">
+      <input type="date" class="fsel" id="ads-cmp-from" onchange="setCompareDate('ads')" style="min-width:130px">
+      <span style="color:var(--text3);font-size:10px">→</span>
+      <input type="date" class="fsel" id="ads-cmp-to"   onchange="setCompareDate('ads')" style="min-width:130px">
+    </span>
     <div class="fsep"></div>
     <span class="filter-label">View</span>
     <button class="fbtn active" id="ads-view-sku"    onclick="setAdsView('sku',this)">SKU</button>
@@ -826,9 +851,32 @@ function checkPW(){
     <button class="fbtn"        id="stk-doc-healthy"  onclick="setStockDoc('HEALTHY',this)" style="color:#5fd98a">Healthy 30–60d</button>
     <button class="fbtn"        id="stk-doc-over"     onclick="setStockDoc('OVER',this)" style="color:#6ab0ff">Overstock 60+d</button>
     <div class="fsep"></div>
-    <input type="text" id="stk-search" class="fsel" placeholder="Search SKU / title..." oninput="setStockSearch(this.value)" style="min-width:200px">
+    <input type="text" id="stk-search" class="fsel" placeholder="Search SKU / name / range..." oninput="setStockSearch(this.value)" style="min-width:200px">
     <div class="fsep"></div>
     <span id="stk-window-lbl" style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace"></span>
+  </div>
+  <!-- Secondary filter row: Lifecycle / Range / Status / Pipeline buckets -->
+  <div class="filters" style="margin-top:-10px;margin-bottom:14px">
+    <span class="filter-label">Lifecycle</span>
+    <select class="fsel" id="stk-lifecycle-sel" onchange="setStockLifecycle()" style="min-width:120px">
+      <option value="ALL">All</option>
+    </select>
+    <div class="fsep"></div>
+    <span class="filter-label">Range</span>
+    <select class="fsel" id="stk-range-sel" onchange="setStockRange()" style="min-width:140px">
+      <option value="ALL">All Ranges</option>
+    </select>
+    <div class="fsep"></div>
+    <span class="filter-label">Status</span>
+    <button class="fbtn active" id="stk-live-all"  onclick="setStockLive('ALL',this)">All</button>
+    <button class="fbtn" id="stk-live-live"        onclick="setStockLive('LIVE',this)" style="color:#5fd98a">Live (SOH&gt;0)</button>
+    <button class="fbtn" id="stk-live-dead"        onclick="setStockLive('DEAD',this)" style="color:#f05252">Dead (no stock, no sales)</button>
+    <button class="fbtn" id="stk-live-noSales"     onclick="setStockLive('NOSALES',this)" style="color:#f5a524">Has stock · zero sales</button>
+    <div class="fsep"></div>
+    <span class="filter-label">Pipeline</span>
+    <button class="fbtn" id="stk-pipe-inbound"    onclick="setStockPipe('INBOUND',this)" style="color:#4f8ef7">Inbound &gt; 0</button>
+    <button class="fbtn" id="stk-pipe-unsellable" onclick="setStockPipe('UNSELLABLE',this)" style="color:#f05252">Unsellable &gt; 0</button>
+    <button class="fbtn" id="stk-pipe-reset"      onclick="setStockPipe('ALL',this)">Reset</button>
   </div>
 
   <!-- KPI strip: total SOH, SKU/warehouse counts, critical-DoC count -->
@@ -861,18 +909,33 @@ function checkPW(){
     </div>
     <table>
       <thead><tr>
-        <th style="min-width:140px;cursor:pointer" onclick="setStockSort('sku')">SKU</th>
-        <th style="min-width:260px;cursor:pointer" onclick="setStockSort('title')">Title</th>
+        <th style="min-width:120px;cursor:pointer" onclick="setStockSort('sku')">SKU</th>
+        <th style="min-width:240px;cursor:pointer" onclick="setStockSort('name')">Name</th>
+        <th style="cursor:pointer" onclick="setStockSort('range')">Range</th>
         <th style="cursor:pointer" onclick="setStockSort('brand')">Brand</th>
-        <th class="num" style="cursor:pointer" onclick="setStockSort('soh')">SOH</th>
-        <th class="num" style="cursor:pointer" onclick="setStockSort('net_units')">30D Units</th>
-        <th class="num" style="cursor:pointer" onclick="setStockSort('drr')">DRR</th>
-        <th class="num" style="cursor:pointer" onclick="setStockSort('doc')">DoC</th>
-        <th class="num" style="cursor:pointer" onclick="setStockSort('whcount')">Warehouses</th>
-        <th style="min-width:80px">Detail</th>
+        <th class="num" style="cursor:pointer" onclick="setStockSort('soh')" title="Live on Website units (sellable stock)">SOH</th>
+        <th class="num" style="cursor:pointer" onclick="setStockSort('sales_7d')" title="Units sold in last 7 days">7D</th>
+        <th class="num" style="cursor:pointer" onclick="setStockSort('sales_30d')" title="Units sold in last 30 days">30D</th>
+        <th class="num" style="cursor:pointer" onclick="setStockSort('sales_90d')" title="Units sold in last 90 days">90D</th>
+        <th class="num" style="cursor:pointer" onclick="setStockSort('drr')" title="Daily Run Rate — avg daily units sold">DRR</th>
+        <th class="num" style="cursor:pointer" onclick="setStockSort('doc')" title="Days of Cover = SOH / DRR">DoC</th>
+        <th class="num" style="cursor:pointer" onclick="setStockSort('inbound')" title="Inbound pipeline (B2B + Transfers)">In</th>
+        <th class="num" style="cursor:pointer" onclick="setStockSort('reserved')" title="Reserved (orders + internal + returns processing)">Res</th>
+        <th class="num" style="cursor:pointer" onclick="setStockSort('unsellable')" title="Unsellable total (damaged + QC + catalog + returns reject + misc)">Uns</th>
+        <th class="num" style="cursor:pointer" onclick="setStockSort('whcount')">WHs</th>
+        <th style="min-width:70px">Detail</th>
       </tr></thead>
       <tbody id="stk-sku-body"></tbody>
     </table>
+  </div>
+
+  <!-- Pipeline / Unsellable insights card -->
+  <div class="card" style="margin-bottom:18px">
+    <div class="card-hdr">
+      <span class="card-title">💡 Stock Insights</span>
+      <span class="card-sub" id="stk-insights-sub"></span>
+    </div>
+    <div id="stk-insights" style="padding:12px"></div>
   </div>
 
   <!-- Warehouse breakdown detail (hidden until a SKU row's "Detail" is clicked) -->
@@ -906,6 +969,104 @@ function checkPW(){
   </div>
 </div>
 
+
+<!-- ═══ PRODUCT ANALYSIS TAB ═════════════════════════════════════════════ -->
+<!-- Deep per-SKU analysis with every key metric + Δ% vs a compared period.
+     Compared period defaults to the natural previous window (day → prev day,
+     month → prev month, year → prev year, custom → preceding equal-length
+     range). If the user enables custom compare (vs… button), those dates
+     override the auto-computed previous window — same logic as all other tabs. -->
+<div class="page" id="page-prod">
+  <div class="filters">
+    <span class="filter-label">Brand</span>
+    <button class="fbtn active" id="prod-brand-all" onclick="setHubFilter('prod','brand','ALL',this)">All</button>
+    <button class="fbtn ba"  onclick="setHubFilter('prod','brand','BARE ANATOMY',this)">BA</button>
+    <button class="fbtn cap" onclick="setHubFilter('prod','brand','Chemist at Play',this)">CAP</button>
+    <button class="fbtn ss"  onclick="setHubFilter('prod','brand','SunScoop',this)">SS</button>
+    <div class="fsep"></div>
+    <span class="filter-label">Day</span>
+    <select class="fsel" id="prod-day-sel" onchange="setHubTime('prod','day')"><option value="">—</option></select>
+    <span class="filter-label">Month</span>
+    <select class="fsel" id="prod-month-sel" onchange="setHubTime('prod','month')"><option value="">—</option></select>
+    <span class="filter-label">Year</span>
+    <select class="fsel" id="prod-year-sel" onchange="setHubTime('prod','year')"><option value="">—</option></select>
+    <div class="fsep"></div>
+    <span class="filter-label">Custom</span>
+    <input type="date" class="fsel" id="prod-from-sel" onchange="setHubTime('prod','custom')" style="min-width:135px">
+    <span style="color:var(--text3);font-size:10px">→</span>
+    <input type="date" class="fsel" id="prod-to-sel" onchange="setHubTime('prod','custom')" style="min-width:135px">
+    <button class="fbtn" onclick="clearHubTime('prod')" style="font-size:10px;padding:4px 8px">Reset</button>
+    <div class="fsep"></div>
+    <span class="filter-label">Compare</span>
+    <button class="fbtn" id="prod-cmp-btn" onclick="toggleCompare('prod')" style="font-size:10px;padding:4px 8px" title="Compare against custom date range">vs…</button>
+    <span id="prod-cmp-inputs" style="display:none;align-items:center;gap:4px">
+      <input type="date" class="fsel" id="prod-cmp-from" onchange="setCompareDate('prod')" style="min-width:130px">
+      <span style="color:var(--text3);font-size:10px">→</span>
+      <input type="date" class="fsel" id="prod-cmp-to"   onchange="setCompareDate('prod')" style="min-width:130px">
+    </span>
+    <div class="fsep"></div>
+    <span class="filter-label">Vertical</span>
+    <select class="fsel" id="prod-vertical-sel" onchange="setHubVertical('prod')"><option value="ALL">All Verticals</option></select>
+    <div class="fsep"></div>
+    <input class="fsearch" placeholder="Search SKU / name / range..." id="prod-search" oninput="H.prod.search=this.value.toLowerCase();renderProd()">
+    <div class="fsep"></div>
+    <span id="prod-window-lbl" style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace"></span>
+  </div>
+  <!-- Secondary filter: Lifecycle + Range dropdowns (populated dynamically) -->
+  <div class="filters" style="margin-top:-10px;margin-bottom:14px">
+    <span class="filter-label">Lifecycle</span>
+    <select class="fsel" id="prod-lifecycle-sel" onchange="H.prod.lifecycle=this.value;renderProd()" style="min-width:120px">
+      <option value="ALL">All</option>
+    </select>
+    <div class="fsep"></div>
+    <span class="filter-label">Range</span>
+    <select class="fsel" id="prod-range-sel" onchange="H.prod.range=this.value;renderProd()" style="min-width:140px">
+      <option value="ALL">All Ranges</option>
+    </select>
+  </div>
+
+  <!-- Hero KPI tiles: totals for current window + Δ vs compare -->
+  <div class="stat-grid" id="prod-kpi" style="grid-template-columns:repeat(auto-fill,minmax(145px,1fr))"></div>
+
+  <!-- Insights card -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-hdr">
+      <span class="card-title">💡 Product Insights</span>
+      <span class="card-sub" id="prod-insights-sub"></span>
+    </div>
+    <div id="prod-insights" style="padding:12px"></div>
+  </div>
+
+  <!-- Main SKU grid. Each metric column has two lines:
+         Row 1: current-window value (big, coloured)
+         Row 2: Δ% vs compared window (green/red with arrow) -->
+  <div class="card">
+    <div class="card-hdr">
+      <span class="card-title">🔬 Product Grid</span>
+      <span class="card-sub" id="prod-count-sub"></span>
+      <button class="fbtn" onclick="exportProdCsv()" style="margin-left:auto;font-size:11px">⬇ CSV</button>
+    </div>
+    <table>
+      <thead><tr>
+        <th style="min-width:120px;cursor:pointer" onclick="sortProd('sku')">SKU</th>
+        <th style="min-width:240px;cursor:pointer" onclick="sortProd('name')">Name</th>
+        <th style="cursor:pointer" onclick="sortProd('brand')">Brand</th>
+        <th class="num" style="cursor:pointer" onclick="sortProd('net_sales')" title="Net revenue (after cancellations and returns)">Sales</th>
+        <th class="num" style="cursor:pointer" onclick="sortProd('net_units')" title="Net units sold">Units</th>
+        <th class="num" style="cursor:pointer" onclick="sortProd('disc_pct')" title="Discount % = 1 - SP/MRP (latest)">Disc%</th>
+        <th class="num" style="cursor:pointer" onclick="sortProd('ad_spend')" title="Ad spend in window">Spend</th>
+        <th class="num" style="cursor:pointer" onclick="sortProd('tacos')" title="TACOS = Spend/NetSales — lower is better">TACOS</th>
+        <th class="num" style="cursor:pointer" onclick="sortProd('clicks')" title="Ad clicks">Clicks</th>
+        <th class="num" style="cursor:pointer" onclick="sortProd('cvr')" title="Traffic CVR = Sales/Views (uses traffic report units)">CVR%</th>
+        <th class="num" style="cursor:pointer" onclick="sortProd('rank_v')" title="Latest vertical rank from Rank Tracker">Rank</th>
+        <th class="num" style="cursor:pointer" onclick="sortProd('doc')" title="Days of Cover = SOH / DRR">DoC</th>
+        <th style="min-width:180px">Insights</th>
+      </tr></thead>
+      <tbody id="prod-body"></tbody>
+    </table>
+  </div>
+</div>
+
 <!-- ═══ TRAFFIC TAB ════════════════════════════════════════════════════ -->
 <div class="page" id="page-traffic">
   <div class="filters">
@@ -927,6 +1088,14 @@ function checkPW(){
     <span style="color:var(--text3);font-size:10px">→</span>
     <input type="date" class="fsel" id="traffic-to-sel"   onchange="setHubTime('traffic','custom')" style="min-width:135px">
     <button class="fbtn" onclick="clearHubTime('traffic')" style="font-size:10px;padding:4px 8px">Reset</button>
+    <div class="fsep"></div>
+    <span class="filter-label">Compare</span>
+    <button class="fbtn" id="traffic-cmp-btn" onclick="toggleCompare('traffic')" style="font-size:10px;padding:4px 8px" title="Compare against custom date range">vs…</button>
+    <span id="traffic-cmp-inputs" style="display:none;align-items:center;gap:4px">
+      <input type="date" class="fsel" id="traffic-cmp-from" onchange="setCompareDate('traffic')" style="min-width:130px">
+      <span style="color:var(--text3);font-size:10px">→</span>
+      <input type="date" class="fsel" id="traffic-cmp-to"   onchange="setCompareDate('traffic')" style="min-width:130px">
+    </span>
     <div class="fsep"></div>
     <span class="filter-label">Vertical</span>
     <select class="fsel" id="traffic-vertical-sel" onchange="setHubVertical('traffic')"><option value="ALL">All Verticals</option></select>
@@ -983,16 +1152,18 @@ function checkPW(){
 // Per-tab state — unified time model
 // mode: 'all' | 'day' | 'month' | 'year' | 'custom'
 var H = {
-  ov:      {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', vbSort:'roi'},
-  sales:   {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'net_sales', sortDesc:true, search:''},
-  ads:     {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'ad_spend',  sortDesc:true, view:'sku', search:''},
-  traffic: {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'views',     sortDesc:true, search:''},
+  ov:      {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', vbSort:'roi', cmp:{on:false, from:'', to:''}},
+  sales:   {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'net_sales', sortDesc:true, search:'', cmp:{on:false, from:'', to:''}},
+  ads:     {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'ad_spend',  sortDesc:true, view:'sku', search:'', cmp:{on:false, from:'', to:''}},
+  traffic: {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'views',     sortDesc:true, search:'', cmp:{on:false, from:'', to:''}},
+  prod:    {brand:'ALL', vertical:'ALL', mode:'all', day:'', month:'', year:'', from:'', to:'', sort:'net_sales', sortDesc:true, search:'', lifecycle:'ALL', range:'ALL', cmp:{on:false, from:'', to:''}},
   camp:    {brand:'ALL', vertical:'ALL', month:'',   view:'campaign', sort:'spend', sortDesc:true, search:'', drill:null},
   placement: {brand:'ALL', type:'ALL', vertical:'ALL', month:'CURRENT', sort:'spend', sortDesc:true},
   // Stock tab state. docBucket filters the SKU table to one of:
   //   ALL, CRITICAL (<15d), LOW (15-30d), HEALTHY (30-60d), OVER (60+d or ∞)
   // selectedSku drives the per-warehouse detail card (null = hidden).
   stock:   {brand:'ALL', warehouse:'ALL', docBucket:'ALL', search:'',
+            lifecycle:'ALL', range:'ALL', live:'ALL', pipe:'ALL',
             sort:'soh', sortDesc:true, selectedSku:null},
 };
 
@@ -1054,6 +1225,41 @@ try {
     Chart.defaults.plugins.tooltip.intersect = false;
   }
 } catch (e) { console.warn('chart defaults failed:', e); }
+
+// ── displayName: prefer Mapping_Sheet Clean Name over Flipkart's long marketing
+//    title. Every table/chart that shows a product name should route through this.
+//    Fallback to title (raw Flipkart name) and finally to the SKU itself.
+function displayName(s, maxLen) {
+  if (!s) return '—';
+  var name = s.clean_name || s.title || s.sku || '—';
+  if (maxLen && name.length > maxLen) name = name.slice(0, maxLen);
+  return name;
+}
+// For snapshot products (rankings/SP/ratings): same logic but field may be p.title only
+function pName(p, maxLen) {
+  if (!p) return '—';
+  var name = p.clean_name || p.title || p.pid || '—';
+  if (maxLen && name.length > maxLen) name = name.slice(0, maxLen);
+  return name;
+}
+function pTooltip(p) {
+  if (!p) return '';
+  var parts = [];
+  if (p.clean_name) parts.push(p.clean_name);
+  if (p.title && p.title !== p.clean_name) parts.push('FK: ' + p.title);
+  if (p.sku) parts.push('SKU: ' + p.sku);
+  if (p.pid) parts.push('PID: ' + p.pid);
+  return parts.join(' · ');
+}
+// For tooltips (the <td title="..."> on hover): always full raw data, both names
+function displayTooltip(s) {
+  if (!s) return '';
+  var parts = [];
+  if (s.clean_name) parts.push(s.clean_name);
+  if (s.title && s.title !== s.clean_name) parts.push('FK: ' + s.title);
+  if (s.sku) parts.push('SKU: ' + s.sku);
+  return parts.join(' · ');
+}
 
 function fmtCr(v) {
   if (v == null || isNaN(v) || v === 0) return '—';
@@ -1177,6 +1383,49 @@ function renderHubTab(tab) {
   else if (tab === 'ads') renderAds();
   else if (tab === 'traffic') renderTraffic();
   else if (tab === 'camp') renderCampaigns();
+  else if (tab === 'prod') renderProd();
+  else if (tab === 'ov')   renderOverview();
+}
+
+// ── Custom compare date handlers ───────────────────────────────────────────
+// Compare button toggles a "vs" mode: when ON, user picks any from/to and
+// that becomes the previous-window for comparison, overriding the automatic
+// previous-period inference in resolvePrevWindow. Works across all tabs
+// that use resolvePrevWindow (sales, ads, traffic, ov, prod).
+function toggleCompare(tab) {
+  if (!H[tab]) return;
+  H[tab].cmp = H[tab].cmp || {on:false, from:'', to:''};
+  H[tab].cmp.on = !H[tab].cmp.on;
+  var box = document.getElementById(tab + '-cmp-inputs');
+  var btn = document.getElementById(tab + '-cmp-btn');
+  if (box) box.style.display = H[tab].cmp.on ? 'inline-flex' : 'none';
+  if (btn) btn.classList.toggle('active', H[tab].cmp.on);
+  // If turning off, wipe the comparison dates too
+  if (!H[tab].cmp.on) {
+    H[tab].cmp.from = ''; H[tab].cmp.to = '';
+    var fi = document.getElementById(tab+'-cmp-from'); if (fi) fi.value = '';
+    var ti = document.getElementById(tab+'-cmp-to');   if (ti) ti.value = '';
+  }
+  renderHubTab(tab);
+}
+function setCompareDate(tab) {
+  if (!H[tab]) return;
+  var fromEl = document.getElementById(tab+'-cmp-from');
+  var toEl   = document.getElementById(tab+'-cmp-to');
+  var from = fromEl ? fromEl.value : '';
+  var to   = toEl   ? toEl.value   : '';
+  // If user picks only one date, use it for both (single-day compare)
+  if (from && !to) to = from;
+  if (to && !from) from = to;
+  H[tab].cmp = H[tab].cmp || {on:false, from:'', to:''};
+  H[tab].cmp.from = from;
+  H[tab].cmp.to   = to;
+  H[tab].cmp.on   = !!(from && to);
+  var box = document.getElementById(tab+'-cmp-inputs');
+  var btn = document.getElementById(tab+'-cmp-btn');
+  if (box) box.style.display = H[tab].cmp.on ? 'inline-flex' : 'none';
+  if (btn) btn.classList.toggle('active', H[tab].cmp.on);
+  renderHubTab(tab);
 }
 
 // ── Time filter handlers ────────────────────────────────────────────────────
@@ -1306,13 +1555,15 @@ function populateHubDateSelectors() {
       .concat(days.slice().reverse().map(function(d){ return '<option value="'+d+'">'+fmtDate(d)+'</option>'; })).join('');
   }
 
-  ['sales','ads','traffic'].forEach(function(tab){
+  ['sales','ads','traffic','prod'].forEach(function(tab){
     var mSel = document.getElementById(tab+'-month-sel'); if (mSel) mSel.innerHTML = monthOpts;
     var ySel = document.getElementById(tab+'-year-sel');  if (ySel) ySel.innerHTML = yearOpts;
   });
   var dS = document.getElementById('sales-day-sel');   if (dS) dS.innerHTML = dayOpts(daysS);
   var dT = document.getElementById('traffic-day-sel'); if (dT) dT.innerHTML = dayOpts(daysT);
   var dA = document.getElementById('ads-day-sel');     if (dA) dA.innerHTML = dayOpts(daysA);
+  // Prod tab day selector — prefer ads days (superset of sales) so every date with any data is pickable
+  var dP = document.getElementById('prod-day-sel');    if (dP) dP.innerHTML = dayOpts(daysA.length ? daysA : daysS);
 
   // Set DEFAULT = latest day (with data) on each tab, unless user already picked something.
   // Keeps dashboard meaningful on load instead of blank "pick a day" state.
@@ -1477,6 +1728,42 @@ function resolvePrevWindow(tab) {
   var hist = hub.history || {};
   var monthsAll = hist.months || [];
   var currentMonth = (hub.window && hub.window.from) ? hub.window.from.slice(0,7) : null;
+
+  // Custom compare override — if user set explicit compare dates, treat them
+  // as the previous window regardless of current mode. Supports single-day
+  // (from==to) and date-range comparisons.
+  if (state.cmp && state.cmp.on && state.cmp.from && state.cmp.to) {
+    var cFrom = state.cmp.from, cTo = state.cmp.to;
+    if (cFrom === cTo) {
+      return {granularity:'day', singleDay:cFrom, months:new Set([cFrom.slice(0,7)]),
+              label:fmtDate(cFrom)+' (custom)'};
+    }
+    var cFromM = cFrom.slice(0,7), cToM = cTo.slice(0,7);
+    var dailyAll = (hub.sales && hub.sales.daily) ? hub.sales.daily.map(function(d){return d.date;}) : [];
+    var histDaily = (hub.history && hub.history.sales_daily) ? hub.history.sales_daily.map(function(d){return d.date;}) : [];
+    var allDays = dailyAll.concat(histDaily);
+    var minD = allDays.length ? allDays.reduce(function(a,b){return a<b?a:b;}) : null;
+    var maxD = allDays.length ? allDays.reduce(function(a,b){return a>b?a:b;}) : null;
+    var coverable = minD && cFrom >= minD && cTo <= maxD;
+    if (coverable) {
+      var touched = new Set();
+      var it = cFrom.slice(0,7), endIt = cTo.slice(0,7);
+      while (it <= endIt) {
+        touched.add(it);
+        var yy = parseInt(it.slice(0,4),10), mm = parseInt(it.slice(5,7),10);
+        mm++; if (mm === 13) { mm = 1; yy++; }
+        it = yy + '-' + (mm<10?'0':'') + mm;
+      }
+      var daysIn = allDays.filter(function(d){ return d >= cFrom && d <= cTo; });
+      return {granularity:'day', dayRange:[cFrom, cTo], daysIn:daysIn,
+              months:touched, label:fmtDate(cFrom)+' → '+fmtDate(cTo)+' (custom)'};
+    } else {
+      var inR = monthsAll.filter(function(m){ return m >= cFromM && m <= cToM; });
+      if (!inR.length) return null;
+      return {granularity:'month', months:new Set(inR), monthsList:inR,
+              label:fmtDate(cFrom)+' → '+fmtDate(cTo)+' (custom)'};
+    }
+  }
 
   if (state.mode === 'day' && state.day) {
     // Previous day
@@ -1647,7 +1934,7 @@ function aggregateWindow(win, brand) {
     (hub.skus || []).forEach(function(s){
       if (brand && brand !== 'ALL' && s.brand !== brand) return;
       out.skus[s.sku] = {
-        sku: s.sku, title: s.title, brand: s.brand, pid: s.pid, url: s.url,
+        sku: s.sku, title: s.title, clean_name: s.clean_name, brand: s.brand, pid: s.pid, url: s.url,
         listing_id: s.listing_id || '',
         mrp: s.mrp, sp: s.sp,
         vertical: s.vertical || '', category: s.category || '',
@@ -1885,7 +2172,7 @@ function aggregateWindow(win, brand) {
     (hist.skus || []).forEach(function(s){
       if (brand && brand !== 'ALL' && s.brand !== brand) return;
       var hubS = hubBySku[s.sku] || {};
-      var agg = {sku:s.sku, title:s.title, brand:s.brand, pid:s.pid, url:s.url, mrp:s.mrp, sp:s.sp,
+      var agg = {sku:s.sku, title:s.title, clean_name:s.clean_name, brand:s.brand, pid:s.pid, url:s.url, mrp:s.mrp, sp:s.sp,
                  listing_id: hubS.listing_id || '',
                  vertical: s.vertical || hubS.vertical || '',
                  category: s.category || hubS.category || '',
@@ -2038,7 +2325,7 @@ function exportTabCsv(tab) {
 
   // Reduce to the most meaningful columns per tab
   var slim = rows.map(function(s){
-    var base = {sku:s.sku, title:s.title, brand:s.brand, vertical:s.vertical||'', mrp:s.mrp||'', sp:s.sp||''};
+    var base = {sku:s.sku, title:s.title, clean_name:s.clean_name, brand:s.brand, vertical:s.vertical||'', mrp:s.mrp||'', sp:s.sp||''};
     if (tab === 'sales')   Object.assign(base, {
       net_sales:s.sales, units:s.units, gmv:s.gmv, gross_units:s.gross_units,
       cancellations:s.cxl, returns:s.rtn
@@ -2093,7 +2380,7 @@ function exportCampaignsCsv() {
   } else {
     rows = cur.skus.map(function(s){
       return {
-        sku: s.sku, title: s.title, brand: s.brand,
+        sku: s.sku, title: s.title, clean_name: s.clean_name, brand: s.brand,
         spend: Math.round(s.spend||0), revenue: Math.round(s.revenue||0),
         roi: s.roi, units: s.units, direct_units: s.direct_units, indirect_units: s.indirect_units,
         clicks: s.clicks, views: s.views, cvr: s.cvr,
@@ -2200,10 +2487,10 @@ function exportSkuDailyCsv(metric) {
   var rows = [];
   var skuMeta = {};
   (hub.skus || []).forEach(function(s){
-    skuMeta[s.sku] = {title:s.title, brand:s.brand, vertical:s.vertical||''};
+    skuMeta[s.sku] = {title:s.title, clean_name:s.clean_name, brand:s.brand, vertical:s.vertical||''};
   });
   (hist.skus || []).forEach(function(s){
-    if (!(s.sku in skuMeta)) skuMeta[s.sku] = {title:s.title||'', brand:s.brand||'', vertical:s.vertical||''};
+    if (!(s.sku in skuMeta)) skuMeta[s.sku] = {title:s.title||'', clean_name:s.clean_name||'', brand:s.brand||'', vertical:s.vertical||''};
   });
 
   if (metric === 'sales') {
@@ -2625,7 +2912,7 @@ function renderSales() {
   var vertical = H.sales.vertical || 'ALL';
   if (vertical !== 'ALL') skusArr = skusArr.filter(function(s){ return s.vertical === vertical; });
   var q = (document.getElementById('sales-search')?.value || '').toLowerCase().trim();
-  if (q) skusArr = skusArr.filter(function(s){ return (s.sku||'').toLowerCase().includes(q) || (s.title||'').toLowerCase().includes(q); });
+  if (q) skusArr = skusArr.filter(function(s){ return (s.sku||'').toLowerCase().includes(q) || (s.title||'').toLowerCase().includes(q) || (s.clean_name||'').toLowerCase().includes(q); });
 
   // Enrich each SKU row
   skusArr.forEach(function(s){
@@ -2686,8 +2973,8 @@ function renderSales() {
     : skusArr.map(function(s){
         var link = fkProductUrl(s);
         var titleCell = link
-          ? '<a href="'+link+'" target="_blank" rel="noopener" style="color:var(--text2);text-decoration:none" title="Open on Flipkart">'+(s.title||'—').slice(0,50)+' ↗</a>'
-          : (s.title||'—').slice(0,50);
+          ? '<a href="'+link+'" target="_blank" rel="noopener" style="color:var(--text2);text-decoration:none" title="Open on Flipkart">'+displayName(s, 50)+' ↗</a>'
+          : displayName(s, 50);
         var skuCell = link
           ? '<a href="'+link+'" target="_blank" rel="noopener" class="pid" style="color:var(--accent);text-decoration:none">'+(s.sku||'—')+'</a>'
           : '<span class="pid">'+(s.sku||'—')+'</span>';
@@ -2697,7 +2984,7 @@ function renderSales() {
         var spark = sparkline(series, {width:80, height:22, stroke:'var(--green)'});
         return '<tr>' +
           '<td>'+skuCell+'</td>' +
-          '<td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(s.title||'')+'">'+titleCell+'</td>' +
+          '<td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+displayTooltip(s)+'">'+titleCell+'</td>' +
           '<td>'+brandPill(s.brand)+'</td>' +
           '<td style="font-size:10px;color:var(--text3);white-space:nowrap">'+(s.vertical||'—')+'</td>' +
           '<td style="text-align:right;font-family:Courier New,monospace">'+(s.mrp?'₹'+s.mrp:'—')+'</td>' +
@@ -2923,7 +3210,7 @@ function renderAds() {
     var vertical = H.ads.vertical || 'ALL';
     if (vertical !== 'ALL') rowsSkus = rowsSkus.filter(function(s){ return s.vertical === vertical; });
     var q = (document.getElementById('ads-search')?.value || '').toLowerCase().trim();
-    if (q) rowsSkus = rowsSkus.filter(function(s){ return (s.sku||'').toLowerCase().includes(q) || (s.title||'').toLowerCase().includes(q); });
+    if (q) rowsSkus = rowsSkus.filter(function(s){ return (s.sku||'').toLowerCase().includes(q) || (s.title||'').toLowerCase().includes(q) || (s.clean_name||'').toLowerCase().includes(q); });
 
     // Rescale per-SKU ad values so sums match KPI tiles (canonical from hub.daily.days)
     reconcileAdsToCanon(rowsSkus, curWin, brand);
@@ -2963,14 +3250,14 @@ function renderAds() {
           var tacosCol = s.tacos > 30 ? 'var(--red)' : s.tacos > 20 ? 'var(--orange)' : 'var(--text2)';
           var link = fkProductUrl(s);
           var titleCell = link
-            ? '<a href="'+link+'" target="_blank" rel="noopener" style="color:var(--text2);text-decoration:none" title="Open on Flipkart">'+(s.title||'—').slice(0,50)+' ↗</a>'
-            : (s.title||'—').slice(0,50);
+            ? '<a href="'+link+'" target="_blank" rel="noopener" style="color:var(--text2);text-decoration:none" title="Open on Flipkart">'+displayName(s, 50)+' ↗</a>'
+            : displayName(s, 50);
           var skuCell = link
             ? '<a href="'+link+'" target="_blank" rel="noopener" class="pid" style="color:var(--accent);text-decoration:none">'+(s.sku||'—')+'</a>'
             : '<span class="pid">'+(s.sku||'—')+'</span>';
           return '<tr>' +
             '<td>'+skuCell+'</td>' +
-            '<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(s.title||'')+'">'+titleCell+'</td>' +
+            '<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+displayTooltip(s)+'">'+titleCell+'</td>' +
             '<td>'+brandPill(s.brand)+'</td>' +
             '<td style="font-size:10px;color:var(--text3);white-space:nowrap">'+(s.vertical||'—')+'</td>' +
             '<td style="text-align:right;font-family:Courier New,monospace;color:var(--red)">'+fmtCr(s.ad_spend)+'</td>' +
@@ -3248,7 +3535,7 @@ function renderTraffic() {
   var vertical = H.traffic.vertical || 'ALL';
   if (vertical !== 'ALL') skus = skus.filter(function(s){ return s.vertical === vertical; });
   var q = (document.getElementById('traffic-search')?.value || '').toLowerCase().trim();
-  if (q) skus = skus.filter(function(s){ return (s.sku||'').toLowerCase().includes(q) || (s.title||'').toLowerCase().includes(q); });
+  if (q) skus = skus.filter(function(s){ return (s.sku||'').toLowerCase().includes(q) || (s.title||'').toLowerCase().includes(q) || (s.clean_name||'').toLowerCase().includes(q); });
 
   skus.forEach(function(s){
     s.ctr = s.views > 0 ? s.clicks/s.views*100 : null;
@@ -3273,14 +3560,14 @@ function renderTraffic() {
     : skus.map(function(s){
         var link = fkProductUrl(s);
         var titleCell = link
-          ? '<a href="'+link+'" target="_blank" rel="noopener" style="color:var(--text2);text-decoration:none" title="Open on Flipkart">'+(s.title||'—').slice(0,55)+' ↗</a>'
-          : (s.title||'—').slice(0,55);
+          ? '<a href="'+link+'" target="_blank" rel="noopener" style="color:var(--text2);text-decoration:none" title="Open on Flipkart">'+displayName(s, 55)+' ↗</a>'
+          : displayName(s, 55);
         var skuCell = link
           ? '<a href="'+link+'" target="_blank" rel="noopener" class="pid" style="color:var(--accent);text-decoration:none">'+(s.sku||'—')+'</a>'
           : '<span class="pid">'+(s.sku||'—')+'</span>';
         return '<tr>' +
           '<td>'+skuCell+'</td>' +
-          '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(s.title||'')+'">'+titleCell+'</td>' +
+          '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+displayTooltip(s)+'">'+titleCell+'</td>' +
           '<td>'+brandPill(s.brand)+'</td>' +
           '<td style="font-size:10px;color:var(--text3);white-space:nowrap">'+(s.vertical||'—')+'</td>' +
           '<td style="text-align:right;font-family:Courier New,monospace;color:var(--purple);font-weight:700">'+fmtImpr(s.views)+'</td>' +
@@ -3388,7 +3675,7 @@ function renderSalesAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical) 
   // Top 5 by sales
   var top = skuArr.slice().sort(function(a,b){return b.sales-a.sales;}).slice(0,5);
   html += '<div>' + insightBlock('🏆 Top 5 by Sales', 'var(--green)',
-    top.map(function(s){ var p=prevSkus[s.sku]||{sales:0}; return cmpSkuLine(s.sku, s.title, s.sales, p.sales, fmtCr); })
+    top.map(function(s){ var p=prevSkus[s.sku]||{sales:0}; return cmpSkuLine(s.sku, displayName(s), s.sales, p.sales, fmtCr); })
   ) + '</div>';
 
   // Biggest gainers — ranked by ABSOLUTE ₹ delta, not % growth, and only SKUs
@@ -3399,7 +3686,7 @@ function renderSalesAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical) 
     .sort(function(a,b){ return b.delta - a.delta; }).slice(0,5);
   if (gainers.length) {
     html += '<div>' + insightBlock('📈 Biggest Gainers (₹ growth)', 'var(--green)',
-      gainers.map(function(g){ return cmpSkuLine(g.s.sku, g.s.title, g.cur, g.prev, fmtCr); })
+      gainers.map(function(g){ return cmpSkuLine(g.s.sku, displayName(g.s), g.cur, g.prev, fmtCr); })
     ) + '</div>';
   }
 
@@ -3409,7 +3696,7 @@ function renderSalesAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical) 
     .sort(function(a,b){ return a.delta - b.delta; }).slice(0,5);
   if (decliners.length) {
     html += '<div>' + insightBlock('📉 Biggest Decliners (₹ drop)', 'var(--red)',
-      decliners.map(function(g){ return cmpSkuLine(g.s.sku, g.s.title, g.cur, g.prev, fmtCr); })
+      decliners.map(function(g){ return cmpSkuLine(g.s.sku, displayName(g.s), g.cur, g.prev, fmtCr); })
     ) + '</div>';
   }
 
@@ -3467,14 +3754,14 @@ function renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical) {
   // Top spenders — ALWAYS shown (no threshold). This is the main fallback so card never renders empty.
   var topSpend = skuArr.slice().sort(function(a,b){return b.ad_spend-a.ad_spend;}).slice(0,5);
   html += '<div>' + insightBlock('💰 Top Spenders', 'var(--red)',
-    topSpend.map(function(s){ var p=prevSkus[s.sku]||{ad_spend:0}; return cmpSkuLine(s.sku, s.title, s.ad_spend, p.ad_spend, fmtCr, true); })
+    topSpend.map(function(s){ var p=prevSkus[s.sku]||{ad_spend:0}; return cmpSkuLine(s.sku, displayName(s), s.ad_spend, p.ad_spend, fmtCr, true); })
   ) + '</div>';
 
   // Worst ROI (spend threshold)
   var worstRoi = skuArr.filter(function(s){return s.ad_spend>=highSpendCut && s.ad_roi!=null;}).sort(function(a,b){return a.ad_roi-b.ad_roi;}).slice(0,5);
   if (worstRoi.length) {
     html += '<div>' + insightBlock('🩸 Worst ROI (Spend ' + highSpendLabel + ')', 'var(--red)',
-      worstRoi.map(function(s){ return cmpSkuLine(s.sku, s.title, s.ad_roi, prevRoi(s.sku), function(v){return v!=null?v.toFixed(2)+'x':'—';}); })
+      worstRoi.map(function(s){ return cmpSkuLine(s.sku, displayName(s), s.ad_roi, prevRoi(s.sku), function(v){return v!=null?v.toFixed(2)+'x':'—';}); })
     ) + '</div>';
   }
 
@@ -3482,7 +3769,7 @@ function renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical) {
   var highTacos = skuArr.filter(function(s){return s.tacos!=null && s.ad_spend>=highSpendCut;}).sort(function(a,b){return b.tacos-a.tacos;}).slice(0,5);
   if (highTacos.length) {
     html += '<div>' + insightBlock('🚨 High TACOS (Spend ' + highSpendLabel + ')', 'var(--orange)',
-      highTacos.map(function(s){ return cmpSkuLine(s.sku, s.title, s.tacos, prevTacos(s.sku), function(v){return v!=null?v.toFixed(1)+'%':'—';}, true); })
+      highTacos.map(function(s){ return cmpSkuLine(s.sku, displayName(s), s.tacos, prevTacos(s.sku), function(v){return v!=null?v.toFixed(1)+'%':'—';}, true); })
     ) + '</div>';
   }
 
@@ -3607,13 +3894,13 @@ function renderTrafficAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical
   // Top by views
   var topViews = skuArr.slice().sort(function(a,b){return b.views-a.views;}).slice(0,5);
   html += '<div>' + insightBlock('👁️ Top Viewed SKUs', 'var(--purple)',
-    topViews.map(function(s){ var p=prevSkus[s.sku]||{views:0}; return cmpSkuLine(s.sku, s.title, s.views, p.views, fmtImpr); })
+    topViews.map(function(s){ var p=prevSkus[s.sku]||{views:0}; return cmpSkuLine(s.sku, displayName(s), s.views, p.views, fmtImpr); })
   ) + '</div>';
 
   // Top by clicks
   var topClicks = skuArr.slice().sort(function(a,b){return b.clicks-a.clicks;}).slice(0,5);
   html += '<div>' + insightBlock('🖱️ Top Clicked', 'var(--accent)',
-    topClicks.map(function(s){ var p=prevSkus[s.sku]||{clicks:0}; return cmpSkuLine(s.sku, s.title, s.clicks, p.clicks, fmtImpr); })
+    topClicks.map(function(s){ var p=prevSkus[s.sku]||{clicks:0}; return cmpSkuLine(s.sku, displayName(s), s.clicks, p.clicks, fmtImpr); })
   ) + '</div>';
 
   // Top CVR — purchases / clicks. More actionable than CTR because it signals
@@ -3623,7 +3910,7 @@ function renderTrafficAnalysis(curAgg, prevAgg, curWin, prevWin, brand, vertical
     var topCvr = cvrAvail.slice().sort(function(a,b){return b.cvr - a.cvr;}).slice(0,5);
     html += '<div>' + insightBlock('🎯 Top CVR (clicks>100)', 'var(--green)',
       topCvr.map(function(s){ var p=prevSkus[s.sku]||{}; var pCvr = (p.clicks>0) ? (p.traffic_sales||0)/p.clicks*100 : null;
-        return cmpSkuLine(s.sku, s.title, s.cvr, pCvr, function(v){return v!=null?v.toFixed(2)+'%':'—';}); })
+        return cmpSkuLine(s.sku, displayName(s), s.cvr, pCvr, function(v){return v!=null?v.toFixed(2)+'%':'—';}); })
     ) + '</div>';
   }
 
@@ -3735,12 +4022,14 @@ function buildSearchPools() {
   // SKU + title from hub.skus (current) and history.skus (discontinued)
   var skuEntries = [];
   (hub.skus || []).forEach(function(s){
-    if (s.sku) skuEntries.push({label: s.sku, type: 'SKU', sub: s.title || ''});
-    if (s.title) skuEntries.push({label: String(s.title).slice(0, 90), type: 'Product', sub: s.sku || ''});
+    if (s.sku) skuEntries.push({label: s.sku, type: 'SKU', sub: s.clean_name || s.title || ''});
+    if (s.clean_name) skuEntries.push({label: s.clean_name, type: 'Product', sub: s.sku || ''});
+    if (s.title && s.title !== s.clean_name) skuEntries.push({label: String(s.title).slice(0, 90), type: 'FK Title', sub: s.sku || ''});
   });
   (hist.skus || []).forEach(function(s){
-    if (s.sku) skuEntries.push({label: s.sku, type: 'SKU', sub: s.title || ''});
-    if (s.title) skuEntries.push({label: String(s.title).slice(0, 90), type: 'Product', sub: s.sku || ''});
+    if (s.sku) skuEntries.push({label: s.sku, type: 'SKU', sub: s.clean_name || s.title || ''});
+    if (s.clean_name) skuEntries.push({label: s.clean_name, type: 'Product', sub: s.sku || ''});
+    if (s.title && s.title !== s.clean_name) skuEntries.push({label: String(s.title).slice(0, 90), type: 'FK Title', sub: s.sku || ''});
   });
 
   // Campaign + adgroup names
@@ -4053,6 +4342,7 @@ function showPage(name, btn) {
   if (name === 'campaigns' && D) safeRun(renderCampaigns, 'renderCampaigns');
   if (name === 'placement' && D) safeRun(renderPlacement, 'renderPlacement');
   if (name === 'stock'     && D) safeRun(renderStock,     'renderStock');
+  if (name === 'prod'      && D) safeRun(renderProd,      'renderProd');
 }
 
 function safeRun(fn,name){try{fn();}catch(e){console.error(name+' failed:',e);}}
@@ -4074,7 +4364,9 @@ function renderAll(){
   safeRun(renderCampaigns,'renderCampaigns');
   safeRun(renderPlacement,'renderPlacement');
   safeRun(populateStockWarehouseSelector, 'populateStockWarehouseSelector');
+  safeRun(populateStockMetadata, 'populateStockMetadata');
   safeRun(renderStock, 'renderStock');
+  safeRun(renderProd, 'renderProd');
   // Re-render Overview now that tab data is ready (registry-driven analyses
   // need all the per-tab render functions to exist first)
   safeRun(renderOverview,'renderOverview-final');
@@ -4109,6 +4401,7 @@ function setStockBrand(v, btn) {
   });
   if (btn) btn.classList.add('active');
   populateStockWarehouseSelector();  // warehouse list is brand-dependent
+  populateStockMetadata();           // lifecycle + range options are brand-dependent
   renderStock();
 }
 function setStockWarehouse() {
@@ -4134,6 +4427,69 @@ function setStockSort(field) {
   if (H.stock.sort === field) H.stock.sortDesc = !H.stock.sortDesc;
   else { H.stock.sort = field; H.stock.sortDesc = true; }
   renderStock();
+}
+function setStockLifecycle() {
+  var sel = document.getElementById('stk-lifecycle-sel');
+  H.stock.lifecycle = sel ? sel.value : 'ALL';
+  renderStock();
+}
+function setStockRange() {
+  var sel = document.getElementById('stk-range-sel');
+  H.stock.range = sel ? sel.value : 'ALL';
+  renderStock();
+}
+function setStockLive(v, btn) {
+  H.stock.live = v;
+  ['all','live','dead','noSales'].forEach(k => {
+    var el = document.getElementById('stk-live-'+k);
+    if (el) el.classList.remove('active');
+  });
+  if (btn) btn.classList.add('active');
+  else {
+    var keyMap = {'ALL':'all','LIVE':'live','DEAD':'dead','NOSALES':'noSales'};
+    var el = document.getElementById('stk-live-'+keyMap[v]);
+    if (el) el.classList.add('active');
+  }
+  renderStock();
+}
+function setStockPipe(v, btn) {
+  H.stock.pipe = v;
+  ['inbound','unsellable','reset'].forEach(k => {
+    var el = document.getElementById('stk-pipe-'+k);
+    if (el) el.classList.remove('active');
+  });
+  if (btn && v !== 'ALL') btn.classList.add('active');
+  renderStock();
+}
+
+// Populate Lifecycle + Range dropdowns from the by_sku data
+function populateStockMetadata() {
+  if (!D || !D.hub || !D.hub.soh || !D.hub.soh.by_sku) return;
+  var brand = H.stock.brand;
+  var lifecycles = {}, ranges = {};
+  (D.hub.soh.by_sku || []).forEach(function(s){
+    if (brand !== 'ALL' && s.brand !== brand) return;
+    if (s.lifecycle) lifecycles[s.lifecycle] = (lifecycles[s.lifecycle]||0) + 1;
+    if (s.range)     ranges[s.range]         = (ranges[s.range]||0) + 1;
+  });
+  var lSel = document.getElementById('stk-lifecycle-sel');
+  if (lSel) {
+    var curL = H.stock.lifecycle;
+    var lOpts = ['<option value="ALL">All</option>'];
+    Object.keys(lifecycles).sort().forEach(function(l) {
+      lOpts.push('<option value="'+escHtml(l)+'"'+(curL===l?' selected':'')+'>'+escHtml(l)+' ('+lifecycles[l]+')</option>');
+    });
+    lSel.innerHTML = lOpts.join('');
+  }
+  var rSel = document.getElementById('stk-range-sel');
+  if (rSel) {
+    var curR = H.stock.range;
+    var rOpts = ['<option value="ALL">All Ranges</option>'];
+    Object.keys(ranges).sort().forEach(function(r) {
+      rOpts.push('<option value="'+escHtml(r)+'"'+(curR===r?' selected':'')+'>'+escHtml(r)+' ('+ranges[r]+')</option>');
+    });
+    rSel.innerHTML = rOpts.join('');
+  }
 }
 function closeStockDetail() {
   H.stock.selectedSku = null;
@@ -4195,18 +4551,23 @@ function populateStockWarehouseSelector() {
 function exportStockCSV() {
   if (!D || !D.hub || !D.hub.soh) return;
   var rows = buildStockRows();
-  var hdr = ['SKU','Title','Brand','SOH','30D Units','DRR','DoC (days)','Warehouses','Warehouse Split'];
+  var hdr = ['SKU','Clean Name','FK Title','Range','Lifecycle','Brand','SOH',
+             '7D Units','30D Units','90D Units','DRR','DoC (days)',
+             'Inbound','Reserved','Unsellable','Damaged','QC Reject',
+             'Live on Website','Dead Listing','Warehouses','Warehouse Split'];
   var lines = [hdr.join(',')];
+  function q(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
   rows.forEach(function(r) {
     var whSplit = (r.warehouses || []).map(function(w){ return w.warehouse+':'+w.soh; }).join('|');
     lines.push([
-      '"'+(r.sku||'').replace(/"/g,'""')+'"',
-      '"'+(r.title||'').replace(/"/g,'""')+'"',
-      '"'+(r.brand||'').replace(/"/g,'""')+'"',
-      r.soh||0, r.net_units||0,
+      q(r.sku), q(r.clean_name||''), q(r.title||''), q(r.range||''), q(r.lifecycle||''),
+      q(r.brand||''),
+      r.soh||0, r.sales_7d||0, r.sales_30d||0, r.sales_90d||0,
       r.drr!=null?r.drr.toFixed(2):'', r.doc!=null?r.doc.toFixed(1):'',
+      r.inbound||0, r.reserved||0, r.unsellable||0, r.damaged||0, r.qc_reject||0,
+      r.live ? 'Yes' : 'No', r.dead ? 'Yes' : 'No',
       (r.warehouses||[]).length,
-      '"'+whSplit+'"'
+      q(whSplit)
     ].join(','));
   });
   var blob = new Blob([lines.join('\n')], {type:'text/csv'});
@@ -4214,6 +4575,142 @@ function exportStockCSV() {
   a.href = URL.createObjectURL(blob);
   a.download = 'fk_stock_' + (D.hub.soh.date_snapshot||'export') + '.csv';
   a.click();
+}
+
+// ── Stock insights: surface pipeline/dead-listing/velocity anomalies ──
+function renderStockInsights(rows, soh) {
+  var el = document.getElementById('stk-insights');
+  var sub = document.getElementById('stk-insights-sub');
+  if (!el) return;
+
+  // Totals across the filtered pool
+  var totals = (soh && soh.totals) || {};
+  var totalUns     = rows.reduce(function(s,r){return s + (r.unsellable||0);}, 0);
+  var totalDamaged = rows.reduce(function(s,r){return s + (r.damaged||0);}, 0);
+  var totalInbound = rows.reduce(function(s,r){return s + (r.inbound||0);}, 0);
+  var totalReserved= rows.reduce(function(s,r){return s + (r.reserved||0);}, 0);
+
+  // ── Velocity shift: compare 7D daily rate vs 30D daily rate (declining products) ──
+  var velocityDrops = rows.filter(function(r){
+    return r.sales_30d >= 30 && r.soh > 0;   // filter noise
+  }).map(function(r){
+    var drr7 = r.sales_7d / 7.0;
+    var drr30 = r.sales_30d / 30.0;
+    var delta = drr30 > 0 ? ((drr7 - drr30) / drr30) * 100 : 0;
+    return Object.assign({}, r, {drr7:drr7, drr30:drr30, delta:delta});
+  }).filter(function(r){ return r.delta < -30; })   // >30% drop in last 7d vs 30d avg
+    .sort(function(a,b){ return a.delta - b.delta; })
+    .slice(0, 10);
+
+  // ── Velocity surge: products trending up fast (stock at risk) ──
+  var velocitySurge = rows.filter(function(r){
+    return r.sales_30d >= 30 && r.soh > 0;
+  }).map(function(r){
+    var drr7 = r.sales_7d / 7.0;
+    var drr30 = r.sales_30d / 30.0;
+    var delta = drr30 > 0 ? ((drr7 - drr30) / drr30) * 100 : 0;
+    // New DoC under accelerated rate
+    var projDoc = drr7 > 0 ? r.soh / drr7 : null;
+    return Object.assign({}, r, {drr7:drr7, drr30:drr30, delta:delta, projDoc:projDoc});
+  }).filter(function(r){ return r.delta > 40 && r.projDoc != null && r.projDoc < 30; })
+    .sort(function(a,b){ return b.delta - a.delta; })
+    .slice(0, 10);
+
+  // ── Unsellable concentration: SKUs with high unsellable counts ──
+  var topUnsellable = rows.filter(function(r){ return r.unsellable > 20; })
+    .sort(function(a,b){ return b.unsellable - a.unsellable; })
+    .slice(0, 10);
+
+  // ── Dead listings: no stock, no sales (from full SOH, not filtered rows) ──
+  var deadList = rows.filter(function(r){ return r.dead; }).slice(0, 15);
+
+  // ── Stock but no sales: has SOH but zero 30D sales (expensive to hold) ──
+  var stagnant = rows.filter(function(r){
+    return r.live && r.sales_30d === 0 && r.soh > 10;
+  }).sort(function(a,b){ return b.soh - a.soh; }).slice(0, 10);
+
+  function row(sku, name, val, color, extra) {
+    return '<div class="an-row">'+
+      '<div class="an-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+
+        '<span style="font-family:Courier New,monospace;font-size:10px;color:var(--text3);margin-right:6px">'+escHtml(sku)+'</span>'+
+        escHtml(name || '—')+
+      '</div>'+
+      '<span class="an-val" style="color:'+(color||'var(--text)')+';font-weight:700;white-space:nowrap">'+val+(extra?' <span style="color:var(--text3);font-weight:400;font-size:10px">'+extra+'</span>':'')+'</span>'+
+    '</div>';
+  }
+  function section(title, icon, color, html) {
+    return '<div style="margin-bottom:14px">'+
+      '<div style="font-size:11px;font-weight:700;color:'+color+';margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">'+
+        icon+' '+title+
+      '</div>'+(html || '<div style="color:var(--text3);font-size:11px;padding:4px 0">—</div>')+'</div>';
+  }
+
+  var cols = [];
+
+  // Column 1: Urgency (critical + surging velocity)
+  var critNow = rows.filter(function(r){ return r.bucket === 'CRITICAL'; })
+    .sort(function(a,b){ return (a.doc==null?99:a.doc) - (b.doc==null?99:b.doc); })
+    .slice(0, 10);
+  var c1 = '';
+  c1 += section('Critical DoC (<15d)', '🔥', '#f05252',
+    critNow.map(function(r){
+      return row(r.sku, r.clean_name||r.title, fmtDoc(r.doc), '#f05252',
+                 'DRR '+r.drr.toFixed(1)+'/d · SOH '+fmtUnits(r.soh));
+    }).join(''));
+  c1 += section('Velocity Surge (7d vs 30d, risk of stockout)', '📈', '#f5a524',
+    velocitySurge.map(function(r){
+      return row(r.sku, r.clean_name||r.title, '+'+r.delta.toFixed(0)+'%', '#f5a524',
+                 'proj DoC '+r.projDoc.toFixed(0)+'d');
+    }).join(''));
+  cols.push('<div>'+c1+'</div>');
+
+  // Column 2: Waste (dead + unsellable + stagnant)
+  var c2 = '';
+  c2 += section('Dead Listings (0 SOH · 0 30D sales)', '💀', '#8892a4',
+    deadList.map(function(r){
+      return row(r.sku, r.clean_name||r.title, '0', '#f05252', 'inbound '+r.inbound);
+    }).join(''));
+  c2 += section('Top Unsellable', '⚠️', '#f05252',
+    topUnsellable.map(function(r){
+      var parts = [];
+      if (r.damaged)  parts.push('dmg '+r.damaged);
+      if (r.qc_reject) parts.push('qc '+r.qc_reject);
+      return row(r.sku, r.clean_name||r.title, fmtUnits(r.unsellable), '#f05252', parts.join(' · '));
+    }).join(''));
+  c2 += section('Stagnant (SOH>10 · 0 30D sales)', '🧊', '#f5a524',
+    stagnant.map(function(r){
+      return row(r.sku, r.clean_name||r.title, fmtUnits(r.soh), '#f5a524', 'stuck');
+    }).join(''));
+  cols.push('<div>'+c2+'</div>');
+
+  // Column 3: Pipeline health + Velocity drops
+  var c3 = '';
+  c3 += section('Pipeline Health', '🚚', '#4f8ef7',
+    '<div class="an-row"><div class="an-name">Inbound (B2B + Transfers)</div>'+
+      '<span class="an-val" style="color:#4f8ef7;font-weight:700">'+fmtUnits(totalInbound)+'</span></div>'+
+    '<div class="an-row"><div class="an-name">Reserved (orders + processing)</div>'+
+      '<span class="an-val" style="color:#a78bfa;font-weight:700">'+fmtUnits(totalReserved)+'</span></div>'+
+    '<div class="an-row"><div class="an-name">Unsellable total</div>'+
+      '<span class="an-val" style="color:'+(totalUns>1000?'#f05252':'#f5a524')+';font-weight:700">'+fmtUnits(totalUns)+'</span></div>'+
+    '<div class="an-row"><div class="an-name">Damaged</div>'+
+      '<span class="an-val" style="color:#f05252;font-weight:700">'+fmtUnits(totalDamaged)+'</span></div>');
+  c3 += section('Velocity Drops (7d vs 30d, -30%+)', '📉', '#f05252',
+    velocityDrops.map(function(r){
+      return row(r.sku, r.clean_name||r.title, r.delta.toFixed(0)+'%', '#f05252',
+                 '7d '+r.drr7.toFixed(1)+'/d · 30d '+r.drr30.toFixed(1)+'/d');
+    }).join(''));
+  cols.push('<div>'+c3+'</div>');
+
+  el.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">'+cols.join('')+'</div>';
+
+  if (sub) {
+    var parts = [];
+    if (deadList.length)    parts.push(deadList.length+' dead');
+    if (stagnant.length)    parts.push(stagnant.length+' stagnant');
+    if (velocityDrops.length) parts.push(velocityDrops.length+' declining');
+    if (velocitySurge.length) parts.push(velocitySurge.length+' surging');
+    sub.textContent = parts.join(' · ');
+  }
 }
 
 // Build the filtered+sorted SKU rows used by both the table renderer and the
@@ -4224,12 +4721,11 @@ function buildStockRows() {
   var soh = D.hub.soh;
   var f = H.stock;
 
-  // Build {sku: unified hub row} index so we can look up 30D units + DoC
+  // Build {sku: unified hub row} index so we can look up extra fields
   var hubIdx = {};
   (D.hub.skus || []).forEach(function(s){ hubIdx[s.sku] = s; });
 
-  // Warehouse filter needs the per-SKU warehouse list; if a warehouse is
-  // chosen, we sum only that warehouse's SOH per SKU.
+  // Pull velocity from SOH's own 30D column (more accurate than MTD sales)
   var rows = (soh.by_sku || []).map(function(s) {
     var hubRow = hubIdx[s.sku] || {};
     var warehouses = s.warehouses || [];
@@ -4238,19 +4734,9 @@ function buildStockRows() {
       var wEntry = warehouses.find(function(w){ return w.warehouse === f.warehouse; });
       soh_val = wEntry ? wEntry.soh : 0;
     }
-    var nu = hubRow.net_units || 0;
-    // DRR uses the processor's hub.sales window; read it off sales block.
-    var windowDays = 30;
-    if (D.hub.sales && D.hub.sales.date_from && D.hub.sales.date_to) {
-      var dFrom = new Date(D.hub.sales.date_from);
-      var dTo   = new Date(D.hub.sales.date_to);
-      var ms = dTo - dFrom;
-      if (ms > 0) windowDays = Math.max(1, Math.round(ms/86400000) + 1);
-    }
-    var drr = nu > 0 ? nu / windowDays : 0;
-    // Recompute DoC locally so warehouse filter works (if a warehouse is
-    // picked we only have that warehouse's SOH). If ALL, prefer backend
-    // doc_days for consistency.
+    // DRR preference order: SOH 30D (most accurate) → hub.drr_units (from processor) → 0
+    var s30 = s.sales_30d || 0;
+    var drr = s30 > 0 ? s30/30.0 : (hubRow.drr_units || 0);
     var doc;
     if (f.warehouse === 'ALL' && hubRow.doc_days != null) {
       doc = hubRow.doc_days;
@@ -4260,13 +4746,30 @@ function buildStockRows() {
     return {
       sku:        s.sku,
       title:      s.title,
+      clean_name: s.clean_name,
+      name:       s.clean_name || s.title,   // used by sort key
+      range:      s.range || '',
+      lifecycle:  s.lifecycle || '',
       brand:      s.brand,
       fsn:        s.fsn,
       sp:         s.sp,
       soh:        soh_val,
-      net_units:  nu,
+      // Velocity from SOH
+      sales_7d:   s.sales_7d  || 0,
+      sales_30d:  s30,
+      sales_90d:  s.sales_90d || 0,
+      net_units:  hubRow.net_units || 0,   // MTD units (kept for CSV)
       drr:        drr,
       doc:        doc,
+      // Pipeline
+      inbound:    s.inbound_total || 0,
+      reserved:   s.reserved_total || 0,
+      unsellable: s.unsellable_total || 0,
+      damaged:    s.damaged || 0,
+      qc_reject:  s.qc_reject || 0,
+      // Status
+      live:       soh_val > 0,
+      dead:       (soh_val <= 0 && s30 <= 0 && (s.inbound_total||0) <= 0),
       warehouses: warehouses,
       bucket:     docBucketOf(doc),
       whcount:    warehouses.length,
@@ -4278,16 +4781,24 @@ function buildStockRows() {
     if (f.brand !== 'ALL' && r.brand !== f.brand) return false;
     if (f.warehouse !== 'ALL' && r.soh <= 0) return false;
     if (f.docBucket !== 'ALL' && r.bucket !== f.docBucket) return false;
+    if (f.lifecycle && f.lifecycle !== 'ALL' && r.lifecycle !== f.lifecycle) return false;
+    if (f.range && f.range !== 'ALL' && r.range !== f.range) return false;
+    if (f.live === 'LIVE' && !r.live) return false;
+    if (f.live === 'DEAD' && !r.dead) return false;
+    if (f.live === 'NOSALES' && (r.sales_30d > 0 || r.soh <= 0)) return false;
+    if (f.pipe === 'INBOUND' && r.inbound <= 0) return false;
+    if (f.pipe === 'UNSELLABLE' && r.unsellable <= 0) return false;
     if (f.search) {
       var q = f.search;
       if (!((r.sku||'').toLowerCase().indexOf(q) >= 0 ||
-            (r.title||'').toLowerCase().indexOf(q) >= 0)) return false;
+            (r.title||'').toLowerCase().indexOf(q) >= 0 ||
+            (r.clean_name||'').toLowerCase().indexOf(q) >= 0 ||
+            (r.range||'').toLowerCase().indexOf(q) >= 0)) return false;
     }
     return true;
   });
 
-  // Sort. 'doc' is tricky: null (no sales) should rank to the end in desc
-  // order, not top. Treat null as Infinity for sort math.
+  // Sort. 'doc' is tricky: null (no sales) should rank to the end in desc order.
   rows.sort(function(a,b) {
     var fld = f.sort;
     var av = a[fld], bv = b[fld];
@@ -4319,12 +4830,21 @@ function renderStock() {
   var rows = buildStockRows();
   var f = H.stock;
 
+  // Populate metadata dropdowns (Lifecycle + Range) from current data
+  populateStockMetadata();
+
   // ── KPI strip ──
-  var totalSoh = rows.reduce(function(s,r){return s + (r.soh||0);}, 0);
+  var totalSoh    = rows.reduce(function(s,r){return s + (r.soh||0);}, 0);
+  var totalIn     = rows.reduce(function(s,r){return s + (r.inbound||0);}, 0);
+  var totalRes    = rows.reduce(function(s,r){return s + (r.reserved||0);}, 0);
+  var totalUns    = rows.reduce(function(s,r){return s + (r.unsellable||0);}, 0);
+  var totalDamaged= rows.reduce(function(s,r){return s + (r.damaged||0);}, 0);
+  var total30D    = rows.reduce(function(s,r){return s + (r.sales_30d||0);}, 0);
+  var deadCount   = rows.filter(function(r){ return r.dead; }).length;
+  var noSalesCount= rows.filter(function(r){ return r.live && r.sales_30d === 0; }).length;
   var bucketCounts = {CRITICAL:0, LOW:0, HEALTHY:0, OVER:0};
   rows.forEach(function(r){ bucketCounts[r.bucket] = (bucketCounts[r.bucket]||0) + 1; });
-  var whCount = 0;
-  var whSet = {};
+  var whCount = 0, whSet = {};
   rows.forEach(function(r){
     (r.warehouses || []).forEach(function(w){
       if (f.warehouse !== 'ALL' && w.warehouse !== f.warehouse) return;
@@ -4338,56 +4858,70 @@ function renderStock() {
            '<div class="stat-value" style="color:'+(color||'var(--text)')+'">'+value+'</div>'+
            '<div class="stat-sub">'+(sub||'')+'</div></div>';
   }
+  // Inventory turnover ratio: how many "days of cover" the whole filtered pool has
+  var avgDoc = total30D > 0 ? (totalSoh / (total30D/30.0)) : null;
   var kpis = [
-    kpiTile('Total SOH',       fmtUnits(totalSoh), 'units in stock',   'var(--accent)'),
-    kpiTile('SKUs',            rows.length,        'after filter',     'var(--text)'),
-    kpiTile('Warehouses',      whCount,            'with stock',       'var(--text2)'),
-    kpiTile('Critical (<15d)', bucketCounts.CRITICAL || 0, 'DoC < 15', '#ff5a5a'),
-    kpiTile('Low (15-30d)',    bucketCounts.LOW || 0,      'DoC 15-30','#ffaa3d'),
-    kpiTile('Healthy (30-60d)',bucketCounts.HEALTHY || 0,  'DoC 30-60','#5fd98a'),
-    kpiTile('Overstock (60+)', bucketCounts.OVER || 0,     '60+ or ∞', '#6ab0ff'),
+    kpiTile('Total SOH',       fmtUnits(totalSoh), rows.length+' SKUs · '+whCount+' WHs', 'var(--accent)'),
+    kpiTile('30D Sales',       fmtUnits(total30D), 'units sold · last 30d', 'var(--green)'),
+    kpiTile('Avg DoC',         avgDoc!=null ? avgDoc.toFixed(0)+'d' : '—', 'pool cover @ 30d rate', 'var(--text2)'),
+    kpiTile('Critical (<15d)', bucketCounts.CRITICAL || 0, 'urgent replenish', '#ff5a5a'),
+    kpiTile('Inbound',         fmtUnits(totalIn),  'B2B + Transfers in-flight', '#4f8ef7'),
+    kpiTile('Reserved',        fmtUnits(totalRes), 'orders + processing', '#a78bfa'),
+    kpiTile('Unsellable',      fmtUnits(totalUns), 'damaged/QC/rejected', totalUns > 0 ? '#f05252' : 'var(--text2)'),
+    kpiTile('Dead',            deadCount, 'no stock · 0 sales', deadCount > 0 ? '#f05252' : 'var(--text2)'),
+    kpiTile('Stock·No Sales',  noSalesCount, 'has stock · 0 30D sales', noSalesCount > 0 ? '#f5a524' : 'var(--text2)'),
   ];
   document.getElementById('stock-kpi').innerHTML = kpis.join('');
 
-  // ── Brand doughnut ──
+  // ── Charts ──
   renderStockBrandChart(soh, f.brand);
-
-  // ── Warehouse stacked bar (top 12) ──
   renderStockWarehouseChart(soh, f.brand);
-
-  // ── DoC distribution bar ──
   renderStockDocChart(rows);
 
   // ── SKU table ──
   var html = [];
   if (rows.length === 0) {
-    html.push('<tr><td colspan="9" style="padding:20px;text-align:center;color:var(--text3)">No SKUs match filters</td></tr>');
+    html.push('<tr><td colspan="15" style="padding:20px;text-align:center;color:var(--text3)">No SKUs match filters</td></tr>');
   } else {
-    // Cap at 500 rows for performance; user can filter/sort or CSV-export
     var shown = rows.slice(0, 500);
     shown.forEach(function(r) {
       var docStyle = 'color:'+docColorOf(r.bucket)+';font-weight:'+(r.bucket==='CRITICAL'?'700':'500');
+      var nameCell = escHtml(r.clean_name || r.title || '—');
+      var nameTooltip = escHtml(r.clean_name ? (r.clean_name + (r.title ? ' · FK: '+r.title : '')) : r.title || '');
+      var lifeBadge = r.lifecycle ? '<span style="font-size:9px;color:var(--text3);margin-left:4px">['+escHtml(r.lifecycle)+']</span>' : '';
+      var unsellableCell = r.unsellable > 0
+        ? '<span style="color:'+(r.unsellable > 100 ? '#f05252' : '#f5a524')+'">'+fmtUnits(r.unsellable)+'</span>'
+        : '—';
       html.push(
         '<tr>'+
           '<td style="font-family:\'Courier New\',monospace;font-size:11px">'+escHtml(r.sku)+'</td>'+
-          '<td style="max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(r.title)+'">'+escHtml(r.title)+'</td>'+
+          '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+nameTooltip+'">'+nameCell+lifeBadge+'</td>'+
+          '<td style="font-size:11px;color:var(--text2)">'+escHtml(r.range || '—')+'</td>'+
           '<td>'+brandPill(r.brand)+'</td>'+
           '<td class="num" style="font-weight:600">'+fmtUnits(r.soh)+'</td>'+
-          '<td class="num">'+(r.net_units ? fmtUnits(r.net_units) : '—')+'</td>'+
+          '<td class="num" style="font-size:11px">'+(r.sales_7d ? fmtUnits(r.sales_7d) : '—')+'</td>'+
+          '<td class="num" style="font-size:11px">'+(r.sales_30d ? fmtUnits(r.sales_30d) : '—')+'</td>'+
+          '<td class="num" style="font-size:11px;color:var(--text2)">'+(r.sales_90d ? fmtUnits(r.sales_90d) : '—')+'</td>'+
           '<td class="num">'+(r.drr > 0 ? r.drr.toFixed(1) : '—')+'</td>'+
           '<td class="num" style="'+docStyle+'">'+fmtDoc(r.doc)+'</td>'+
+          '<td class="num" style="font-size:11px;color:'+(r.inbound>0?'#4f8ef7':'var(--text3)')+'">'+(r.inbound ? fmtUnits(r.inbound) : '—')+'</td>'+
+          '<td class="num" style="font-size:11px;color:'+(r.reserved>0?'#a78bfa':'var(--text3)')+'">'+(r.reserved ? fmtUnits(r.reserved) : '—')+'</td>'+
+          '<td class="num" style="font-size:11px">'+unsellableCell+'</td>'+
           '<td class="num">'+(r.warehouses ? r.warehouses.length : 0)+'</td>'+
           '<td><button class="fbtn" style="font-size:10px;padding:2px 8px" onclick="showStockDetail(\''+encodeURIComponent(r.sku)+'\')">View</button></td>'+
         '</tr>'
       );
     });
     if (rows.length > 500) {
-      html.push('<tr><td colspan="9" style="padding:8px;text-align:center;color:var(--text3);font-size:11px">showing first 500 of '+rows.length+' — refine filters to narrow further</td></tr>');
+      html.push('<tr><td colspan="15" style="padding:8px;text-align:center;color:var(--text3);font-size:11px">showing first 500 of '+rows.length+' — refine filters to narrow further</td></tr>');
     }
   }
   body.innerHTML = html.join('');
   var sub = document.getElementById('stk-summary-sub');
-  if (sub) sub.textContent = rows.length + ' SKU' + (rows.length===1?'':'s') + ' · ' + fmtUnits(totalSoh) + ' units';
+  if (sub) sub.textContent = rows.length + ' SKU' + (rows.length===1?'':'s') + ' · ' + fmtUnits(totalSoh) + ' units · ' + fmtUnits(total30D) + ' sold in 30d';
+
+  // ── Insights ──
+  renderStockInsights(rows, soh);
 
   // ── Warehouse summary table ──
   renderStockWarehouseTable(soh, f);
@@ -4542,6 +5076,539 @@ function renderStockDocChart(rows) {
   });
 }
 
+// ══ PRODUCT ANALYSIS TAB ════════════════════════════════════════════════
+// Per-SKU deep dive: Sales / Units / Disc% / Spend / TACOS / Clicks / CVR% /
+// Rank / DoC, each with Δ% vs a comparison period. Comparison defaults to
+// the natural previous window but is overridden by state.cmp.* if the user
+// picked custom compare dates.
+
+// Format a Δ value with colour + arrow. Returns HTML string.
+// `goodUp` = true when higher-is-better (sales, units, clicks). For Disc%
+// and TACOS, lower is better — pass false.
+function fmtDelta(cur, prev, isPct, goodUp) {
+  if (prev == null || cur == null) return '<span style="color:var(--text3);font-size:10px">—</span>';
+  if (prev === 0 && cur === 0) return '<span style="color:var(--text3);font-size:10px">—</span>';
+  var delta;
+  if (isPct) {
+    // For %-like metrics (disc%, tacos, cvr), show absolute point change
+    delta = (cur - prev);
+    var sign = delta > 0 ? '+' : '';
+    var col = 'var(--text3)';
+    if (delta > 0.001)  col = goodUp ? '#5fd98a' : '#f05252';
+    if (delta < -0.001) col = goodUp ? '#f05252' : '#5fd98a';
+    var arr = delta > 0 ? '↑' : (delta < 0 ? '↓' : '');
+    return '<span style="color:'+col+';font-size:10px;font-weight:600">'+arr+' '+sign+delta.toFixed(2)+'pp</span>';
+  } else {
+    if (prev === 0) {
+      // new activity — not a clean % delta. Show "new"
+      return '<span style="color:#5fd98a;font-size:10px;font-weight:600">● new</span>';
+    }
+    delta = ((cur - prev) / Math.abs(prev)) * 100;
+    var sign2 = delta > 0 ? '+' : '';
+    var col2 = 'var(--text3)';
+    if (delta > 0.5)  col2 = goodUp ? '#5fd98a' : '#f05252';
+    if (delta < -0.5) col2 = goodUp ? '#f05252' : '#5fd98a';
+    var arr2 = delta > 0 ? '↑' : (delta < 0 ? '↓' : '');
+    return '<span style="color:'+col2+';font-size:10px;font-weight:600">'+arr2+' '+sign2+delta.toFixed(1)+'%</span>';
+  }
+}
+
+// Rank delta: lower rank number is better (#1 > #50). Absolute delta shown.
+function fmtRankDelta(cur, prev) {
+  if (cur == null && prev == null) return '<span style="color:var(--text3);font-size:10px">—</span>';
+  if (cur == null) return '<span style="color:#f05252;font-size:10px;font-weight:600">● lost</span>';
+  if (prev == null) return '<span style="color:#5fd98a;font-size:10px;font-weight:600">● new</span>';
+  var d = cur - prev;  // positive = rank worsened (higher number)
+  if (d === 0) return '<span style="color:var(--text3);font-size:10px">—</span>';
+  var col = d > 0 ? '#f05252' : '#5fd98a';
+  var arr = d > 0 ? '↓' : '↑';
+  var sign = d > 0 ? '+' : '';
+  return '<span style="color:'+col+';font-size:10px;font-weight:600">'+arr+' '+sign+d+'</span>';
+}
+
+// Populate prod-day/month/year/vertical selectors + lifecycle/range dropdowns
+function populateProdSelectors() {
+  // Hub selector populators — populateHubDateSelectors now includes 'prod' alongside sales/ads/traffic
+  if (typeof populateHubDateSelectors === 'function') populateHubDateSelectors();
+  if (typeof populateHubVerticalSelector === 'function') populateHubVerticalSelector('prod');
+  // Lifecycle + Range dropdowns driven by hub.skus[] metadata
+  if (!D || !D.hub || !D.hub.skus) return;
+  var brand = H.prod.brand;
+  var lifecycles = {}, ranges = {};
+  D.hub.skus.forEach(function(s){
+    if (brand !== 'ALL' && s.brand !== brand) return;
+    if (s.lifecycle) lifecycles[s.lifecycle] = (lifecycles[s.lifecycle]||0) + 1;
+    if (s.range)     ranges[s.range]         = (ranges[s.range]||0) + 1;
+  });
+  var lSel = document.getElementById('prod-lifecycle-sel');
+  if (lSel) {
+    var cur = H.prod.lifecycle;
+    var opts = ['<option value="ALL">All</option>'];
+    Object.keys(lifecycles).sort().forEach(function(k){
+      opts.push('<option value="'+escHtml(k)+'"'+(cur===k?' selected':'')+'>'+escHtml(k)+' ('+lifecycles[k]+')</option>');
+    });
+    lSel.innerHTML = opts.join('');
+  }
+  var rSel = document.getElementById('prod-range-sel');
+  if (rSel) {
+    var curR = H.prod.range;
+    var opts2 = ['<option value="ALL">All Ranges</option>'];
+    Object.keys(ranges).sort().forEach(function(k){
+      opts2.push('<option value="'+escHtml(k)+'"'+(curR===k?' selected':'')+'>'+escHtml(k)+' ('+ranges[k]+')</option>');
+    });
+    rSel.innerHTML = opts2.join('');
+  }
+}
+
+function sortProd(field) {
+  if (H.prod.sort === field) H.prod.sortDesc = !H.prod.sortDesc;
+  else { H.prod.sort = field; H.prod.sortDesc = (field !== 'rank_v' && field !== 'sku' && field !== 'name' && field !== 'brand'); }
+  renderProd();
+}
+
+// Build rank map: sku -> {rank_v, rank_sub} from D.latest.products
+function buildProdRankMap() {
+  var m = {};
+  if (!D || !D.latest || !D.latest.products) return m;
+  D.latest.products.forEach(function(p){
+    // After Pass-1 enrichment, snapshot products carry .sku; fall back to pid lookup otherwise
+    if (p.sku) m[p.sku] = {rank_v: p.rank_v, rank_sub: p.rank_sub, pid: p.pid};
+  });
+  return m;
+}
+
+// Build a DoC map: sku -> {doc_days, soh, drr} from hub.skus (enriched with SOH data)
+function buildProdDocMap() {
+  var m = {};
+  if (!D || !D.hub || !D.hub.skus) return m;
+  D.hub.skus.forEach(function(s){
+    m[s.sku] = {doc: s.doc_days, soh: s.soh, drr: s.drr_units};
+  });
+  return m;
+}
+
+// Core renderer for Product Analysis tab
+function renderProd() {
+  if (!D || !D.hub) return;
+  var body = document.getElementById('prod-body');
+  if (!body) return;
+
+  // Ensure selectors are populated / refreshed whenever we render
+  populateProdSelectors();
+
+  // Sync hub-time state from UI (in case selectors were touched)
+  var curWin  = resolveTimeWindow('prod');
+  var prevWin = resolvePrevWindow('prod');
+  var brand    = H.prod.brand;
+  var vertical = H.prod.vertical;
+  var q        = (H.prod.search || '').toLowerCase();
+  var lifecycleF = H.prod.lifecycle;
+  var rangeF     = H.prod.range;
+
+  // Aggregate current + previous windows — these contain .totals and .skus
+  var curAgg  = aggregateWindow(curWin, brand);
+  var prevAgg = prevWin ? aggregateWindow(prevWin, brand) : null;
+
+  // Window label
+  var wLbl = document.getElementById('prod-window-lbl');
+  if (wLbl) {
+    var txt = 'Window: ' + (curWin.label || '—');
+    if (prevWin) txt += ' · vs ' + prevWin.label;
+    wLbl.textContent = txt;
+  }
+
+  // Build extra lookups
+  var rankMap = buildProdRankMap();
+  var docMap  = buildProdDocMap();
+  // Build prev rank map — naive: use rank_history if available for prev window's "day"
+  var prevRankMap = {};
+  if (D.rank_history && prevWin) {
+    // Pick a representative "anchor day" to snapshot prev rank
+    var anchorDay = prevWin.singleDay ||
+                    (prevWin.dayRange ? prevWin.dayRange[1] : null) ||
+                    (prevWin.monthsList && prevWin.monthsList.length ? prevWin.monthsList[prevWin.monthsList.length-1]+'-28' : null);
+    if (anchorDay) {
+      Object.keys(rankMap).forEach(function(sku){
+        var pid = rankMap[sku].pid;
+        if (!pid) return;
+        var h = (D.rank_history[pid] || []).filter(function(e){ return e.date <= anchorDay; });
+        if (h.length) {
+          var last = h[h.length-1];
+          prevRankMap[sku] = {rank_v: last.rank_v, rank_sub: last.rank_sub};
+        }
+      });
+    }
+  }
+
+  // Build unified row set from current window's SKU aggregates.
+  // Each row: {sku, name, brand, net_sales, net_units, disc_pct, ad_spend, tacos,
+  //            clicks, cvr, rank_v, doc, and paired *_prev values}
+  var rows = [];
+  Object.keys(curAgg.skus || {}).forEach(function(sku) {
+    var s  = curAgg.skus[sku];
+    if (vertical && vertical !== 'ALL' && (s.vertical||'') !== vertical) return;
+    var p  = prevAgg ? (prevAgg.skus[sku] || null) : null;
+
+    // Metrics (current)
+    var sales      = s.sales || 0;
+    var units      = s.units || 0;
+    var spend      = s.ad_spend || 0;
+    var clicks     = s.ad_clicks || 0;
+    var views      = s.views || 0;
+    var traffic_units = s.traffic_sales || 0;  // traffic "sales" = units from traffic report
+    var tacos      = sales > 0 ? (spend / sales) * 100 : null;
+    var cvr        = views > 0 ? (traffic_units / views) * 100 : null;
+    var mrp        = s.mrp || 0;
+    var sp         = s.sp  || 0;
+    var disc       = (mrp > 0 && sp > 0) ? (1 - (sp / mrp)) * 100 : null;
+
+    // Previous metrics
+    var pSales  = p ? (p.sales || 0) : null;
+    var pUnits  = p ? (p.units || 0) : null;
+    var pSpend  = p ? (p.ad_spend || 0) : null;
+    var pClicks = p ? (p.ad_clicks || 0) : null;
+    var pViews  = p ? (p.views || 0) : null;
+    var pTraffic= p ? (p.traffic_sales || 0) : null;
+    var pTacos  = (p && pSales > 0) ? (pSpend / pSales) * 100 : null;
+    var pCvr    = (p && pViews > 0) ? (pTraffic / pViews) * 100 : null;
+    // For disc% prev, we don't have historical SP/MRP — show same (no delta for disc)
+    var pDisc   = disc;
+
+    var r = rankMap[sku] || {};
+    var pr = prevRankMap[sku] || {};
+    var d = docMap[sku] || {};
+
+    // Lifecycle/Range filters (from hub.skus, look up via sku)
+    var hubSku = (D.hub.skus || []).find(function(hs){ return hs.sku === sku; }) || {};
+    if (lifecycleF && lifecycleF !== 'ALL' && hubSku.lifecycle !== lifecycleF) return;
+    if (rangeF && rangeF !== 'ALL' && hubSku.range !== rangeF) return;
+
+    if (q && !((sku||'').toLowerCase().indexOf(q) >= 0 ||
+               (s.title||'').toLowerCase().indexOf(q) >= 0 ||
+               (s.clean_name||'').toLowerCase().indexOf(q) >= 0 ||
+               (hubSku.range||'').toLowerCase().indexOf(q) >= 0)) return;
+
+    rows.push({
+      sku: sku,
+      name: s.clean_name || s.title || sku,
+      title: s.title,
+      clean_name: s.clean_name,
+      brand: s.brand,
+      range: hubSku.range || '',
+      lifecycle: hubSku.lifecycle || '',
+      net_sales: sales, net_units: units,
+      disc_pct: disc,
+      ad_spend: spend, tacos: tacos,
+      clicks: clicks, cvr: cvr,
+      rank_v: r.rank_v != null ? r.rank_v : null,
+      rank_sub: r.rank_sub != null ? r.rank_sub : null,
+      doc: d.doc != null ? d.doc : null,
+      soh: d.soh || 0,
+      drr: d.drr || 0,
+      // Prev values (paired)
+      p_sales: pSales, p_units: pUnits, p_disc: pDisc,
+      p_spend: pSpend, p_tacos: pTacos, p_clicks: pClicks, p_cvr: pCvr,
+      p_rank_v: pr.rank_v != null ? pr.rank_v : null,
+    });
+  });
+
+  // Sort
+  rows.sort(function(a,b){
+    var fld = H.prod.sort || 'net_sales';
+    var av = a[fld], bv = b[fld];
+    // nulls last in desc sort, first in asc sort for rank_v (lower=better)
+    if (av == null) av = (fld === 'rank_v') ? 9999 : (H.prod.sortDesc ? -Infinity : Infinity);
+    if (bv == null) bv = (fld === 'rank_v') ? 9999 : (H.prod.sortDesc ? -Infinity : Infinity);
+    if (typeof av === 'string') av = av.toLowerCase();
+    if (typeof bv === 'string') bv = bv.toLowerCase();
+    if (av < bv) return H.prod.sortDesc ? 1 : -1;
+    if (av > bv) return H.prod.sortDesc ? -1 : 1;
+    return 0;
+  });
+
+  // ── Hero KPIs: totals for current window + Δ vs prev ──
+  var tT = curAgg.totals;
+  var pT = prevAgg ? prevAgg.totals : null;
+  function kpi(label, cur, prev, formatter, goodUp, sub, isPct) {
+    var valH = formatter(cur);
+    var deltaH = fmtDelta(cur, prev, !!isPct, goodUp !== false);
+    return '<div class="stat-card"><div class="stat-label">'+label+'</div>'+
+           '<div class="stat-value">'+valH+'</div>'+
+           '<div class="stat-sub">'+(sub||'')+' '+deltaH+'</div></div>';
+  }
+  var tacosCur  = tT.sales > 0 ? (tT.spend / tT.sales) * 100 : null;
+  var tacosPrev = (pT && pT.sales > 0) ? (pT.spend / pT.sales) * 100 : null;
+  var cvrCur    = tT.views > 0 ? (tT.traffic_sales / tT.views) * 100 : null;
+  var cvrPrev   = (pT && pT.views > 0) ? (pT.traffic_sales / pT.views) * 100 : null;
+  var kpis = [
+    kpi('Net Sales',   tT.sales,   pT ? pT.sales : null,   fmtCr,     true,  rows.length+' SKUs'),
+    kpi('Units',       tT.units,   pT ? pT.units : null,   fmtUnits,  true,  ''),
+    kpi('Ad Spend',    tT.spend,   pT ? pT.spend : null,   fmtCr,     false, ''),
+    kpi('TACOS',       tacosCur,   tacosPrev,              function(v){return v!=null?v.toFixed(2)+'%':'—';}, false, 'lower=better', true),
+    kpi('Clicks',      tT.clicks || tT.ad_clicks || 0, pT ? (pT.clicks || pT.ad_clicks || 0) : null, fmtUnits, true, ''),
+    kpi('Views',       tT.views,   pT ? pT.views : null,   fmtUnits,  true,  ''),
+    kpi('CVR',         cvrCur,     cvrPrev,                function(v){return v!=null?v.toFixed(2)+'%':'—';}, true, 'traffic', true),
+  ];
+  document.getElementById('prod-kpi').innerHTML = kpis.join('');
+
+  // ── Table body ──
+  // Each metric cell: big value on top, Δ-vs-prev on bottom.
+  var body_html = [];
+  if (!rows.length) {
+    body_html.push('<tr><td colspan="13" style="padding:20px;text-align:center;color:var(--text3)">No SKUs match filters</td></tr>');
+  } else {
+    var shown = rows.slice(0, 500);
+    shown.forEach(function(r) {
+      var nameTip = escHtml(r.clean_name ? r.clean_name + (r.title && r.title !== r.clean_name ? ' · FK: '+r.title : '') : r.title || '');
+      var nameCell = '<div style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r.name)+'</div>'+
+                     (r.range ? '<div style="font-size:10px;color:var(--text3);margin-top:2px">'+escHtml(r.range)+(r.lifecycle?' · '+escHtml(r.lifecycle):'')+'</div>' : '');
+
+      function cell(val, delta, numClass) {
+        return '<td class="'+(numClass||'num')+'" style="line-height:1.35">'+
+               '<div style="font-size:12px;font-weight:600">'+val+'</div>'+
+               '<div style="margin-top:2px">'+delta+'</div></td>';
+      }
+      var docBucket = docBucketOf(r.doc);
+      var docStyle  = 'color:'+docColorOf(docBucket)+';font-weight:'+(docBucket==='CRITICAL'?'700':'500');
+
+      // Insights (inline): flag the few most meaningful things per SKU
+      var obs = [];
+      if (r.p_tacos != null && r.tacos != null && r.p_tacos > 0 && (r.tacos - r.p_tacos) > 10)
+        obs.push('<span style="color:#f05252">🔥 TACOS +'+(r.tacos - r.p_tacos).toFixed(1)+'pp</span>');
+      if (r.p_rank_v != null && r.rank_v != null && (r.rank_v - r.p_rank_v) >= 10)
+        obs.push('<span style="color:#f05252">📉 Rank '+r.p_rank_v+'→'+r.rank_v+'</span>');
+      if (r.p_rank_v != null && r.rank_v != null && (r.p_rank_v - r.rank_v) >= 10)
+        obs.push('<span style="color:#5fd98a">📈 Rank '+r.p_rank_v+'→'+r.rank_v+'</span>');
+      if (docBucket === 'CRITICAL' && r.doc != null)
+        obs.push('<span style="color:#f05252">⚠️ DoC '+r.doc.toFixed(0)+'d</span>');
+      if (r.p_cvr != null && r.cvr != null && r.p_cvr > 0 && (r.p_cvr - r.cvr) > 1)
+        obs.push('<span style="color:#f5a524">🔻 CVR -'+(r.p_cvr - r.cvr).toFixed(2)+'pp</span>');
+      if (r.p_sales != null && r.p_sales > 0 && r.net_sales > 0) {
+        var sDelta = ((r.net_sales - r.p_sales)/r.p_sales)*100;
+        if (sDelta > 50)  obs.push('<span style="color:#5fd98a">🚀 Sales +'+sDelta.toFixed(0)+'%</span>');
+        if (sDelta < -30) obs.push('<span style="color:#f05252">📉 Sales '+sDelta.toFixed(0)+'%</span>');
+      }
+      if (r.ad_spend > 0 && r.net_sales === 0)
+        obs.push('<span style="color:#f05252">💸 Spend·no sales</span>');
+
+      body_html.push(
+        '<tr>'+
+          '<td style="font-family:Courier New,monospace;font-size:11px;vertical-align:top">'+escHtml(r.sku)+'</td>'+
+          '<td style="vertical-align:top" title="'+nameTip+'">'+nameCell+'</td>'+
+          '<td style="vertical-align:top">'+brandPill(r.brand)+'</td>'+
+          cell(fmtCr(r.net_sales),     fmtDelta(r.net_sales, r.p_sales, false, true)) +
+          cell(fmtUnits(r.net_units),  fmtDelta(r.net_units, r.p_units, false, true)) +
+          cell(r.disc_pct!=null ? r.disc_pct.toFixed(1)+'%' : '—',
+               fmtDelta(r.disc_pct, r.p_disc, true, false)) +
+          cell(fmtCr(r.ad_spend),      fmtDelta(r.ad_spend, r.p_spend, false, false)) +
+          cell(r.tacos!=null ? r.tacos.toFixed(2)+'%' : '—',
+               fmtDelta(r.tacos, r.p_tacos, true, false)) +
+          cell(fmtUnits(r.clicks),     fmtDelta(r.clicks, r.p_clicks, false, true)) +
+          cell(r.cvr!=null ? r.cvr.toFixed(2)+'%' : '—',
+               fmtDelta(r.cvr, r.p_cvr, true, true)) +
+          cell(r.rank_v!=null ? '#'+r.rank_v : '—',
+               fmtRankDelta(r.rank_v, r.p_rank_v)) +
+          '<td class="num" style="line-height:1.35;vertical-align:top">'+
+            '<div style="font-size:12px;font-weight:600;'+docStyle+'">'+fmtDoc(r.doc)+'</div>'+
+            '<div style="font-size:10px;color:var(--text3);margin-top:2px">SOH '+fmtUnits(r.soh)+'</div>'+
+          '</td>'+
+          '<td style="vertical-align:top;font-size:10px">'+(obs.length ? obs.join(' · ') : '<span style="color:var(--text3)">—</span>')+'</td>'+
+        '</tr>'
+      );
+    });
+    if (rows.length > 500) {
+      body_html.push('<tr><td colspan="13" style="padding:8px;text-align:center;color:var(--text3);font-size:11px">showing first 500 of '+rows.length+' — refine filters to narrow further</td></tr>');
+    }
+  }
+  body.innerHTML = body_html.join('');
+
+  var csub = document.getElementById('prod-count-sub');
+  if (csub) csub.textContent = rows.length + ' SKU' + (rows.length===1?'':'s') + (prevWin ? ' · vs '+prevWin.label : '');
+
+  // ── Insights card: top movers ──
+  renderProdInsights(rows, curAgg, prevAgg, curWin, prevWin);
+}
+
+// Build top-movers insights from rows
+function renderProdInsights(rows, curAgg, prevAgg, curWin, prevWin) {
+  var el = document.getElementById('prod-insights');
+  var sub = document.getElementById('prod-insights-sub');
+  if (!el) return;
+
+  function row(sku, name, valH, color, extra) {
+    return '<div class="an-row">'+
+      '<div class="an-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+
+        '<span style="font-family:Courier New,monospace;font-size:10px;color:var(--text3);margin-right:6px">'+escHtml(sku)+'</span>'+
+        escHtml(name || '—')+
+      '</div>'+
+      '<span class="an-val" style="color:'+(color||'var(--text)')+';font-weight:700;white-space:nowrap">'+valH+(extra?' <span style="color:var(--text3);font-weight:400;font-size:10px">'+extra+'</span>':'')+'</span>'+
+    '</div>';
+  }
+  function section(title, icon, color, html) {
+    return '<div style="margin-bottom:14px">'+
+      '<div style="font-size:11px;font-weight:700;color:'+color+';margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">'+
+        icon+' '+title+
+      '</div>'+(html || '<div style="color:var(--text3);font-size:11px;padding:4px 0">—</div>')+'</div>';
+  }
+
+  // Sales movers (need prev to compute)
+  var salesGain = rows.filter(function(r){ return r.p_sales > 0 && r.net_sales > 0; })
+    .map(function(r){
+      var dPct = ((r.net_sales - r.p_sales)/r.p_sales)*100;
+      return Object.assign({}, r, {d:dPct, abs:r.net_sales - r.p_sales});
+    });
+  var topGainers = salesGain.filter(function(r){return r.d > 0;}).sort(function(a,b){return b.d - a.d;}).slice(0,8);
+  var topLosers  = salesGain.filter(function(r){return r.d < 0;}).sort(function(a,b){return a.d - b.d;}).slice(0,8);
+
+  // TACOS worsening (higher TACOS = worse)
+  var tacosHurt = rows.filter(function(r){ return r.p_tacos != null && r.tacos != null && r.net_sales > 1000; })
+    .map(function(r){ return Object.assign({}, r, {d: r.tacos - r.p_tacos}); })
+    .filter(function(r){ return r.d > 5; })
+    .sort(function(a,b){ return b.d - a.d; }).slice(0,6);
+
+  // TACOS improving
+  var tacosHeal = rows.filter(function(r){ return r.p_tacos != null && r.tacos != null && r.net_sales > 1000; })
+    .map(function(r){ return Object.assign({}, r, {d: r.tacos - r.p_tacos}); })
+    .filter(function(r){ return r.d < -5; })
+    .sort(function(a,b){ return a.d - b.d; }).slice(0,6);
+
+  // Rank gainers
+  var rankUp = rows.filter(function(r){ return r.p_rank_v != null && r.rank_v != null && (r.p_rank_v - r.rank_v) >= 5; })
+    .sort(function(a,b){ return (b.p_rank_v - b.rank_v) - (a.p_rank_v - a.rank_v); }).slice(0,6);
+  // Rank droppers
+  var rankDown = rows.filter(function(r){ return r.p_rank_v != null && r.rank_v != null && (r.rank_v - r.p_rank_v) >= 5; })
+    .sort(function(a,b){ return (b.rank_v - b.p_rank_v) - (a.rank_v - a.p_rank_v); }).slice(0,6);
+
+  // Spend·No sales waste
+  var waste = rows.filter(function(r){ return r.ad_spend > 500 && r.net_sales === 0; })
+    .sort(function(a,b){ return b.ad_spend - a.ad_spend; }).slice(0,6);
+
+  // Critical DoC
+  var critDoC = rows.filter(function(r){ return r.doc != null && r.doc < 15 && r.net_sales > 1000; })
+    .sort(function(a,b){ return a.doc - b.doc; }).slice(0,6);
+
+  var cols = [];
+  var c1 = '';
+  c1 += section('🚀 Top Sales Gainers', '🚀', '#5fd98a',
+    topGainers.map(function(r){
+      return row(r.sku, r.name, '+'+r.d.toFixed(0)+'%', '#5fd98a', fmtCr(r.p_sales)+'→'+fmtCr(r.net_sales));
+    }).join(''));
+  c1 += section('📉 Top Sales Losers', '📉', '#f05252',
+    topLosers.map(function(r){
+      return row(r.sku, r.name, r.d.toFixed(0)+'%', '#f05252', fmtCr(r.p_sales)+'→'+fmtCr(r.net_sales));
+    }).join(''));
+  cols.push('<div>'+c1+'</div>');
+
+  var c2 = '';
+  c2 += section('🔥 TACOS Worsening (+5pp)', '🔥', '#f05252',
+    tacosHurt.map(function(r){
+      return row(r.sku, r.name, '+'+r.d.toFixed(1)+'pp', '#f05252', r.p_tacos.toFixed(1)+'%→'+r.tacos.toFixed(1)+'%');
+    }).join(''));
+  c2 += section('✨ TACOS Improving (-5pp)', '✨', '#5fd98a',
+    tacosHeal.map(function(r){
+      return row(r.sku, r.name, r.d.toFixed(1)+'pp', '#5fd98a', r.p_tacos.toFixed(1)+'%→'+r.tacos.toFixed(1)+'%');
+    }).join(''));
+  c2 += section('💸 Spend · No Sales', '💸', '#f05252',
+    waste.map(function(r){
+      return row(r.sku, r.name, fmtCr(r.ad_spend), '#f05252', 'wasted');
+    }).join(''));
+  cols.push('<div>'+c2+'</div>');
+
+  var c3 = '';
+  c3 += section('📈 Rank Gainers', '📈', '#5fd98a',
+    rankUp.map(function(r){
+      return row(r.sku, r.name, '#'+r.p_rank_v+' → #'+r.rank_v, '#5fd98a', '+'+(r.p_rank_v - r.rank_v)+' positions');
+    }).join(''));
+  c3 += section('📉 Rank Droppers', '📉', '#f05252',
+    rankDown.map(function(r){
+      return row(r.sku, r.name, '#'+r.p_rank_v+' → #'+r.rank_v, '#f05252', '-'+(r.rank_v - r.p_rank_v)+' positions');
+    }).join(''));
+  c3 += section('⚠️ Critical DoC + Active Sales', '⚠️', '#f5a524',
+    critDoC.map(function(r){
+      return row(r.sku, r.name, r.doc.toFixed(0)+'d', '#f05252', fmtCr(r.net_sales)+' · DRR '+r.drr.toFixed(1));
+    }).join(''));
+  cols.push('<div>'+c3+'</div>');
+
+  el.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">'+cols.join('')+'</div>';
+
+  if (sub) {
+    var parts = [];
+    if (topGainers.length) parts.push(topGainers.length+' gainers');
+    if (topLosers.length)  parts.push(topLosers.length+' losers');
+    if (tacosHurt.length)  parts.push(tacosHurt.length+' TACOS+');
+    if (rankDown.length)   parts.push(rankDown.length+' rank drops');
+    sub.textContent = parts.join(' · ');
+  }
+}
+
+// CSV export for Product Analysis tab
+function exportProdCsv() {
+  if (!D || !D.hub) return;
+  // Re-trigger renderProd's row-building logic by calling aggregateWindow directly
+  var curWin  = resolveTimeWindow('prod');
+  var prevWin = resolvePrevWindow('prod');
+  var brand   = H.prod.brand;
+  var vertical= H.prod.vertical;
+  var curAgg  = aggregateWindow(curWin, brand);
+  var prevAgg = prevWin ? aggregateWindow(prevWin, brand) : null;
+  var rankMap = buildProdRankMap();
+  var docMap  = buildProdDocMap();
+
+  var lines = [[
+    'SKU','Clean Name','FK Title','Brand','Range','Lifecycle',
+    'Net Sales','Prev Sales','Sales Δ%',
+    'Net Units','Prev Units','Units Δ%',
+    'Disc%','Ad Spend','Prev Spend','Spend Δ%',
+    'TACOS%','Prev TACOS%','TACOS Δpp',
+    'Clicks','Prev Clicks','Clicks Δ%',
+    'CVR%','Prev CVR%','CVR Δpp',
+    'Rank','Prev Rank','Rank Δ',
+    'DoC','SOH','DRR',
+  ].join(',')];
+  function q(v) { return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'; }
+  function pct(cur, prev) {
+    if (cur == null || prev == null || prev === 0) return '';
+    return (((cur-prev)/Math.abs(prev))*100).toFixed(2);
+  }
+  function pp(cur, prev) {
+    if (cur == null || prev == null) return '';
+    return (cur - prev).toFixed(2);
+  }
+  Object.keys(curAgg.skus || {}).forEach(function(sku){
+    var s = curAgg.skus[sku];
+    if (vertical && vertical !== 'ALL' && (s.vertical||'') !== vertical) return;
+    var p = prevAgg ? prevAgg.skus[sku] : null;
+    var r = rankMap[sku] || {};
+    var d = docMap[sku] || {};
+    var hubSku = (D.hub.skus || []).find(function(hs){ return hs.sku === sku; }) || {};
+    if (H.prod.lifecycle !== 'ALL' && hubSku.lifecycle !== H.prod.lifecycle) return;
+    if (H.prod.range !== 'ALL' && hubSku.range !== H.prod.range) return;
+    var disc = (s.mrp > 0 && s.sp > 0) ? (1 - s.sp/s.mrp)*100 : null;
+    var tacos = s.sales > 0 ? (s.ad_spend / s.sales)*100 : null;
+    var pTacos = (p && p.sales > 0) ? (p.ad_spend / p.sales)*100 : null;
+    var cvr = s.views > 0 ? (s.traffic_sales / s.views)*100 : null;
+    var pCvr = (p && p.views > 0) ? (p.traffic_sales / p.views)*100 : null;
+    lines.push([
+      q(sku), q(s.clean_name||''), q(s.title||''), q(s.brand||''),
+      q(hubSku.range||''), q(hubSku.lifecycle||''),
+      (s.sales||0).toFixed(2), p?(p.sales||0).toFixed(2):'', pct(s.sales, p?p.sales:null),
+      s.units||0, p?p.units||0:'', pct(s.units, p?p.units:null),
+      disc!=null?disc.toFixed(2):'',
+      (s.ad_spend||0).toFixed(2), p?(p.ad_spend||0).toFixed(2):'', pct(s.ad_spend, p?p.ad_spend:null),
+      tacos!=null?tacos.toFixed(2):'', pTacos!=null?pTacos.toFixed(2):'', pp(tacos, pTacos),
+      s.ad_clicks||0, p?p.ad_clicks||0:'', pct(s.ad_clicks, p?p.ad_clicks:null),
+      cvr!=null?cvr.toFixed(2):'', pCvr!=null?pCvr.toFixed(2):'', pp(cvr, pCvr),
+      r.rank_v!=null?r.rank_v:'', '', '',
+      d.doc!=null?d.doc.toFixed(1):'', d.soh||0, d.drr!=null?d.drr.toFixed(2):'',
+    ].join(','));
+  });
+  var blob = new Blob([lines.join('\n')], {type:'text/csv'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'fk_product_analysis_' + (curWin.label || 'window').replace(/[^a-z0-9]/gi,'_') + '.csv';
+  a.click();
+}
+
 // ══ CAMPAIGNS TAB (FSN-powered) ═════════════════════════════════════════
 // Data: D.hub.fsn (current month) + D.hub.history.fsn (13 months)
 // Shape: fsn.campaigns[]: [{id,name,brand,spend,revenue,roi,units,views,clicks,sku_count,adgroup_count,skus[]}]
@@ -4642,7 +5709,7 @@ function _campMonthData(month, brand) {
     .map(function(s){
       var m = s.months[month];
       return {
-        sku: s.sku, title: s.title, brand: s.brand,
+        sku: s.sku, title: s.title, clean_name: s.clean_name, brand: s.brand,
         spend: m.spend, revenue: m.revenue, roi: m.roi,
         units: m.units, direct_units: m.direct_units, indirect_units: m.indirect_units,
         clicks: m.clicks, views: m.views, cvr: m.cvr,
@@ -5766,7 +6833,7 @@ function drillAdGroup(key) {
     var roi = s.roi != null ? s.roi.toFixed(2)+'x' : '—';
     var rcol = s.roi >= 3 ? 'var(--green)' : s.roi >= 1.5 ? 'var(--orange)' : 'var(--red)';
     lines += '<tr><td class="pid">'+s.sku+'</td>';
-    lines += '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(s.title||'')+'">'+(s.title||'—').slice(0,50)+'</td>';
+    lines += '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+displayTooltip(s)+'">'+displayName(s, 50)+'</td>';
     lines += '<td style="text-align:right;font-family:Courier New,monospace;color:var(--red)">'+fmtCr(s.spend)+'</td>';
     lines += '<td style="text-align:right;font-family:Courier New,monospace;color:var(--green)">'+fmtCr(s.revenue)+'</td>';
     lines += '<td style="text-align:right;font-family:Courier New,monospace;color:'+rcol+'">'+roi+'</td>';
@@ -6252,7 +7319,7 @@ function renderOvExtras(curWin, prevWin, brandFilter) {
     tableEl.innerHTML = sorted.map(function(p, i){
       return '<tr>' +
         '<td class="mono" style="color:var(--text3)">'+(i+1)+'</td>' +
-        '<td><a href="'+(p.url||'#')+'" target="_blank" title="'+(p.title||'')+'">'+shortT(p.title||'—',50)+'</a></td>' +
+        '<td><a href="'+(p.url||'#')+'" target="_blank" title="'+pTooltip(p)+'">'+pName(p,50)+'</a></td>' +
         '<td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:\'Courier New\',monospace;white-space:nowrap">'+(p.size||'—')+'</span></td>' +
         '<td><span style="color:'+brandColor(p.brand)+';font-weight:700;font-size:11px;white-space:nowrap">'+brandShort(p.brand)+'</span></td>' +
         '<td>'+rb(p.rank_v)+'</td>' +
@@ -6967,7 +8034,7 @@ function renderRankings() {
   // Filter table by category + search
   let filtered = prods;
   if (cat!=='ALL') filtered=filtered.filter(p=>p.rank_v_name===cat);
-  if (search) filtered=filtered.filter(p=>p.title.toLowerCase().includes(search)||p.pid.toLowerCase().includes(search));
+  if (search) filtered=filtered.filter(p=>(p.title||'').toLowerCase().includes(search)||(p.clean_name||'').toLowerCase().includes(search)||(p.pid||'').toLowerCase().includes(search)||(p.sku||'').toLowerCase().includes(search));
 
   document.getElementById('rk-count').textContent=`${filtered.length} products`;
 
@@ -6977,7 +8044,7 @@ function renderRankings() {
     <div class="chart-card ${S.rk.selPid===p.pid?'selected':''}" id="cc-${p.pid}" onclick="selectRkChart('${p.pid}')">
       <div class="chart-title" style="flex-direction:column;align-items:flex-start;gap:3px">
         <div style="width:100%;display:flex;align-items:baseline;gap:6px">
-          <span style="flex:1;font-size:12px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.title}</span>
+          <span style="flex:1;font-size:12px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${pTooltip(p)}">${pName(p)}</span>
           <span style="color:${brandColor(p.brand)};font-weight:700;white-space:nowrap">#${p.rank_v}</span>
         </div>
         <div style="display:flex;gap:6px;align-items:center">
@@ -6997,7 +8064,7 @@ function renderRankings() {
       const tv=rankTrend(p.pid,'rank_v',7), ts=rankTrend(p.pid,'rank_sub',7);
       const hl = S.rk.selPid===p.pid ? 'background:rgba(79,142,247,.08);' : '';
       return `<tr id="tr-${p.pid}" style="${hl}">
-        <td><a href="${p.url}" target="_blank" title="${p.title}">${shortT(p.title,50)}</a><br><span class="pid">${p.pid}</span></td>
+        <td><a href="${p.url}" target="_blank" title="${pTooltip(p)}">${pName(p,50)}</a><br><span class="pid">${p.sku||p.pid}</span></td>
         <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:'Courier New',monospace;white-space:nowrap">${p.size||'—'}</span></td>
         <td><span style="color:${brandColor(p.brand)};font-weight:700;font-size:11px;white-space:nowrap">${brandShort(p.brand)}</span></td>
         <td>${(()=>{const nm=p.rank_v_name||(D.latest.products.find(x=>x.pid===p.pid)||{}).rank_v_name||"";return nm&&nm!=="nan"?nm:"—";})()}</td>
@@ -7140,7 +8207,7 @@ function renderSP() {
       const dStr=d==null?'—':d<0?`<span class="diff-neg">${d}</span>`:d>0?`<span class="diff-pos">+${d}</span>`:'<span style="color:var(--text3)">0</span>';
       const sc=p.sp_status==='OK'?'sp-ok':p.sp_status==='MISMATCH'?'sp-miss':'sp-nv';
       return `<tr>
-        <td><a href="${p.url}" target="_blank" title="${p.title}">${shortT(p.title,50)}</a></td>
+        <td><a href="${p.url}" target="_blank" title="${pTooltip(p)}">${pName(p,50)}</a></td>
         <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:'Courier New',monospace;white-space:nowrap">${p.size||'—'}</span></td>
         <td><span style="color:${brandColor(p.brand)};font-weight:700;font-size:11px;white-space:nowrap">${brandShort(p.brand)}</span></td>
         <td>${fmtR(p.mrp)}</td><td>${fmtR(p.expected_sp)}</td><td style="font-weight:700">${fmtR(p.sp)}</td>
@@ -7212,7 +8279,7 @@ function renderRatings() {
       const rev7=(()=>{if(rh7.length<2)return null;const cur=rh7[rh7.length-1];const prev=rh7[Math.max(0,rh7.length-7)];const d=(cur.count||0)-(prev.count||0);return d;})();
       const rev7Str=rev7==null?'—':rev7>0?`<span style="color:var(--green);font-family:'Courier New',monospace;font-size:11px">+${rev7.toLocaleString('en-IN')}</span>`:rev7<0?`<span style="color:var(--red);font-family:'Courier New',monospace;font-size:11px">${rev7.toLocaleString('en-IN')}</span>`:'<span style="color:var(--text3)">—</span>';
       return `<tr>
-        <td><a href="${p.url}" target="_blank" title="${p.title}">${shortT(p.title,50)}</a></td>
+        <td><a href="${p.url}" target="_blank" title="${pTooltip(p)}">${pName(p,50)}</a></td>
         <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.08);font-size:10px;color:#b0bec5;border:1px solid rgba(255,255,255,.1);font-family:'Courier New',monospace;white-space:nowrap">${p.size||'—'}</span></td>
         <td><span style="color:${brandColor(p.brand)};font-weight:700;font-size:11px;white-space:nowrap">${brandShort(p.brand)}</span></td>
         <td><div style="display:flex;align-items:center;gap:4px"><span class="star">★</span><span class="rv" style="color:${rc}">${p.rating}</span></div></td>
@@ -7226,7 +8293,7 @@ function renderRatings() {
 
 function showAN(id,html){const e=document.getElementById(id);if(!e)return;if(!html){e.style.display='none';return;}document.getElementById(id+'-c').innerHTML=html;e.style.display='block';}
 function getPD(date){if(!D||!date)return null;const i=D.days.indexOf(date);return i>0?D.days[i-1]:null;}
-function getRkC(date,pd,brand){const out=[];D.latest.products.filter(p=>!brand||brand==='ALL'||p.brand===brand).forEach(p=>{const h=D.rank_history[p.pid]||[];const cur=h.filter(e=>e.date<=date);const prev=pd?h.filter(e=>e.date<=pd):[];const cv=cur.length?cur[cur.length-1]:null;const pv=prev.length?prev[prev.length-1]:null;const dv=pv&&pv.rank_v!=null&&cv.rank_v!=null?cv.rank_v-pv.rank_v:null;const ds=pv&&pv.rank_sub!=null&&cv.rank_sub!=null?cv.rank_sub-pv.rank_sub:null;if(cv)out.push({pid:p.pid,t:short(p.title,62),br:bClass(p.brand),bc:bColor(p.brand),cv:cv.rank_v,pv:pv?pv.rank_v:null,cs:cv.rank_sub,ps:pv?pv.rank_sub:null,dv:dv,ds:ds});});return out;}
+function getRkC(date,pd,brand){const out=[];D.latest.products.filter(p=>!brand||brand==='ALL'||p.brand===brand).forEach(p=>{const h=D.rank_history[p.pid]||[];const cur=h.filter(e=>e.date<=date);const prev=pd?h.filter(e=>e.date<=pd):[];const cv=cur.length?cur[cur.length-1]:null;const pv=prev.length?prev[prev.length-1]:null;const dv=pv&&pv.rank_v!=null&&cv.rank_v!=null?cv.rank_v-pv.rank_v:null;const ds=pv&&pv.rank_sub!=null&&cv.rank_sub!=null?cv.rank_sub-pv.rank_sub:null;if(cv)out.push({pid:p.pid,t:pName(p,62),br:bClass(p.brand),bc:bColor(p.brand),cv:cv.rank_v,pv:pv?pv.rank_v:null,cs:cv.rank_sub,ps:pv?pv.rank_sub:null,dv:dv,ds:ds});});return out;}
 function card(html,span){const s=span?`grid-column:span ${span}`:'';return`<div class="an-card" style="${s}">${html}</div>`;}
 function hdr(col,icon,txt){return`<div class="an-hdr" style="color:${col}">${icon} ${txt}</div>`;}
 function rrow(r,sub){const dv=r.dv;const ds=r.ds;const dStr=(dv==null||isNaN(dv))?'':dv<0?`<span style="color:var(--green)">▲${Math.abs(dv)}</span>`:dv>0?`<span style="color:var(--red)">▼${dv}</span>`:'';const prev=r.pv!=null&&!isNaN(r.pv)?`<span style="color:var(--text3)">#${r.pv}→</span>`:'';const subStr=sub&&r.cs!=null?`<span style="color:rgba(79,142,247,.7);font-size:10px;margin-left:5px">sub#${r.cs}${(ds==null||isNaN(ds))?'':ds<0?`<span style="color:var(--green)">▲${Math.abs(ds)}</span>`:`<span style="color:var(--red)">▼${ds}</span>`}</span>`:'';if(!r.t||r.t==='nan'||!r.br||r.br==='nan')return'';return`<div class="an-row"><div class="an-name"><span style="color:${r.bc};font-weight:700;font-size:10px;margin-right:3px">${r.br}</span>${r.t}</div><div class="an-val">${prev}<span style="color:var(--yellow);font-weight:700">#${r.cv}</span> ${dStr}${subStr}</div></div>`;}
@@ -7237,7 +8304,7 @@ function buildAnalysis(date){
   const pd=getPD(date);const rkc=getRkC(date,pd,brand);
   const gains=rkc.filter(r=>r.dv!=null&&!isNaN(r.dv)&&r.dv<0&&r.cv!=null&&r.cv<100).sort((a,b)=>a.dv-b.dv).slice(0,6);
   const drops=rkc.filter(r=>r.dv!=null&&!isNaN(r.dv)&&r.dv>0&&r.cv!=null&&r.cv<100).sort((a,b)=>b.dv-a.dv).slice(0,6);
-  const rtC=[];D.latest.products.filter(p=>!brand||brand==='ALL'||p.brand===brand).forEach(p=>{const h=D.rating_history[p.pid]||[];const cur=h.filter(e=>e.date<=date);const prev=pd?h.filter(e=>e.date<=pd):[];const cv=cur.length?cur[cur.length-1].rating:null;const pv=prev.length?prev[prev.length-1].rating:null;if(cv!=null&&pv!=null&&cv!==pv)rtC.push({t:short(p.title,54),br:bClass(p.brand),bc:bColor(p.brand),prev:pv,cur:cv,d:+(cv-pv).toFixed(1)});});
+  const rtC=[];D.latest.products.filter(p=>!brand||brand==='ALL'||p.brand===brand).forEach(p=>{const h=D.rating_history[p.pid]||[];const cur=h.filter(e=>e.date<=date);const prev=pd?h.filter(e=>e.date<=pd):[];const cv=cur.length?cur[cur.length-1].rating:null;const pv=prev.length?prev[prev.length-1].rating:null;if(cv!=null&&pv!=null&&cv!==pv)rtC.push({t:pName(p,54),br:bClass(p.brand),bc:bColor(p.brand),prev:pv,cur:cv,d:+(cv-pv).toFixed(1)});});
   const lowRevAll=D.latest.products.filter(p=>p.pid&&p.title&&p.title!=='nan'&&p.brand&&p.brand!=='nan'&&(!brand||brand==='ALL'||p.brand===brand)).map(p=>{const h=(D.rating_history[p.pid]||[]).filter(e=>e.date<=date);return{...p,cnt:h.length?h[h.length-1].count:(p.rating_count||0)};}).filter(p=>(p.cnt||0)<50).sort((a,b)=>a.cnt-b.cnt);
   const zeroes=lowRevAll.filter(p=>!p.cnt&&p.title&&p.title!=='nan');
   const lowRev=lowRevAll.filter(p=>p.cnt>0).slice(0,8);
@@ -7255,8 +8322,8 @@ function buildAnalysis(date){
   </div>`;
   // Combined alerts card: zeroes + low reviews in 2-col mini layout
   const alertRows=[
-    ...zeroes.map(p=>`<div class="an-row"><div class="an-name"><span style="color:${bColor(p.brand)};font-size:10px;font-weight:700">${bClass(p.brand)}</span> ${short(p.title,50)}</div><span class="an-val" style="color:var(--red);font-weight:700">0★</span></div>`),
-    ...lowRev.map(p=>`<div class="an-row"><div class="an-name"><span style="color:${bColor(p.brand)};font-size:10px;font-weight:700">${bClass(p.brand)}</span> ${short(p.title,50)}</div><span class="an-val" style="color:var(--purple);font-weight:700">${p.cnt}</span></div>`)
+    ...zeroes.map(p=>`<div class="an-row"><div class="an-name"><span style="color:${bColor(p.brand)};font-size:10px;font-weight:700">${bClass(p.brand)}</span> ${pName(p,50)}</div><span class="an-val" style="color:var(--red);font-weight:700">0★</span></div>`),
+    ...lowRev.map(p=>`<div class="an-row"><div class="an-name"><span style="color:${bColor(p.brand)};font-size:10px;font-weight:700">${bClass(p.brand)}</span> ${pName(p,50)}</div><span class="an-val" style="color:var(--purple);font-weight:700">${p.cnt}</span></div>`)
   ];
   const alertCard=alertRows.length?card(`${hdr('var(--purple)','⚠️',`Reviews Alert (${alertRows.length})`)}${zeroes.length?`<div style="color:var(--red);font-size:10px;margin-bottom:4px">🚨 ${zeroes.length} zero reviews</div>`:''}${alertRows.join('')}`):'';
   const ratingCard=rtC.length?card(`${hdr('var(--yellow)','★','Rating Δ ('+rtC.length+')')}<div>${rtC.map(r=>`<div class="an-row"><div class="an-name"><span style="color:${r.bc};font-size:10px;font-weight:700">${r.br}</span> ${r.t}</div><div class="an-val" style="color:${r.d<0?'var(--red)':'var(--green)'};font-weight:700">${r.d>0?'▲':'▼'}${Math.abs(r.d)}</div></div>`).join('')}</div>`):'';
@@ -7327,18 +8394,18 @@ function buildSPAnalysis(date){
   spCards.push(card(sumH));
   if(miss.length){
     var mH=hdr('var(--red)','\u26a0\ufe0f','Mismatches ('+miss.length+')')+'<div class="an-scroll" style="max-height:200px"><table style="width:100%;border-collapse:collapse;font-size:12px"><tr style="color:var(--text3);border-bottom:1px solid rgba(255,255,255,.06)"><th style="text-align:left;padding:4px 0">Product</th><th style="text-align:right;padding:4px">Exp</th><th style="text-align:right;padding:4px">Live</th><th style="text-align:right;padding:4px">Diff</th></tr>';
-    mH+=miss.map(function(p){return '<tr style="border-bottom:1px solid rgba(255,255,255,.05)"><td style="padding:4px 0"><span style="color:'+bColor(p.brand)+';font-weight:700;font-size:10px">'+bClass(p.brand)+'</span> <span style="color:var(--text2)">'+short(p.title,60)+'</span></td><td style="text-align:right;color:var(--text3)">'+fmtR(p.expected_sp)+'</td><td style="text-align:right;font-weight:700;color:var(--red)">'+fmtR(p.sp)+'</td><td style="text-align:right;color:var(--red);font-family:monospace">'+p.sd+'</td></tr>';}).join('');
+    mH+=miss.map(function(p){return '<tr style="border-bottom:1px solid rgba(255,255,255,.05)"><td style="padding:4px 0"><span style="color:'+bColor(p.brand)+';font-weight:700;font-size:10px">'+bClass(p.brand)+'</span> <span style="color:var(--text2)">'+pName(p,60)+'</span></td><td style="text-align:right;color:var(--text3)">'+fmtR(p.expected_sp)+'</td><td style="text-align:right;font-weight:700;color:var(--red)">'+fmtR(p.sp)+'</td><td style="text-align:right;color:var(--red);font-family:monospace">'+p.sd+'</td></tr>';}).join('');
     mH+='</table></div>';
     spCards.push(card(mH));
   }
   var newProds=newM.map(function(pid){var p=D.latest.products.find(function(x){return x.pid===pid;});var item=spD.items?spD.items.find(function(x){return x.pid===pid;}):null;return p?Object.assign({},p,{sd:item?item.sp_diff:null}):null;}).filter(Boolean);
   if(newProds.length){
-    var nH=hdr('var(--orange)','\u{1F195}','New Mismatches ('+newProds.length+')')+newProds.map(function(p){return '<div class="an-row"><div class="an-name"><span style="color:'+bColor(p.brand)+';font-size:10px;font-weight:700">'+bClass(p.brand)+'</span> '+short(p.title,56)+'</div><span class="an-val" style="color:var(--red);font-weight:700">'+p.sd+'</span></div>';}).join('');
+    var nH=hdr('var(--orange)','\u{1F195}','New Mismatches ('+newProds.length+')')+newProds.map(function(p){return '<div class="an-row"><div class="an-name"><span style="color:'+bColor(p.brand)+';font-size:10px;font-weight:700">'+bClass(p.brand)+'</span> '+pName(p,56)+'</div><span class="an-val" style="color:var(--red);font-weight:700">'+p.sd+'</span></div>';}).join('');
     spCards.push(card(nH));
   }
   var resProds=res.map(function(pid){return D.latest.products.find(function(x){return x.pid===pid;});}).filter(Boolean);
   if(resProds.length){
-    var rH=hdr('var(--green)','\u2705','Resolved ('+resProds.length+')')+resProds.map(function(p){return '<div class="an-row an-name"><span style="color:'+bColor(p.brand)+';font-size:10px;font-weight:700;margin-right:3px">'+bClass(p.brand)+'</span>'+short(p.title,58)+'</div>';}).join('');
+    var rH=hdr('var(--green)','\u2705','Resolved ('+resProds.length+')')+resProds.map(function(p){return '<div class="an-row an-name"><span style="color:'+bColor(p.brand)+';font-size:10px;font-weight:700;margin-right:3px">'+bClass(p.brand)+'</span>'+pName(p,58)+'</div>';}).join('');
     spCards.push(card(rH));
   }
   var spCols=Math.max(1,Math.min(4,spCards.length));
@@ -7356,8 +8423,8 @@ function buildRatingAnalysis(date){
     var prev=pd?h.filter(function(e){return e.date<=pd;}):[];
     var cv=cur.length?cur[cur.length-1]:null;
     var pv=prev.length?prev[prev.length-1]:null;
-    if(cv&&pv&&cv.rating!==pv.rating)rtD.push({t:short(p.title,62),br:bClass(p.brand),bc:bColor(p.brand),prev:pv.rating,cur:cv.rating,d:+(cv.rating-pv.rating).toFixed(1)});
-    if(cv&&pv&&cv.count!==pv.count)revD.push({t:short(p.title,62),br:bClass(p.brand),bc:bColor(p.brand),prev:pv.count||0,cur:cv.count||0,d:(cv.count||0)-(pv.count||0)});
+    if(cv&&pv&&cv.rating!==pv.rating)rtD.push({t:pName(p,62),br:bClass(p.brand),bc:bColor(p.brand),prev:pv.rating,cur:cv.rating,d:+(cv.rating-pv.rating).toFixed(1)});
+    if(cv&&pv&&cv.count!==pv.count)revD.push({t:pName(p,62),br:bClass(p.brand),bc:bColor(p.brand),prev:pv.count||0,cur:cv.count||0,d:(cv.count||0)-(pv.count||0)});
   });
   var allRev=D.latest.products.filter(function(p){return p.pid&&p.title&&p.title!=='nan'&&p.brand&&p.brand!=='nan'&&(!brand||brand==='ALL'||p.brand===brand);}).map(function(p){
     var h=(D.rating_history[p.pid]||[]).filter(function(e){return e.date<=date;});
@@ -7373,15 +8440,15 @@ function buildRatingAnalysis(date){
     if(rh.length<2)return null;
     var cur=rh[rh.length-1];var prev=rh[Math.max(0,rh.length-7)];
     var d=(cur.count||0)-(prev.count||0);
-    return d>0?{t:short(p.title,58),br:bClass(p.brand),bc:bColor(p.brand),d:d,total:cur.count||0}:null;
+    return d>0?{t:pName(p,58),br:bClass(p.brand),bc:bColor(p.brand),d:d,total:cur.count||0}:null;
   }).filter(Boolean).sort(function(a,b){return b.d-a.d;}).slice(0,10);
   var rtCards=[];
   if(drops.length)rtCards.push(card(hdr('var(--red)','\u2b07\ufe0f','Rating Drops ('+drops.length+')')+drops.map(function(r){return '<div class="an-row"><div class="an-name"><span style="color:'+r.bc+';font-size:10px;font-weight:700">'+r.br+'</span> '+r.t+'</div><div class="an-val" style="color:var(--red)"><span style="color:var(--text3)">'+r.prev+'-></span><b>'+r.cur+'</b> \u25bc'+Math.abs(r.d)+'</div></div>';}).join('')));
   if(gains.length)rtCards.push(card(hdr('var(--green)','\u2b06\ufe0f','Rating Gains ('+gains.length+')')+gains.map(function(r){return '<div class="an-row"><div class="an-name"><span style="color:'+r.bc+';font-size:10px;font-weight:700">'+r.br+'</span> '+r.t+'</div><div class="an-val" style="color:var(--green)"><span style="color:var(--text3)">'+r.prev+'-></span><b>'+r.cur+'</b> \u25b2'+r.d+'</div></div>';}).join('')));
   if(zeroes.length||lowRev.length){
     var zlH=hdr('var(--purple)','\u26a0\ufe0f','Reviews ('+zeroes.length+' zero, '+lowRev.length+' low)');
-    if(zeroes.length)zlH+=zeroes.map(function(p){return '<div class="an-row"><div class="an-name"><span style="color:'+bColor(p.brand)+';font-size:10px;font-weight:700">'+bClass(p.brand)+'</span> '+short(p.title,60)+'</div><span class="an-val" style="color:var(--red);font-weight:700">0 \u2605'+(p.rating||'\u2014')+'</span></div>';}).join('');
-    if(lowRev.length)zlH+='<div style="border-top:1px solid rgba(255,255,255,.06);margin-top:5px;padding-top:5px">'+lowRev.map(function(p){return '<div class="an-row"><div class="an-name"><span style="color:'+bColor(p.brand)+';font-size:10px;font-weight:700">'+bClass(p.brand)+'</span> '+short(p.title,60)+'</div><span class="an-val" style="color:var(--purple);font-weight:700">'+p.cnt+'</span></div>';}).join('')+'</div>';
+    if(zeroes.length)zlH+=zeroes.map(function(p){return '<div class="an-row"><div class="an-name"><span style="color:'+bColor(p.brand)+';font-size:10px;font-weight:700">'+bClass(p.brand)+'</span> '+pName(p,60)+'</div><span class="an-val" style="color:var(--red);font-weight:700">0 \u2605'+(p.rating||'\u2014')+'</span></div>';}).join('');
+    if(lowRev.length)zlH+='<div style="border-top:1px solid rgba(255,255,255,.06);margin-top:5px;padding-top:5px">'+lowRev.map(function(p){return '<div class="an-row"><div class="an-name"><span style="color:'+bColor(p.brand)+';font-size:10px;font-weight:700">'+bClass(p.brand)+'</span> '+pName(p,60)+'</div><span class="an-val" style="color:var(--purple);font-weight:700">'+p.cnt+'</span></div>';}).join('')+'</div>';
     rtCards.push(card(zlH));
   }
   if(topGain.length)rtCards.push(card(hdr('var(--cyan)','\u{1F4C8}','Daily Rev Gains ('+topGain.length+')')+topGain.map(function(r){return '<div class="an-row"><span class="an-name"><span style="color:'+r.bc+';font-size:10px;font-weight:700;margin-right:2px">'+r.br+'</span>'+short(r.t,32)+'</span><span class="an-val" style="color:var(--green);font-weight:700">+'+r.d.toLocaleString('en-IN')+'</span></div>';}).join('')));

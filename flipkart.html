@@ -2279,12 +2279,20 @@ function aggregateWindow(win, brand) {
     // Build hub SKU lookup for vertical/category (hist.skus[] may lack these)
     var hubBySku = {};
     (hub.skus || []).forEach(function(s){ hubBySku[s.sku] = s; });
+    // Also build SOH lookup as last-resort source for clean_name
+    var sohBySku = {};
+    if (hub.soh && hub.soh.by_sku) {
+      hub.soh.by_sku.forEach(function(s){ if (s.sku) sohBySku[s.sku] = s; });
+    }
 
     // SKU-level roll-up
     (hist.skus || []).forEach(function(s){
       if (brand && brand !== 'ALL' && s.brand !== brand) return;
       var hubS = hubBySku[s.sku] || {};
-      var agg = {sku:s.sku, title:s.title, clean_name:s.clean_name, brand:s.brand, pid:s.pid, url:s.url, mrp:s.mrp, sp:s.sp,
+      var sohS = sohBySku[s.sku] || {};
+      // clean_name fallback chain: hist.skus → hub.skus → hub.soh.by_sku
+      var cleanName = s.clean_name || hubS.clean_name || sohS.clean_name || '';
+      var agg = {sku:s.sku, title:s.title, clean_name:cleanName, brand:s.brand, pid:s.pid, url:s.url, mrp:s.mrp, sp:s.sp,
                  listing_id: hubS.listing_id || '',
                  vertical: s.vertical || hubS.vertical || '',
                  category: s.category || hubS.category || '',
@@ -2599,10 +2607,16 @@ function exportSkuDailyCsv(metric) {
   var rows = [];
   var skuMeta = {};
   (hub.skus || []).forEach(function(s){
-    skuMeta[s.sku] = {title:s.title, clean_name:s.clean_name, brand:s.brand, vertical:s.vertical||''};
+    skuMeta[s.sku] = {title:s.title, clean_name:s.clean_name||'', brand:s.brand, vertical:s.vertical||''};
   });
   (hist.skus || []).forEach(function(s){
-    if (!(s.sku in skuMeta)) skuMeta[s.sku] = {title:s.title||'', clean_name:s.clean_name||'', brand:s.brand||'', vertical:s.vertical||''};
+    if (!(s.sku in skuMeta)) {
+      // Try to fetch clean_name from the hub SOH block as last resort
+      var hubSoh = (D.hub.soh && D.hub.soh.by_sku) || [];
+      var sohRec = hubSoh.find(function(x){ return x.sku === s.sku; });
+      var cn = s.clean_name || (sohRec && sohRec.clean_name) || '';
+      skuMeta[s.sku] = {title:s.title||'', clean_name:cn, brand:s.brand||'', vertical:s.vertical||''};
+    }
   });
 
   if (metric === 'sales') {

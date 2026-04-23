@@ -275,13 +275,9 @@ function checkPW(){
   <!-- HEADLINE KPI TILES (cross-tab hero metrics) -->
   <div class="stat-grid" id="ov-hero-stats" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr));margin-bottom:18px"></div>
 
-  <!-- Cross-tab 6-block Insights grid (ABOVE analyses) -->
-  <div class="card" style="margin-bottom:18px">
-    <div class="card-hdr"><span class="card-title">💡 Cross-Tab Insights</span><span class="card-sub" id="ov-insight-sub"></span></div>
-    <div id="ov-cross-insights" style="padding:12px"></div>
-  </div>
-
-  <!-- Analysis sections container — auto-populated from ANALYSIS_REGISTRY. -->
+  <!-- Analysis sections container — auto-populated from ANALYSIS_REGISTRY
+       in the order: Sales → Product Analysis → Traffic → Ads → Placement →
+       Campaigns → Stock. This matches the nav tab order. -->
   <div id="ov-analyses-container"></div>
 
   <!-- Warehouse & Channel Breakdown -->
@@ -1666,6 +1662,8 @@ function populateHubDateSelectors() {
   applyTabDefault('sales',   daysS);
   applyTabDefault('ads',     daysA);
   applyTabDefault('traffic', daysT);
+  // Product Analysis uses sales days (most accurate TACOS) with ads-day fallback
+  applyTabDefault('prod',    daysS.length ? daysS : daysA);
 
   // Preset custom date bounds to the min/max available
   if (months.length) {
@@ -5494,27 +5492,51 @@ function renderProd() {
   }
 
   // Build extra lookups
-  var rankMap = buildProdRankMap();
-  var docMap  = buildProdDocMap();
-  // Build prev rank map — naive: use rank_history if available for prev window's "day"
-  var prevRankMap = {};
-  if (D.rank_history && prevWin) {
-    // Pick a representative "anchor day" to snapshot prev rank
-    var anchorDay = prevWin.singleDay ||
-                    (prevWin.dayRange ? prevWin.dayRange[1] : null) ||
-                    (prevWin.monthsList && prevWin.monthsList.length ? prevWin.monthsList[prevWin.monthsList.length-1]+'-28' : null);
-    if (anchorDay) {
-      Object.keys(rankMap).forEach(function(sku){
-        var pid = rankMap[sku].pid;
-        if (!pid) return;
-        var h = (D.rank_history[pid] || []).filter(function(e){ return e.date <= anchorDay; });
-        if (h.length) {
-          var last = h[h.length-1];
-          prevRankMap[sku] = {rank_v: last.rank_v, rank_sub: last.rank_sub};
-        }
-      });
-    }
+  var skuToPid = buildProdRankMap();   // sku → {rank_v(latest), rank_sub, pid}
+  var docMap   = buildProdDocMap();
+
+  // Helper to pick rank snapshotted at a given day.
+  // Falls back to nearest earlier day if exact day has no snapshot.
+  function rankAtDay(day) {
+    if (!day || !D || !D.rank_history) return {};
+    var out = {};
+    Object.keys(skuToPid).forEach(function(sku){
+      var pid = skuToPid[sku].pid;
+      if (!pid) return;
+      var h = (D.rank_history[pid] || []).filter(function(e){ return e.date <= day; });
+      if (h.length) {
+        var last = h[h.length-1];
+        out[sku] = {rank_v: last.rank_v, rank_sub: last.rank_sub};
+      }
+    });
+    return out;
   }
+  // Anchor day helper: last day in the window
+  function winAnchor(win) {
+    if (!win) return null;
+    if (win.singleDay) return win.singleDay;
+    if (win.dayRange)  return win.dayRange[1];
+    if (win.monthsList && win.monthsList.length) {
+      // Use last day of the last month in the list (rank tracker is daily, so this is safe)
+      var m = win.monthsList[win.monthsList.length-1];
+      return m + '-28';  // 28 guaranteed to exist in every month; rankAtDay picks nearest prior
+    }
+    return null;
+  }
+  var curAnchor  = winAnchor(curWin);
+  var prevAnchor = winAnchor(prevWin);
+  // CURRENT rank snapshotted at window's last day. When rank_history has data for
+  // that day, we use it; otherwise we fall back to latest rank (skuToPid).
+  var curRankMap = rankAtDay(curAnchor);
+  if (!Object.keys(curRankMap).length) {
+    // rank_history unavailable → fall back to latest
+    Object.keys(skuToPid).forEach(function(sku){
+      var r = skuToPid[sku];
+      if (r.rank_v != null) curRankMap[sku] = {rank_v: r.rank_v, rank_sub: r.rank_sub};
+    });
+  }
+  var prevRankMap = rankAtDay(prevAnchor);
+  var rankMap = curRankMap;  // alias so downstream code continues to work
 
   // Build unified row set from current window's SKU aggregates.
   // Each row: {sku, name, brand, net_sales, net_units, disc_pct, ad_spend, tacos,
@@ -5664,25 +5686,48 @@ function renderProd() {
       var docBucket = docBucketOf(r.doc);
       var docStyle  = 'color:'+docColorOf(docBucket)+';font-weight:'+(docBucket==='CRITICAL'?'700':'500');
 
-      // Insights (inline): flag the few most meaningful things per SKU
+      // Per-SKU inline insights. Thresholds are absolute where possible so
+      // observations surface for real money-moving changes, not just % noise
+      // on tiny SKUs. Lower bars than before to make this column actually show
+      // signal for most active SKUs.
       var obs = [];
-      if (r.p_tacos != null && r.tacos != null && r.p_tacos > 0 && (r.tacos - r.p_tacos) > 10)
-        obs.push('<span style="color:#f05252">🔥 TACOS +'+(r.tacos - r.p_tacos).toFixed(1)+'pp</span>');
-      if (r.p_rank_v != null && r.rank_v != null && (r.rank_v - r.p_rank_v) >= 10)
-        obs.push('<span style="color:#f05252">📉 Rank '+r.p_rank_v+'→'+r.rank_v+'</span>');
-      if (r.p_rank_v != null && r.rank_v != null && (r.p_rank_v - r.rank_v) >= 10)
-        obs.push('<span style="color:#5fd98a">📈 Rank '+r.p_rank_v+'→'+r.rank_v+'</span>');
+      var salesAbs = (r.p_sales != null) ? (r.net_sales - r.p_sales) : null;
+      // Sales movement: ≥ ₹20K absolute OR ≥ 30% when prev was material (>₹10K)
+      if (salesAbs != null) {
+        if (salesAbs >= 20000)       obs.push('<span style="color:#5fd98a">🚀 Sales +'+fmtCr(salesAbs)+'</span>');
+        else if (salesAbs <= -20000) obs.push('<span style="color:#f05252">📉 Sales '+fmtCr(salesAbs)+'</span>');
+        else if (r.p_sales > 10000) {
+          var sDeltaPct = ((r.net_sales - r.p_sales)/r.p_sales)*100;
+          if (sDeltaPct >= 30)  obs.push('<span style="color:#5fd98a">🚀 Sales +'+sDeltaPct.toFixed(0)+'%</span>');
+          if (sDeltaPct <= -30) obs.push('<span style="color:#f05252">📉 Sales '+sDeltaPct.toFixed(0)+'%</span>');
+        }
+      }
+      // TACOS shifts: ≥5pp change on SKUs with meaningful spend
+      if (r.p_tacos != null && r.tacos != null && (r.ad_spend > 5000 || r.p_spend > 5000)) {
+        var tacosDelta = r.tacos - r.p_tacos;
+        if (tacosDelta > 5)  obs.push('<span style="color:#f05252">🔥 TACOS +'+tacosDelta.toFixed(1)+'pp</span>');
+        if (tacosDelta < -5) obs.push('<span style="color:#5fd98a">✨ TACOS '+tacosDelta.toFixed(1)+'pp</span>');
+      }
+      // Rank changes: ≥5 positions (was 10) to make it actually trigger
+      if (r.p_rank_v != null && r.rank_v != null) {
+        var rankDelta = r.rank_v - r.p_rank_v;
+        if (rankDelta >= 5)  obs.push('<span style="color:#f05252">📉 Rank #'+r.p_rank_v+'→#'+r.rank_v+'</span>');
+        if (rankDelta <= -5) obs.push('<span style="color:#5fd98a">📈 Rank #'+r.p_rank_v+'→#'+r.rank_v+'</span>');
+      }
+      // Critical DoC (always flag)
       if (docBucket === 'CRITICAL' && r.doc != null)
         obs.push('<span style="color:#f05252">⚠️ DoC '+r.doc.toFixed(0)+'d</span>');
-      if (r.p_cvr != null && r.cvr != null && r.p_cvr > 0 && (r.p_cvr - r.cvr) > 1)
+      // CVR drop: ≥0.5pp (was 1pp) — CVR moves are small
+      if (r.p_cvr != null && r.cvr != null && (r.p_cvr - r.cvr) > 0.5)
         obs.push('<span style="color:#f5a524">🔻 CVR -'+(r.p_cvr - r.cvr).toFixed(2)+'pp</span>');
-      if (r.p_sales != null && r.p_sales > 0 && r.net_sales > 0) {
-        var sDelta = ((r.net_sales - r.p_sales)/r.p_sales)*100;
-        if (sDelta > 50)  obs.push('<span style="color:#5fd98a">🚀 Sales +'+sDelta.toFixed(0)+'%</span>');
-        if (sDelta < -30) obs.push('<span style="color:#f05252">📉 Sales '+sDelta.toFixed(0)+'%</span>');
-      }
-      if (r.ad_spend > 0 && r.net_sales === 0)
-        obs.push('<span style="color:#f05252">💸 Spend·no sales</span>');
+      if (r.p_cvr != null && r.cvr != null && (r.cvr - r.p_cvr) > 0.5)
+        obs.push('<span style="color:#5fd98a">🔺 CVR +'+(r.cvr - r.p_cvr).toFixed(2)+'pp</span>');
+      // Wasted spend (had ad spend, zero sales)
+      if (r.ad_spend > 500 && r.net_sales === 0)
+        obs.push('<span style="color:#f05252">💸 Spend·no sales ('+fmtCr(r.ad_spend)+')</span>');
+      // New SKU: activity this period, nothing in prev
+      if ((r.net_sales > 10000 || r.net_units > 50) && (r.p_sales == null || r.p_sales === 0))
+        obs.push('<span style="color:#a78bfa">🆕 New activity</span>');
 
       body_html.push(
         '<tr>'+
@@ -5744,24 +5789,31 @@ function renderProdInsights(rows, curAgg, prevAgg, curWin, prevWin) {
       '</div>'+(html || '<div style="color:var(--text3);font-size:11px;padding:4px 0">—</div>')+'</div>';
   }
 
-  // Sales movers (need prev to compute)
-  var salesGain = rows.filter(function(r){ return r.p_sales > 0 && r.net_sales > 0; })
-    .map(function(r){
-      var dPct = ((r.net_sales - r.p_sales)/r.p_sales)*100;
-      return Object.assign({}, r, {d:dPct, abs:r.net_sales - r.p_sales});
-    });
-  var topGainers = salesGain.filter(function(r){return r.d > 0;}).sort(function(a,b){return b.d - a.d;}).slice(0,8);
-  var topLosers  = salesGain.filter(function(r){return r.d < 0;}).sort(function(a,b){return a.d - b.d;}).slice(0,8);
+  // Sales movers — ranked by ABSOLUTE ₹ delta (matches Sales tab logic).
+  // Low-base noise filter: only include SKUs where cur > ₹10K OR prev > ₹10K,
+  // so a SKU going from ₹5 → ₹500 (10000% growth) doesn't drown out a real mover.
+  var salesMovers = rows.filter(function(r){
+    if (r.p_sales == null) return false;
+    return (r.net_sales > 10000 || r.p_sales > 10000);
+  }).map(function(r){
+    return Object.assign({}, r, {abs: (r.net_sales||0) - (r.p_sales||0)});
+  });
+  var topGainers = salesMovers.filter(function(r){return r.abs > 0;})
+    .sort(function(a,b){return b.abs - a.abs;}).slice(0,8);
+  var topLosers  = salesMovers.filter(function(r){return r.abs < 0;})
+    .sort(function(a,b){return a.abs - b.abs;}).slice(0,8);
 
-  // TACOS worsening (higher TACOS = worse)
-  var tacosHurt = rows.filter(function(r){ return r.p_tacos != null && r.tacos != null && r.net_sales > 1000; })
-    .map(function(r){ return Object.assign({}, r, {d: r.tacos - r.p_tacos}); })
+  // TACOS worsening/improving — filter requires meaningful spend in either window
+  // (≥₹5K) so a ₹50 → ₹500 spend doesn't create TACOS noise. Sort by ABSOLUTE pp delta.
+  var tacosHurt = rows.filter(function(r){
+    return r.p_tacos != null && r.tacos != null && (r.ad_spend > 5000 || r.p_spend > 5000);
+  }).map(function(r){ return Object.assign({}, r, {d: r.tacos - r.p_tacos}); })
     .filter(function(r){ return r.d > 5; })
     .sort(function(a,b){ return b.d - a.d; }).slice(0,6);
 
-  // TACOS improving
-  var tacosHeal = rows.filter(function(r){ return r.p_tacos != null && r.tacos != null && r.net_sales > 1000; })
-    .map(function(r){ return Object.assign({}, r, {d: r.tacos - r.p_tacos}); })
+  var tacosHeal = rows.filter(function(r){
+    return r.p_tacos != null && r.tacos != null && (r.ad_spend > 5000 || r.p_spend > 5000);
+  }).map(function(r){ return Object.assign({}, r, {d: r.tacos - r.p_tacos}); })
     .filter(function(r){ return r.d < -5; })
     .sort(function(a,b){ return a.d - b.d; }).slice(0,6);
 
@@ -5782,13 +5834,13 @@ function renderProdInsights(rows, curAgg, prevAgg, curWin, prevWin) {
 
   var cols = [];
   var c1 = '';
-  c1 += section('🚀 Top Sales Gainers', '🚀', '#5fd98a',
+  c1 += section('🚀 Top Sales Gainers (₹)', '🚀', '#5fd98a',
     topGainers.map(function(r){
-      return row(r.sku, r.name, '+'+r.d.toFixed(0)+'%', '#5fd98a', fmtCr(r.p_sales)+'→'+fmtCr(r.net_sales));
+      return row(r.sku, r.name, '+'+fmtCr(r.abs), '#5fd98a', fmtCr(r.p_sales)+'→'+fmtCr(r.net_sales));
     }).join(''));
-  c1 += section('📉 Top Sales Losers', '📉', '#f05252',
+  c1 += section('📉 Top Sales Losers (₹)', '📉', '#f05252',
     topLosers.map(function(r){
-      return row(r.sku, r.name, r.d.toFixed(0)+'%', '#f05252', fmtCr(r.p_sales)+'→'+fmtCr(r.net_sales));
+      return row(r.sku, r.name, fmtCr(r.abs), '#f05252', fmtCr(r.p_sales)+'→'+fmtCr(r.net_sales));
     }).join(''));
   cols.push('<div>'+c1+'</div>');
 
@@ -6603,6 +6655,7 @@ function renderCampaigns() {
   var month = H.camp.month;
   var prevMonth = _prevMonth(month);
   var brand = H.camp.brand;
+  var vertical = H.camp.vertical || 'ALL';
 
   var cur  = _campMonthData(month, brand, vertical);
   var prev = prevMonth ? _campMonthData(prevMonth, brand, vertical) : {campaigns:[], adgroups:[], skus:[], totals:null};

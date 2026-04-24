@@ -1258,14 +1258,53 @@ try {
 //    Fallback to title (raw Flipkart name) and finally to the SKU itself.
 function displayName(s, maxLen) {
   if (!s) return '—';
-  var name = s.clean_name || s.title || s.sku || '—';
+  // If s.clean_name missing, try runtime lookup via SKU → hub.skus/soh
+  var cleaned = s.clean_name;
+  if (!cleaned && s.sku) {
+    if (!_pNameSkuCache) _pNameSkuCache = _buildPNameSkuCache();
+    if (_pNameSkuCache[s.sku]) cleaned = _pNameSkuCache[s.sku];
+  }
+  var name = cleaned || s.title || s.sku || '—';
   if (maxLen && name.length > maxLen) name = name.slice(0, maxLen);
   return name;
 }
 // For snapshot products (rankings/SP/ratings): same logic but field may be p.title only
+// Runtime cross-reference cache: sku → clean_name built on demand
+// from hub.skus + hub.soh.by_sku. Invalidated when D changes.
+var _pNameSkuCache = null;
+function _buildPNameSkuCache() {
+  var m = {};
+  if (!D) return m;
+  if (D.hub && D.hub.skus) D.hub.skus.forEach(function(s){
+    if (s.sku && s.clean_name) m[s.sku] = s.clean_name;
+  });
+  if (D.hub && D.hub.soh && D.hub.soh.by_sku) D.hub.soh.by_sku.forEach(function(s){
+    if (s.sku && s.clean_name && !m[s.sku]) m[s.sku] = s.clean_name;
+  });
+  // Also build PID → clean_name via FSN bridge
+  var pidMap = {};
+  if (D.hub && D.hub.soh && D.hub.soh.by_sku) D.hub.soh.by_sku.forEach(function(s){
+    if (s.fsn && s.clean_name) pidMap[s.fsn] = s.clean_name;
+  });
+  if (D.hub && D.hub.skus) D.hub.skus.forEach(function(s){
+    if (s.pid && s.clean_name && !pidMap[s.pid]) pidMap[s.pid] = s.clean_name;
+    if (s.fsn && s.clean_name && !pidMap[s.fsn]) pidMap[s.fsn] = s.clean_name;
+  });
+  m._pidMap = pidMap;
+  return m;
+}
+function _pNameLookup(p) {
+  // Try direct clean_name first, then SKU lookup, then PID lookup
+  if (p.clean_name) return p.clean_name;
+  if (!_pNameSkuCache) _pNameSkuCache = _buildPNameSkuCache();
+  if (p.sku && _pNameSkuCache[p.sku]) return _pNameSkuCache[p.sku];
+  if (p.pid && _pNameSkuCache._pidMap && _pNameSkuCache._pidMap[p.pid]) return _pNameSkuCache._pidMap[p.pid];
+  return null;
+}
 function pName(p, maxLen) {
   if (!p) return '—';
-  var name = p.clean_name || p.title || p.pid || '—';
+  var cleaned = _pNameLookup(p);
+  var name = cleaned || p.title || p.pid || '—';
   if (maxLen && name.length > maxLen) name = name.slice(0, maxLen);
   return name;
 }
@@ -4102,7 +4141,7 @@ async function loadData() {
   try {
     const res = await fetch('fk_data.json?'+Date.now());
     if(!res.ok) throw new Error('HTTP '+res.status);
-    D = await res.json();
+    D = await res.json(); _pNameSkuCache = null;
     document.getElementById('nav-meta').textContent = 'Updated '+D.generated;
     document.getElementById('loading').style.display='none';
     const latest = D.days[D.days.length-1];
@@ -5644,9 +5683,13 @@ function renderProd() {
 
     rows.push({
       sku: sku,
-      name: s.clean_name || s.title || sku,
+      // displayName() uses runtime SKU→clean_name cache, so even if the
+      // aggregation didn't stamp clean_name we still get it via hub.skus lookup.
+      name: displayName(s) !== '—' ? displayName(s) : sku,
       title: s.title,
       clean_name: s.clean_name,
+      pid: s.pid,
+      url: s.url,
       brand: s.brand,
       range: hubSku.range || '',
       lifecycle: hubSku.lifecycle || '',
@@ -5726,8 +5769,17 @@ function renderProd() {
     var shown = rows.slice(0, 500);
     shown.forEach(function(r) {
       var nameTip = escHtml(r.clean_name ? r.clean_name + (r.title && r.title !== r.clean_name ? ' · FK: '+r.title : '') : r.title || '');
-      var nameCell = '<div style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r.name)+'</div>'+
+      // fkProductUrl(r) expects pid/sku/url on the record — plumb pid through if present
+      var link = (typeof fkProductUrl === 'function') ? fkProductUrl(r) : '';
+      var nameInner = '<div style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r.name)+(link?' ↗':'')+'</div>'+
                      (r.range ? '<div style="font-size:10px;color:var(--text3);margin-top:2px">'+escHtml(r.range)+(r.lifecycle?' · '+escHtml(r.lifecycle):'')+'</div>' : '');
+      var nameCell = link
+        ? '<a href="'+link+'" target="_blank" rel="noopener" style="color:var(--text2);text-decoration:none" title="Open on Flipkart">'+nameInner+'</a>'
+        : nameInner;
+      // Also make SKU column clickable when link available
+      var skuDisplay = link
+        ? '<a href="'+link+'" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-family:Courier New,monospace;font-size:11px">'+escHtml(r.sku)+'</a>'
+        : '<span style="font-family:Courier New,monospace;font-size:11px">'+escHtml(r.sku)+'</span>';
 
       function cell(val, delta, numClass) {
         return '<td class="'+(numClass||'num')+'" style="line-height:1.35">'+
@@ -5782,7 +5834,7 @@ function renderProd() {
 
       body_html.push(
         '<tr>'+
-          '<td style="font-family:Courier New,monospace;font-size:11px;vertical-align:top">'+escHtml(r.sku)+'</td>'+
+          '<td style="vertical-align:top">'+skuDisplay+'</td>'+
           '<td style="vertical-align:top" title="'+nameTip+'">'+nameCell+'</td>'+
           '<td style="vertical-align:top">'+brandPill(r.brand)+'</td>'+
           cell(fmtCr(r.net_sales),     fmtAbsDelta(r.net_sales, r.p_sales, fmtCr, true)) +

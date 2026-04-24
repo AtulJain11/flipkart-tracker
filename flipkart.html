@@ -2391,6 +2391,84 @@ function rebuildTotalsFromSkusV(skus, vertical) {
   return out;
 }
 
+// ── Runtime SKU→vertical map (built from D.hub.skus[]) ─────────────────────
+// Cached on D so we rebuild only when D changes. Used by chart builders to
+// filter daily rows by vertical when vertical filter is active.
+var _skuVerticalMap = null, _skuVerticalMapD = null;
+function getSkuVerticalMap() {
+  if (_skuVerticalMap && _skuVerticalMapD === D) return _skuVerticalMap;
+  var m = {};
+  if (D && D.hub && D.hub.skus) {
+    D.hub.skus.forEach(function(s){
+      if (s && s.sku) m[s.sku] = s.vertical || null;
+    });
+  }
+  _skuVerticalMap = m;
+  _skuVerticalMapD = D;
+  return m;
+}
+
+// Build per-day {date, spend, revenue, clicks, views, sales} filtered by
+// brand and vertical from the SKU×day history. Used when vertical filter is
+// active and the tab-level daily aggregate wouldn't respect vertical.
+// Supports: kind='ads' (ad_spend, ad_revenue, ad_clicks, ad_views),
+//           kind='traffic' (views, clicks, sales, revenue from sales_sku_daily and traffic_sku_daily).
+function buildDailyFromSkuDaily(kind, brand, vertical, dateStart, dateEnd) {
+  var hub = D && D.hub; if (!hub) return [];
+  var hist = hub.history || {};
+  var vMap = getSkuVerticalMap();
+  var byDate = {};
+
+  function getRowsForKind() {
+    if (kind === 'ads') {
+      // Ads SKU daily: D.hub.daily.days (current month) holds campaign-day only.
+      // No per-SKU daily spend exists in current data shape.
+      // Fallback: reconstruct from fsn + daily ratios — not feasible cleanly.
+      // Return [] so caller falls back to tab-level aggregate.
+      return null;
+    }
+    if (kind === 'traffic') {
+      var out = [];
+      if (hist.traffic_sku_daily) {
+        hist.traffic_sku_daily.forEach(function(r){ out.push(r); });
+      }
+      // Current-month traffic per-SKU-per-day is in hub.traffic.daily_by_sku if present
+      if (hub.traffic && hub.traffic.daily_by_sku) {
+        hub.traffic.daily_by_sku.forEach(function(r){ out.push(r); });
+      }
+      return out;
+    }
+    return null;
+  }
+
+  var rows = getRowsForKind();
+  if (!rows) return null;  // signal to caller: can't filter, use aggregate
+
+  rows.forEach(function(r){
+    if (!r || !r.date) return;
+    if (dateStart && r.date < dateStart) return;
+    if (dateEnd && r.date > dateEnd) return;
+    var sku = r.sku;
+    if (!sku) return;
+    // brand filter
+    if (brand && brand !== 'ALL' && r.brand && r.brand !== brand) return;
+    // vertical filter via SKU map
+    if (vertical && vertical !== 'ALL') {
+      if (vMap[sku] !== vertical) return;
+    }
+    var d = r.date;
+    if (!byDate[d]) byDate[d] = {date: d, views:0, clicks:0, sales:0, revenue:0};
+    byDate[d].views   += +(r.views||0);
+    byDate[d].clicks  += +(r.clicks||0);
+    byDate[d].sales   += +(r.sales || r.units || 0);
+    byDate[d].revenue += +(r.revenue||0);
+  });
+
+  var out = Object.values(byDate);
+  out.sort(function(a,b){ return a.date < b.date ? -1 : 1; });
+  return out;
+}
+
 // Download array of objects as CSV. Columns = keys of first object (ordered).
 function downloadCsv(rows, filename) {
   if (!rows || !rows.length) { alert('No rows to export'); return; }
@@ -2919,12 +2997,14 @@ function renderSales() {
       if (!(s.sku in skuMeta)) skuMeta[s.sku] = {brand: s.brand, mrp: +s.mrp || 0};
     });
 
-    if (brand && brand !== 'ALL') {
-      // Build date → {net_sales, gmv, mrp_base} from SKU-day sources, filtered by brand
+    if ((brand && brand !== 'ALL') || (vertical && vertical !== 'ALL')) {
+      // Build date → {net_sales, gmv, mrp_base} from SKU-day sources, filtered by brand + vertical
       var byDate = {};
+      var vMapSl = getSkuVerticalMap();
       // Current-month per-SKU per-day
       (hub.skus || []).forEach(function(s){
-        if (s.brand !== brand) return;
+        if (brand !== 'ALL' && s.brand !== brand) return;
+        if (vertical !== 'ALL' && s.vertical !== vertical) return;
         var mrp = +s.mrp || 0;
         (s.sales_daily || []).forEach(function(r){
           if (!r || !r.date) return;
@@ -2942,7 +3022,9 @@ function renderSales() {
         if (!r || !r.date) return;
         if (curMonthsSet.has(r.date.slice(0,7))) return;
         var meta = skuMeta[r.sku];
-        if (!meta || meta.brand !== brand) return;
+        if (!meta) return;
+        if (brand !== 'ALL' && meta.brand !== brand) return;
+        if (vertical !== 'ALL' && vMapSl[r.sku] !== vertical) return;
         var e = byDate[r.date] || {date: r.date, net_sales: 0, gmv: 0, mrp_base: 0};
         e.net_sales += r.net_sales || 0;
         e.gmv       += r.gmv       || 0;
@@ -3053,7 +3135,16 @@ function renderSales() {
   var brandNames = ['BARE ANATOMY','Chemist at Play','SunScoop'];
   var brandCols  = ['rgba(79,142,247,.85)','rgba(62,207,142,.85)','rgba(245,165,36,.85)'];
   var brandVals;
-  if (curWin.granularity === 'month') {
+  if (vertical !== 'ALL') {
+    // Rebuild from curAgg.skus which is already window+brand filtered
+    var vBrandMap = {};
+    Object.values(curAgg.skus || {}).forEach(function(s){
+      if (s.vertical !== vertical) return;
+      if (!s.brand) return;
+      vBrandMap[s.brand] = (vBrandMap[s.brand] || 0) + (s.sales || 0);
+    });
+    brandVals = brandNames.map(function(b){ return +((vBrandMap[b]||0)/1e5).toFixed(1); });
+  } else if (curWin.granularity === 'month') {
     brandVals = brandNames.map(function(b){
       var bs = (hist.by_brand?.[b]?.sales) || [];
       var rm = bs.filter(function(r){ return curWin.months.has(r.month); });
@@ -3260,15 +3351,43 @@ function renderAds() {
   var useAdsDaily = (curWin.granularity === 'day') ||
                     (curWin.months && curWin.months.size === 1 && hasAdsDaily);
   if (useAdsDaily) {
-    // Merge current-month daily + historical all_days
-    var dailyAll = [];
-    if (hub.history && hub.history.daily && hub.history.daily.all_days) {
-      dailyAll = hub.history.daily.all_days.slice();
+    // Build vertical SKU set if filter active; use it to pick campaigns
+    var vSetA = null;
+    if (vertical !== 'ALL' && D.hub && D.hub.skus) {
+      vSetA = new Set();
+      D.hub.skus.forEach(function(hs){ if (hs.vertical === vertical && hs.sku) vSetA.add(hs.sku); });
     }
-    if (hub.daily && hub.daily.days && hub.daily.days.length) {
-      var seen = new Set(hub.daily.days.map(function(d){return d.date;}));
-      dailyAll = dailyAll.filter(function(d){ return !seen.has(d.date); });
-      hub.daily.days.forEach(function(d){ dailyAll.push(d); });
+
+    var dailyAll = [];
+    if (vSetA) {
+      // Rebuild daily from hub.daily.campaigns[*].days — filter campaigns that touch vertical
+      var byDate = {};
+      if (hub.daily && hub.daily.campaigns) {
+        hub.daily.campaigns.forEach(function(cm){
+          var touches = (cm.skus || []).some(function(s){ return vSetA.has(s.sku || s); });
+          if (!touches) return;
+          if (brand !== 'ALL' && cm.brand !== brand && !(cm.brand_mix && cm.brand_mix[brand])) return;
+          Object.keys(cm.days || {}).forEach(function(d){
+            var v = cm.days[d];
+            if (!byDate[d]) byDate[d] = {date:d, spend:0, revenue:0};
+            byDate[d].spend   += v.spend   || 0;
+            byDate[d].revenue += v.revenue || 0;
+          });
+        });
+      }
+      // Historical daily reconstruction is not feasible from campaign-level history
+      // (hub.history.daily.all_days has no SKU breakdown). Limit chart to available months.
+      dailyAll = Object.values(byDate);
+    } else {
+      // No vertical filter — use the aggregate daily rollup (fast path)
+      if (hub.history && hub.history.daily && hub.history.daily.all_days) {
+        dailyAll = hub.history.daily.all_days.slice();
+      }
+      if (hub.daily && hub.daily.days && hub.daily.days.length) {
+        var seen = new Set(hub.daily.days.map(function(d){return d.date;}));
+        dailyAll = dailyAll.filter(function(d){ return !seen.has(d.date); });
+        hub.daily.days.forEach(function(d){ dailyAll.push(d); });
+      }
     }
     dailyAll.sort(function(a,b){ return a.date < b.date ? -1 : 1; });
     var rows;
@@ -3286,8 +3405,10 @@ function renderAds() {
       var singleMonthA = Array.from(curWin.months)[0];
       rows = dailyAll.filter(function(d){ return d.date.slice(0,7) === singleMonthA; });
     }
-    // Extract by-brand values when a brand filter is active
+    // Extract by-brand values when a brand filter is active; for vertical path
+    // we've already filtered brand above so bVal returns totals directly.
     function bVal(d, field) {
+      if (vSetA) return d[field] || 0;
       if (brand === 'ALL') return d[field] || 0;
       var bb = d.by_brand && d.by_brand[brand];
       return bb ? (bb[field] || 0) : 0;
@@ -3300,12 +3421,42 @@ function renderAds() {
       return sp > 0 ? +(rv/sp).toFixed(2) : 0;
     });
   } else {
-    var series = brand === 'ALL' ? (hist.totals?.ads || []) : (hist.by_brand?.[brand]?.ads || []);
-    var rowsM = series.filter(function(r){ return curWin.months.has(r.month); });
-    chartLabels = rowsM.map(function(r){ return monthLabel(r.month); });
-    chartSpend  = rowsM.map(function(r){ return +((r.spend||0)/1e5).toFixed(1); });
-    chartRev    = rowsM.map(function(r){ return +((r.revenue||0)/1e5).toFixed(1); });
-    chartRoi    = rowsM.map(function(r){ return r.roi || 0; });
+    // Monthly granularity
+    var vSetM = null;
+    if (vertical !== 'ALL' && D.hub && D.hub.skus) {
+      vSetM = new Set();
+      D.hub.skus.forEach(function(hs){ if (hs.vertical === vertical && hs.sku) vSetM.add(hs.sku); });
+    }
+    if (vSetM) {
+      // Rebuild from fsn.campaigns monthly data touching the vertical
+      var fsnD = (hub.fsn && hub.fsn.campaigns ? hub.fsn : (hist.fsn || {campaigns:[]}));
+      var byMonthA = {};
+      (fsnD.campaigns || []).forEach(function(c){
+        if (brand !== 'ALL' && c.brand !== brand && !(c.brand_mix && c.brand_mix[brand])) return;
+        var mnths = c.months || {};
+        Object.keys(mnths).forEach(function(m){
+          if (!curWin.months.has(m)) return;
+          var mm = mnths[m];
+          var touches = (mm.skus || []).some(function(s){ return vSetM.has(s.sku || s); });
+          if (!touches) return;
+          if (!byMonthA[m]) byMonthA[m] = {month:m, spend:0, revenue:0};
+          byMonthA[m].spend   += mm.spend   || 0;
+          byMonthA[m].revenue += mm.revenue || 0;
+        });
+      });
+      var rowsMv = Object.values(byMonthA).sort(function(a,b){return a.month<b.month?-1:1;});
+      chartLabels = rowsMv.map(function(r){ return monthLabel(r.month); });
+      chartSpend  = rowsMv.map(function(r){ return +((r.spend||0)/1e5).toFixed(1); });
+      chartRev    = rowsMv.map(function(r){ return +((r.revenue||0)/1e5).toFixed(1); });
+      chartRoi    = rowsMv.map(function(r){ return r.spend > 0 ? +(r.revenue/r.spend).toFixed(2) : 0; });
+    } else {
+      var series = brand === 'ALL' ? (hist.totals?.ads || []) : (hist.by_brand?.[brand]?.ads || []);
+      var rowsM = series.filter(function(r){ return curWin.months.has(r.month); });
+      chartLabels = rowsM.map(function(r){ return monthLabel(r.month); });
+      chartSpend  = rowsM.map(function(r){ return +((r.spend||0)/1e5).toFixed(1); });
+      chartRev    = rowsM.map(function(r){ return +((r.revenue||0)/1e5).toFixed(1); });
+      chartRoi    = rowsM.map(function(r){ return r.roi || 0; });
+    }
   }
 
   dChart('ads-brand');
@@ -3330,7 +3481,16 @@ function renderAds() {
   var brandNames = ['BARE ANATOMY','Chemist at Play','SunScoop'];
   var brandCols  = ['rgba(79,142,247,.85)','rgba(62,207,142,.85)','rgba(245,165,36,.85)'];
   var brandSpendVals;
-  if (curWin.granularity === 'month') {
+  if (vertical !== 'ALL') {
+    // Rebuild from curAgg.skus which is window+brand filtered
+    var vBrandSpend = {};
+    Object.values(curAgg.skus || {}).forEach(function(s){
+      if (s.vertical !== vertical) return;
+      if (!s.brand) return;
+      vBrandSpend[s.brand] = (vBrandSpend[s.brand] || 0) + (s.ad_spend || 0);
+    });
+    brandSpendVals = brandNames.map(function(b){ return +((vBrandSpend[b]||0)/1e5).toFixed(1); });
+  } else if (curWin.granularity === 'month') {
     brandSpendVals = brandNames.map(function(b){
       var bs = (hist.by_brand?.[b]?.ads) || [];
       var rm = bs.filter(function(r){ return curWin.months.has(r.month); });
@@ -3434,7 +3594,7 @@ function renderAds() {
           '</tr>';
       }).join('');
 
-    renderAdsDailyChart(brand);
+    renderAdsDailyChart(brand, vertical);
     renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand, H.ads.vertical||"ALL");
   } else {
     // Campaign view — current period only
@@ -3482,27 +3642,48 @@ function renderAds() {
           '</tr>';
       }).join('');
 
-    renderAdsDailyChart(brand);
+    renderAdsDailyChart(brand, vertical);
     renderAdsAnalysis(curAgg, prevAgg, curWin, prevWin, brand, H.ads.vertical||"ALL");
   }
 }
 
 // ── Ads Daily Chart (last 30 days from D.hub.history.daily.all_days + current month from D.hub.daily.days) ──
-function renderAdsDailyChart(brand) {
+function renderAdsDailyChart(brand, vertical) {
+  vertical = vertical || 'ALL';
   var canvas = document.getElementById('ch-ads-daily');
   if (!canvas) return;
   var sub = document.getElementById('ch-ads-daily-sub');
 
-  // Merge: historical all_days (past months) + current-month daily (today's fresh data, may include today)
+  // Vertical-aware path: rebuild from hub.daily.campaigns filtered by vertical
   var allDays = [];
-  if (D && D.hub && D.hub.history && D.hub.history.daily) {
-    allDays = (D.hub.history.daily.all_days || []).slice();
-  }
-  // Replace/append current-month days with the freshest from D.hub.daily (if present)
-  if (D && D.hub && D.hub.daily && D.hub.daily.days && D.hub.daily.days.length) {
-    var currentDates = new Set(D.hub.daily.days.map(function(d){ return d.date; }));
-    allDays = allDays.filter(function(d){ return !currentDates.has(d.date); });
-    D.hub.daily.days.forEach(function(d){ allDays.push(d); });
+  if (vertical !== 'ALL' && D && D.hub && D.hub.skus) {
+    var vSetAD = new Set();
+    D.hub.skus.forEach(function(hs){ if (hs.vertical === vertical && hs.sku) vSetAD.add(hs.sku); });
+    var byDateAD = {};
+    if (D.hub.daily && D.hub.daily.campaigns) {
+      D.hub.daily.campaigns.forEach(function(cm){
+        var touches = (cm.skus || []).some(function(s){ return vSetAD.has(s.sku || s); });
+        if (!touches) return;
+        if (brand !== 'ALL' && cm.brand !== brand && !(cm.brand_mix && cm.brand_mix[brand])) return;
+        Object.keys(cm.days || {}).forEach(function(d){
+          var v = cm.days[d];
+          if (!byDateAD[d]) byDateAD[d] = {date:d, spend:0, revenue:0};
+          byDateAD[d].spend   += v.spend   || 0;
+          byDateAD[d].revenue += v.revenue || 0;
+        });
+      });
+    }
+    allDays = Object.values(byDateAD);
+  } else {
+    // No vertical filter: use aggregate daily rollup (fast path)
+    if (D && D.hub && D.hub.history && D.hub.history.daily) {
+      allDays = (D.hub.history.daily.all_days || []).slice();
+    }
+    if (D && D.hub && D.hub.daily && D.hub.daily.days && D.hub.daily.days.length) {
+      var currentDates = new Set(D.hub.daily.days.map(function(d){ return d.date; }));
+      allDays = allDays.filter(function(d){ return !currentDates.has(d.date); });
+      D.hub.daily.days.forEach(function(d){ allDays.push(d); });
+    }
   }
   allDays.sort(function(a,b){ return a.date.localeCompare(b.date); });
 
@@ -3515,8 +3696,9 @@ function renderAdsDailyChart(brand) {
   // Last 30 days only
   var last30 = allDays.slice(-30);
 
-  // Apply brand filter if needed
+  // Apply brand filter if needed (vertical-filtered path already returns totals)
   function getVal(d, field) {
+    if (vertical !== 'ALL') return d[field] || 0;
     if (brand === 'ALL') return d[field];
     var bb = d.by_brand && d.by_brand[brand];
     return bb ? bb[field] : 0;
@@ -3531,7 +3713,7 @@ function renderAdsDailyChart(brand) {
   var totalSpend = last30.reduce(function(a,d){ return a + getVal(d,'spend'); }, 0);
   var totalRev   = last30.reduce(function(a,d){ return a + getVal(d,'revenue'); }, 0);
   var avgRoi = totalSpend > 0 ? (totalRev/totalSpend).toFixed(2) : '—';
-  if (sub) sub.textContent = last30.length + ' days · Spend ' + fmtCr(totalSpend) + ' · Revenue ' + fmtCr(totalRev) + ' · Avg ROI ' + avgRoi + 'x' + (brand !== 'ALL' ? ' · '+brandShort(brand) : '');
+  if (sub) sub.textContent = last30.length + ' days · Spend ' + fmtCr(totalSpend) + ' · Revenue ' + fmtCr(totalRev) + ' · Avg ROI ' + avgRoi + 'x' + (brand !== 'ALL' ? ' · '+brandShort(brand) : '') + (vertical !== 'ALL' ? ' · '+vertical : '');
 
   if (charts['ads-daily']) { charts['ads-daily'].destroy(); delete charts['ads-daily']; }
   charts['ads-daily'] = new Chart(canvas.getContext('2d'), {
@@ -3630,6 +3812,12 @@ function renderTraffic() {
     }
     dailyAll.sort(function(a,b){ return a.date < b.date ? -1 : 1; });
 
+    // If vertical filter is active, rebuild dailyAll from SKU-day data so chart respects vertical
+    if (vertical !== 'ALL') {
+      var skuDaily = buildDailyFromSkuDaily('traffic', brand, vertical, null, null);
+      if (skuDaily && skuDaily.length) dailyAll = skuDaily;
+    }
+
     var rows;
     if (curWin.granularity === 'day') {
       if (curWin.singleDay) {
@@ -3650,11 +3838,37 @@ function renderTraffic() {
     // CVR = Units/Clicks (as requested)
     chartCvr    = rows.map(function(d){ return d.clicks > 0 ? +((d.sales||0)/d.clicks*100).toFixed(2) : 0; });
   } else {
-    var series = brand === 'ALL' ? (hist.totals?.traffic || []) : (hist.by_brand?.[brand]?.traffic || []);
-    var rowsM = series.filter(function(r){ return curWin.months.has(r.month); });
-    chartLabels = rowsM.map(function(r){ return monthLabel(r.month); });
-    chartClk    = rowsM.map(function(r){ return +((r.clicks||0)/1e3).toFixed(1); });
-    chartCvr    = rowsM.map(function(r){ return r.clicks > 0 ? +((r.sales||0)/r.clicks*100).toFixed(2) : 0; });
+    // Monthly granularity: when vertical active, reconstruct from SKU-day data summed by month
+    if (vertical !== 'ALL') {
+      var skuDailyM = buildDailyFromSkuDaily('traffic', brand, vertical, null, null);
+      if (skuDailyM && skuDailyM.length) {
+        var byMonth = {};
+        skuDailyM.forEach(function(r){
+          var mo = r.date.slice(0,7);
+          if (!curWin.months.has(mo)) return;
+          if (!byMonth[mo]) byMonth[mo] = {month:mo, views:0, clicks:0, sales:0};
+          byMonth[mo].views  += r.views;
+          byMonth[mo].clicks += r.clicks;
+          byMonth[mo].sales  += r.sales;
+        });
+        var rowsM2 = Object.values(byMonth).sort(function(a,b){return a.month<b.month?-1:1;});
+        chartLabels = rowsM2.map(function(r){ return monthLabel(r.month); });
+        chartClk    = rowsM2.map(function(r){ return +((r.clicks||0)/1e3).toFixed(1); });
+        chartCvr    = rowsM2.map(function(r){ return r.clicks > 0 ? +((r.sales||0)/r.clicks*100).toFixed(2) : 0; });
+      } else {
+        var series = brand === 'ALL' ? (hist.totals?.traffic || []) : (hist.by_brand?.[brand]?.traffic || []);
+        var rowsM = series.filter(function(r){ return curWin.months.has(r.month); });
+        chartLabels = rowsM.map(function(r){ return monthLabel(r.month); });
+        chartClk    = rowsM.map(function(r){ return +((r.clicks||0)/1e3).toFixed(1); });
+        chartCvr    = rowsM.map(function(r){ return r.clicks > 0 ? +((r.sales||0)/r.clicks*100).toFixed(2) : 0; });
+      }
+    } else {
+      var series = brand === 'ALL' ? (hist.totals?.traffic || []) : (hist.by_brand?.[brand]?.traffic || []);
+      var rowsM = series.filter(function(r){ return curWin.months.has(r.month); });
+      chartLabels = rowsM.map(function(r){ return monthLabel(r.month); });
+      chartClk    = rowsM.map(function(r){ return +((r.clicks||0)/1e3).toFixed(1); });
+      chartCvr    = rowsM.map(function(r){ return r.clicks > 0 ? +((r.sales||0)/r.clicks*100).toFixed(2) : 0; });
+    }
   }
 
   dChart('traffic-trend');
@@ -3677,7 +3891,16 @@ function renderTraffic() {
   var brandNames = ['BARE ANATOMY','Chemist at Play','SunScoop'];
   var brandCols  = ['rgba(79,142,247,.85)','rgba(62,207,142,.85)','rgba(245,165,36,.85)'];
   var brandVals;
-  if (curWin.granularity === 'month') {
+  if (vertical !== 'ALL') {
+    // When vertical filter active, rebuild from SKU aggregates already filtered
+    var vMapTD = {};
+    Object.values(curAgg.skus || {}).forEach(function(s){
+      if (!s.vertical || s.vertical !== vertical) return;
+      if (!s.brand) return;
+      vMapTD[s.brand] = (vMapTD[s.brand] || 0) + (s.views || 0);
+    });
+    brandVals = brandNames.map(function(b){ return +((vMapTD[b]||0)/1e5).toFixed(1); });
+  } else if (curWin.granularity === 'month') {
     brandVals = brandNames.map(function(b){
       var bs = (hist.by_brand?.[b]?.traffic) || [];
       var rm = bs.filter(function(r){ return curWin.months.has(r.month); });
@@ -7011,7 +7234,7 @@ function renderCampaigns() {
   document.getElementById('camp-kpi').innerHTML = kpis.join('');
 
   // ── Charts ──
-  renderCampCharts(fsn, brand);
+  renderCampCharts(fsn, brand, H.camp.vertical || 'ALL');
 
   // ── Table ──
   renderCampTable(cur, prev, month);
@@ -7022,7 +7245,8 @@ function renderCampaigns() {
 
 // ── Charts: monthly trend (spend+ROI overlay) + brand doughnut ─────────────
 var _chCampTrend, _chCampBrand;
-function renderCampCharts(fsn, brand) {
+function renderCampCharts(fsn, brand, vertical) {
+  vertical = vertical || 'ALL';
   // Trend: last 13 months (12 full + current partial), spend bars + ROI line.
   // Chart title says "13 months" — limiting to exactly that window so
   // the oldest months don't crowd out recency.
@@ -7030,7 +7254,35 @@ function renderCampCharts(fsn, brand) {
   var months = monthsAllC.slice(-13);
   var todayIsoC = (new Date()).toISOString().slice(0,10);
   var curMonthIsoC = todayIsoC.slice(0,7);
+
+  // Vertical filter: build per-month aggregates from campaigns that touch
+  // SKUs in the selected vertical. Can't use fsn.totals[] directly since
+  // those aren't broken out by vertical.
+  var vSetC = null;
+  if (vertical !== 'ALL' && D.hub && D.hub.skus) {
+    vSetC = new Set();
+    D.hub.skus.forEach(function(hs){ if (hs.vertical === vertical && hs.sku) vSetC.add(hs.sku); });
+  }
+
   var series = months.map(function(m){
+    if (vSetC) {
+      // Aggregate monthly from campaigns touching this vertical
+      var sp = 0, rv = 0, un = 0;
+      (fsn.campaigns || []).forEach(function(c){
+        if (!c.months || !c.months[m]) return;
+        var touches = (c.months[m].skus || []).some(function(s){ return vSetC.has(s.sku || s); });
+        if (!touches) return;
+        if (brand && brand !== 'ALL') {
+          if (c.brand !== brand && !(c.brand_mix && c.brand_mix[brand])) return;
+        }
+        sp += c.months[m].spend || 0;
+        rv += c.months[m].revenue || 0;
+        un += c.months[m].units || 0;
+      });
+      var roi = sp > 0 ? +(rv/sp).toFixed(2) : 0;
+      // TACOS needs net_sales for same vertical — approximate as null (chart shows dashed line)
+      return {spend: sp, roi: roi, tacos: null};
+    }
     var rec = (fsn.totals || []).find(function(t){ return t.month === m; });
     if (!rec) return {spend:0, roi:0, tacos:null};
     if (brand && brand !== 'ALL' && rec.by_brand && rec.by_brand[brand]) {
@@ -7078,11 +7330,25 @@ function renderCampCharts(fsn, brand) {
 
   // Brand doughnut (current month)
   var month = H.camp.month;
-  var curRec = (fsn.totals || []).find(function(t){ return t.month === month; });
   var brands = ['BARE ANATOMY','Chemist at Play','SunScoop'];
-  var bData = brands.map(function(b){
-    return curRec && curRec.by_brand && curRec.by_brand[b] ? (curRec.by_brand[b].spend / 1e5).toFixed(1) : 0;
-  });
+  var bData;
+  if (vSetC) {
+    // Rebuild from campaigns touching this vertical
+    var byBrand = {};
+    (fsn.campaigns || []).forEach(function(c){
+      if (!c.months || !c.months[month]) return;
+      var touches = (c.months[month].skus || []).some(function(s){ return vSetC.has(s.sku || s); });
+      if (!touches) return;
+      var b = c.brand;
+      byBrand[b] = (byBrand[b] || 0) + (c.months[month].spend || 0);
+    });
+    bData = brands.map(function(b){ return +((byBrand[b] || 0) / 1e5).toFixed(1); });
+  } else {
+    var curRec = (fsn.totals || []).find(function(t){ return t.month === month; });
+    bData = brands.map(function(b){
+      return curRec && curRec.by_brand && curRec.by_brand[b] ? (curRec.by_brand[b].spend / 1e5).toFixed(1) : 0;
+    });
+  }
   var ctx2 = document.getElementById('ch-camp-brand');
   if (_chCampBrand) _chCampBrand.destroy();
   _chCampBrand = new Chart(ctx2, {
@@ -7827,7 +8093,7 @@ function renderOverview() {
   });
 
   // ── EXTRAS (charts + brand pills + cross-tab insights grid + Top 20 table) ──
-  try { renderOvExtras(curWin, prevWin, brand); }
+  try { renderOvExtras(curWin, prevWin, brand, vertical); }
   catch (err) { console.error('renderOvExtras failed:', err); }
 
   try { renderOvVerticalBreakdown(); }
@@ -7842,7 +8108,8 @@ function renderOverview() {
 //          brand share donut, SP mismatch chart, rank distribution donut,
 //          Top 20 by rank table.
 // Every component respects the Overview's date window + brand filter.
-function renderOvExtras(curWin, prevWin, brandFilter) {
+function renderOvExtras(curWin, prevWin, brandFilter, verticalFilter) {
+  verticalFilter = verticalFilter || 'ALL';
   if (!D || !D.hub) return;
   var hub = D.hub;
   var hist = hub.history || {};
@@ -7879,12 +8146,63 @@ function renderOvExtras(curWin, prevWin, brandFilter) {
     curMonthDays = parseInt(salesMaxDateT.slice(8,10),10);
   }
   if (months.length) {
-    var sSeries = brandFilter === 'ALL'
-      ? (hist.totals?.sales || [])
-      : (hist.by_brand?.[brandFilter]?.sales || []);
-    var aSeries = brandFilter === 'ALL'
-      ? (hist.totals?.ads || [])
-      : (hist.by_brand?.[brandFilter]?.ads || []);
+    var sSeries, aSeries;
+    if (verticalFilter !== 'ALL' && D.hub && D.hub.skus) {
+      // Build SKU set for vertical, then aggregate from SKU-day sales + campaign-day ads
+      var vSetOv = new Set();
+      D.hub.skus.forEach(function(hs){ if (hs.vertical === verticalFilter && hs.sku) vSetOv.add(hs.sku); });
+      // Sales: sum net_sales per month across matching SKUs
+      var salesByM = {};
+      ((hub.history && hub.history.sales_sku_daily) || []).forEach(function(r){
+        if (!r || !r.date || !vSetOv.has(r.sku)) return;
+        if (brandFilter !== 'ALL') {
+          // lookup brand via master
+          var sMeta = (hub.skus || []).find(function(x){return x.sku === r.sku;}) ||
+                      ((hub.history && hub.history.skus) || []).find(function(x){return x.sku === r.sku;});
+          if (!sMeta || sMeta.brand !== brandFilter) return;
+        }
+        var mo = r.date.slice(0,7);
+        salesByM[mo] = (salesByM[mo] || 0) + (r.net_sales || 0);
+      });
+      // Current month from hub.skus[].sales_daily
+      (hub.skus || []).forEach(function(s){
+        if (!vSetOv.has(s.sku)) return;
+        if (brandFilter !== 'ALL' && s.brand !== brandFilter) return;
+        (s.sales_daily || []).forEach(function(r){
+          if (!r || !r.date) return;
+          var mo = r.date.slice(0,7);
+          salesByM[mo] = (salesByM[mo] || 0) + (r.net_sales || 0);
+        });
+      });
+      sSeries = Object.keys(salesByM).map(function(m){ return {month:m, net_sales: salesByM[m]}; });
+
+      // Ads: aggregate from fsn.campaigns[].months for campaigns touching vertical
+      var adsByM = {};
+      var fsnSrc = (hub.fsn && hub.fsn.campaigns ? hub.fsn : (hist.fsn || {campaigns:[]}));
+      (fsnSrc.campaigns || []).forEach(function(c){
+        if (brandFilter !== 'ALL' && c.brand !== brandFilter && !(c.brand_mix && c.brand_mix[brandFilter])) return;
+        var mnths = c.months || {};
+        Object.keys(mnths).forEach(function(m){
+          var mm = mnths[m];
+          var touches = (mm.skus || []).some(function(s){ return vSetOv.has(s.sku || s); });
+          if (!touches) return;
+          if (!adsByM[m]) adsByM[m] = {month:m, spend:0, revenue:0};
+          adsByM[m].spend   += mm.spend   || 0;
+          adsByM[m].revenue += mm.revenue || 0;
+        });
+      });
+      aSeries = Object.keys(adsByM).map(function(m){
+        var r = adsByM[m];
+        return {month:m, spend:r.spend, revenue:r.revenue, roi: r.spend>0 ? +(r.revenue/r.spend).toFixed(2) : 0};
+      });
+    } else {
+      sSeries = brandFilter === 'ALL'
+        ? (hist.totals?.sales || [])
+        : (hist.by_brand?.[brandFilter]?.sales || []);
+      aSeries = brandFilter === 'ALL'
+        ? (hist.totals?.ads || [])
+        : (hist.by_brand?.[brandFilter]?.ads || []);
+    }
     // Month label shows "(partial)" suffix for current month
     var mLabels  = months.map(function(m){
       var lbl = monthLabel(m);
@@ -7939,13 +8257,42 @@ function renderOvExtras(curWin, prevWin, brandFilter) {
   dChart('ov-brand');
   var brandNames = ['BARE ANATOMY','Chemist at Play','SunScoop'];
   var brandCols  = ['rgba(79,142,247,.85)','rgba(62,207,142,.85)','rgba(245,165,36,.85)'];
-  var brandVals = brandNames.map(function(b){
-    // Aggregate net_sales for this brand over curWin months
-    var ser = (hist.by_brand?.[b]?.sales) || [];
-    var tot = 0;
-    ser.forEach(function(r){ if (curWin.months && curWin.months.has(r.month)) tot += (r.net_sales || 0); });
-    return +(tot/1e5).toFixed(1);
-  });
+  var brandVals;
+  if (verticalFilter !== 'ALL' && D.hub && D.hub.skus) {
+    // Aggregate window sales from SKU-day sources, filtered by vertical
+    var vSetBS = new Set();
+    D.hub.skus.forEach(function(hs){ if (hs.vertical === verticalFilter && hs.sku) vSetBS.add(hs.sku); });
+    var brandSalesBS = {};
+    // Current month per-SKU daily
+    (hub.skus || []).forEach(function(s){
+      if (!vSetBS.has(s.sku) || !s.brand) return;
+      (s.sales_daily || []).forEach(function(r){
+        if (!r || !r.date) return;
+        var mo = r.date.slice(0,7);
+        if (curWin.months && !curWin.months.has(mo)) return;
+        brandSalesBS[s.brand] = (brandSalesBS[s.brand] || 0) + (r.net_sales || 0);
+      });
+    });
+    // Historical per-SKU daily
+    ((hub.history && hub.history.sales_sku_daily) || []).forEach(function(r){
+      if (!r || !r.date || !vSetBS.has(r.sku)) return;
+      var mo = r.date.slice(0,7);
+      if (curWin.months && !curWin.months.has(mo)) return;
+      var meta = (hub.skus || []).find(function(x){return x.sku === r.sku;}) ||
+                 ((hub.history && hub.history.skus) || []).find(function(x){return x.sku === r.sku;});
+      if (!meta || !meta.brand) return;
+      brandSalesBS[meta.brand] = (brandSalesBS[meta.brand] || 0) + (r.net_sales || 0);
+    });
+    brandVals = brandNames.map(function(b){ return +((brandSalesBS[b]||0)/1e5).toFixed(1); });
+  } else {
+    brandVals = brandNames.map(function(b){
+      // Aggregate net_sales for this brand over curWin months
+      var ser = (hist.by_brand?.[b]?.sales) || [];
+      var tot = 0;
+      ser.forEach(function(r){ if (curWin.months && curWin.months.has(r.month)) tot += (r.net_sales || 0); });
+      return +(tot/1e5).toFixed(1);
+    });
+  }
   charts['ov-brand'] = new Chart(document.getElementById('ch-ov-brand').getContext('2d'), {
     type: 'doughnut',
     data: {labels: brandNames.map(brandShort), datasets: [{data: brandVals, backgroundColor: brandCols, borderWidth: 0}]},
@@ -7981,10 +8328,18 @@ function renderOvExtras(curWin, prevWin, brandFilter) {
       }}
   });
 
-  // ── Rank Distribution donut (brand-aware) ──
+  // ── Rank Distribution donut (brand-aware + vertical-aware) ──
   dChart('rk-dist');
+  var vSetRk = null;
+  if (verticalFilter !== 'ALL' && D.hub && D.hub.skus) {
+    vSetRk = new Set();
+    D.hub.skus.forEach(function(hs){ if (hs.vertical === verticalFilter && hs.sku) vSetRk.add(hs.sku); });
+  }
+  // D.latest.products items have .sku (post-enrichment) — filter via vSetRk
   var prods = D.latest.products.filter(function(p){
-    return (brandFilter === 'ALL' || p.brand === brandFilter);
+    if (brandFilter !== 'ALL' && p.brand !== brandFilter) return false;
+    if (vSetRk && !vSetRk.has(p.sku)) return false;
+    return true;
   });
   var ranked = prods.filter(function(p){return p.rank_v != null;});
   var r1   = ranked.filter(function(p){return p.rank_v === 1;}).length;
@@ -8004,7 +8359,7 @@ function renderOvExtras(curWin, prevWin, brandFilter) {
 
   // ── Top 20 by Vertical Rank (brand-aware) ──
   var dateLblEl = document.getElementById('ov-date-lbl');
-  if (dateLblEl) dateLblEl.textContent = 'Latest · ' + (brandFilter === 'ALL' ? 'All brands' : brandShort(brandFilter));
+  if (dateLblEl) dateLblEl.textContent = 'Latest · ' + (brandFilter === 'ALL' ? 'All brands' : brandShort(brandFilter)) + (verticalFilter !== 'ALL' ? ' · '+verticalFilter : '');
   var sorted = ranked.slice().sort(function(a,b){return a.rank_v - b.rank_v;}).slice(0, 20);
   var tableEl = document.getElementById('ov-table');
   if (tableEl) {
@@ -8636,6 +8991,7 @@ registerAnalysis({
     // same aggregation logic used in the Product Analysis tab is reused.
     syncOvToTab('prod');
     var brand = H.ov.brand || 'ALL';
+    var vertical = H.ov.vertical || 'ALL';
     var curAgg  = aggregateWindow(curWin, brand);
     var prevAgg = prevWin ? aggregateWindow(prevWin, brand) : null;
     // Build rows the same way renderProd does (see renderProd for full logic)
@@ -8643,6 +8999,8 @@ registerAnalysis({
     var rows = [];
     Object.keys(curAgg.skus || {}).forEach(function(sku) {
       var s = curAgg.skus[sku];
+      // Respect Overview's vertical filter — skip SKUs outside it
+      if (vertical !== 'ALL' && s.vertical !== vertical) return;
       var p = prevAgg ? (prevAgg.skus[sku] || null) : null;
       var sales = s.sales || 0, units = s.units || 0, spend = s.ad_spend || 0;
       var clicks = s.ad_clicks || 0, views = s.views || 0, traffic_units = s.traffic_sales || 0;
@@ -8699,6 +9057,8 @@ registerAnalysis({
   render: function(curWin, prevWin) {
     syncOvToTab('camp');
     var brand = H.ov.brand || 'ALL';
+    // Use Overview's vertical (not camp tab's own state) — Overview is the source of truth
+    var vertical = H.ov.vertical || 'ALL';
     var month = H.camp.month;
     if (!month) {
       var fsn = (D.hub.history && D.hub.history.fsn) ? D.hub.history.fsn : null;
@@ -8709,8 +9069,8 @@ registerAnalysis({
       if (body) body.innerHTML = '<div class="empty">No campaign data for this window</div>';
       return;
     }
-    var cur  = _campMonthData(month, brand, H.camp.vertical);
-    var prev = _prevMonth(month) ? _campMonthData(_prevMonth(month), brand, H.camp.vertical) : {campaigns:[], adgroups:[], skus:[], totals:null};
+    var cur  = _campMonthData(month, brand, vertical);
+    var prev = _prevMonth(month) ? _campMonthData(_prevMonth(month), brand, vertical) : {campaigns:[], adgroups:[], skus:[], totals:null};
     moveAnalysisToOverview('camp', function(){
       renderCampAnalysis(cur, prev, month);
     });
@@ -8722,6 +9082,8 @@ registerAnalysis({
     syncOvToTab('placement');
     // Placement data is month-granular, stored in D.hub.fsn + D.hub.history.fsn
     var brand = H.ov.brand || 'ALL';
+    // Propagate Overview vertical → placement tab state so renderPlacement picks it up
+    if (H.placement) H.placement.vertical = H.ov.vertical || 'ALL';
     moveAnalysisToOverview('placement', function(){
       // Trigger a render of placement-insights into the mirror container
       var body = document.getElementById('placement-analysis');

@@ -2432,9 +2432,9 @@ function buildDailyFromSkuDaily(kind, brand, vertical, dateStart, dateEnd) {
       if (hist.traffic_sku_daily) {
         hist.traffic_sku_daily.forEach(function(r){ out.push(r); });
       }
-      // Current-month traffic per-SKU-per-day is in hub.traffic.daily_by_sku if present
-      if (hub.traffic && hub.traffic.daily_by_sku) {
-        hub.traffic.daily_by_sku.forEach(function(r){ out.push(r); });
+      // Current-month traffic per-SKU-per-day is in hub.traffic.sku_daily
+      if (hub.traffic && hub.traffic.sku_daily) {
+        hub.traffic.sku_daily.forEach(function(r){ out.push(r); });
       }
       return out;
     }
@@ -3806,9 +3806,19 @@ function renderTraffic() {
   if (useTrafDaily) {
     // Merge current + historical traffic daily
     var dailyAll = (hub.traffic && hub.traffic.daily) ? hub.traffic.daily.slice() : [];
-    if (hub.history && hub.history.traffic_daily) {
+    if (hub.history && hub.history.traffic_sku_daily) {
       var seenTD = new Set(dailyAll.map(function(d){return d.date;}));
-      hub.history.traffic_daily.forEach(function(d){ if (!seenTD.has(d.date)) dailyAll.push(d); });
+      // Source data is per-SKU per-day. Aggregate by date for the trend chart.
+      var dailyAgg = {};
+      hub.history.traffic_sku_daily.forEach(function(r){
+        if (!r || !r.date) return;
+        if (!dailyAgg[r.date]) dailyAgg[r.date] = {date: r.date, views:0, clicks:0, sales:0, revenue:0};
+        dailyAgg[r.date].views   += +(r.views   || 0);
+        dailyAgg[r.date].clicks  += +(r.clicks  || 0);
+        dailyAgg[r.date].sales   += +(r.sales   || 0);
+        dailyAgg[r.date].revenue += +(r.revenue || 0);
+      });
+      Object.values(dailyAgg).forEach(function(d){ if (!seenTD.has(d.date)) dailyAll.push(d); });
     }
     dailyAll.sort(function(a,b){ return a.date < b.date ? -1 : 1; });
 

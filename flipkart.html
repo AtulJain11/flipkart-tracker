@@ -1520,6 +1520,10 @@ function setHubTime(tab, mode) {
   } else if (mode === 'custom' && from && to) {
     H[tab].mode = 'custom'; H[tab].from = from; H[tab].to = to; clearOthers('custom');
   }
+  // Refilter the Day dropdown for this tab so picking a Month reveals that
+  // month's days (UX requirement: cross-month filter logic).
+  // populateHubDateSelectors reads H[tab].month/year and filters Day options.
+  try { populateHubDateSelectors(); } catch(e) { console.error('populateHubDateSelectors:', e); }
   renderHubTab(tab);
 }
 
@@ -1655,6 +1659,42 @@ function sortHub(tab, col) {
 }
 
 // ── Populate Day / Month / Year dropdowns ──────────────────────────────────
+// Build the FULL day pool per tab, merging current period + ALL history.
+// Returns {sales:[...sortedDates], traffic:[...], ads:[...]} where each array
+// is sorted ascending and contains every YYYY-MM-DD on which that metric has
+// data. Cached on D._allDayPools so we rebuild only when D changes.
+function getAllDayPools() {
+  if (!D || !D.hub) return {sales:[], traffic:[], ads:[]};
+  if (D._allDayPools) return D._allDayPools;
+  var hub = D.hub;
+  // Sales: current hub.sales.daily + hub.history.sales_daily
+  var sSet = new Set();
+  if (hub.sales && hub.sales.daily) hub.sales.daily.forEach(function(d){ if (d && d.date) sSet.add(d.date); });
+  if (hub.history && hub.history.sales_daily) {
+    hub.history.sales_daily.forEach(function(d){ if (d && d.date) sSet.add(d.date); });
+  }
+  // Traffic: current hub.traffic.daily + hub.history.traffic_sku_daily aggregated by date
+  var tSet = new Set();
+  if (hub.traffic && hub.traffic.daily) hub.traffic.daily.forEach(function(d){ if (d && d.date) tSet.add(d.date); });
+  if (hub.history && hub.history.traffic_sku_daily) {
+    hub.history.traffic_sku_daily.forEach(function(r){ if (r && r.date) tSet.add(r.date); });
+  }
+  // Ads: hub.history.daily.all_days + hub.daily.days
+  var aSet = new Set();
+  if (hub.history && hub.history.daily && hub.history.daily.all_days) {
+    hub.history.daily.all_days.forEach(function(d){ if (d && d.date) aSet.add(d.date); });
+  }
+  if (hub.daily && hub.daily.days) {
+    hub.daily.days.forEach(function(d){ if (d && d.date) aSet.add(d.date); });
+  }
+  D._allDayPools = {
+    sales:   Array.from(sSet).sort(),
+    traffic: Array.from(tSet).sort(),
+    ads:     Array.from(aSet).sort(),
+  };
+  return D._allDayPools;
+}
+
 function populateHubDateSelectors() {
   if (!D || !D.hub) return;
   var hub = D.hub;
@@ -1673,52 +1713,72 @@ function populateHubDateSelectors() {
   var yearOpts = ['<option value="">Pick year</option>']
     .concat(years.map(function(y){ return '<option value="'+y+'">'+y+'</option>'; })).join('');
 
-  // Days from daily data
-  var daysS = (hub.sales   && hub.sales.daily)   ? hub.sales.daily.map(function(d){return d.date;})   : [];
-  var daysT = (hub.traffic && hub.traffic.daily) ? hub.traffic.daily.map(function(d){return d.date;}) : [];
-  // For Ads day dropdown: merge hub.history.daily.all_days + hub.daily.days (ads daily data)
-  var daysA = [];
-  if (hub.history && hub.history.daily && hub.history.daily.all_days) {
-    daysA = hub.history.daily.all_days.map(function(d){return d.date;});
-  }
-  if (hub.daily && hub.daily.days) {
-    var seenA = new Set(daysA);
-    hub.daily.days.forEach(function(d){ if (!seenA.has(d.date)) daysA.push(d.date); });
-  }
-  daysA.sort();
-  if (!daysA.length) daysA = daysS;  // fallback to sales dates if no ads daily data
+  // FULL DAY POOLS (current + ALL history) — fixes the "can't pick April from Sales tab" bug.
+  // Day dropdown now offers every date on which the metric has any data, not just current month.
+  var pools = getAllDayPools();
+  var daysS = pools.sales.slice();
+  var daysT = pools.traffic.slice();
+  var daysA = pools.ads.slice();
+  if (!daysA.length) daysA = daysS;  // fallback if ads-daily history empty
+
   function dayOpts(days) {
     return ['<option value="">Pick day</option>']
       .concat(days.slice().reverse().map(function(d){ return '<option value="'+d+'">'+fmtDate(d)+'</option>'; })).join('');
+  }
+
+  // If a Month/Year is selected on a tab, FILTER the Day dropdown to that month/year only.
+  // This implements the user's UX request: picking April should reveal April days, not show May.
+  function daysForTab(tab, fullDays) {
+    var st = H[tab] || {};
+    if (st.month) {
+      return fullDays.filter(function(d){ return d.slice(0,7) === st.month; });
+    }
+    if (st.year) {
+      return fullDays.filter(function(d){ return d.slice(0,4) === st.year; });
+    }
+    return fullDays;
   }
 
   ['sales','ads','traffic','prod'].forEach(function(tab){
     var mSel = document.getElementById(tab+'-month-sel'); if (mSel) mSel.innerHTML = monthOpts;
     var ySel = document.getElementById(tab+'-year-sel');  if (ySel) ySel.innerHTML = yearOpts;
   });
-  var dS = document.getElementById('sales-day-sel');   if (dS) dS.innerHTML = dayOpts(daysS);
-  var dT = document.getElementById('traffic-day-sel'); if (dT) dT.innerHTML = dayOpts(daysT);
-  var dA = document.getElementById('ads-day-sel');     if (dA) dA.innerHTML = dayOpts(daysA);
+  var dS = document.getElementById('sales-day-sel');   if (dS) dS.innerHTML = dayOpts(daysForTab('sales',   daysS));
+  var dT = document.getElementById('traffic-day-sel'); if (dT) dT.innerHTML = dayOpts(daysForTab('traffic', daysT));
+  var dA = document.getElementById('ads-day-sel');     if (dA) dA.innerHTML = dayOpts(daysForTab('ads',     daysA));
   // Prod tab day selector — prefer ads days (superset of sales) so every date with any data is pickable
-  var dP = document.getElementById('prod-day-sel');    if (dP) dP.innerHTML = dayOpts(daysA.length ? daysA : daysS);
+  var dProdPool = daysA.length ? daysA : daysS;
+  var dP = document.getElementById('prod-day-sel');    if (dP) dP.innerHTML = dayOpts(daysForTab('prod', dProdPool));
 
   // Set DEFAULT = latest day (with data) on each tab, unless user already picked something.
   // Keeps dashboard meaningful on load instead of blank "pick a day" state.
-  function applyTabDefault(tab, daysArr) {
+  // ALSO: if H[tab].day is set but isn't in current dropdown options (e.g. window
+  // rolled into new month and stale state has yesterday's date), override to latest.
+  function applyTabDefaultLocal(tab, daysArr) {
     if (!daysArr || !daysArr.length) return;
     var latest = daysArr[daysArr.length - 1];
-    if (!H[tab].day && !H[tab].month && !H[tab].year && !H[tab].from && !H[tab].to) {
-      H[tab].mode = 'day';
-      H[tab].day  = latest;
+    var st = H[tab];
+    if (!st) return;
+    // No selection at all → set latest as default
+    if (!st.day && !st.month && !st.year && !st.from && !st.to) {
+      st.mode = 'day';
+      st.day  = latest;
       var sel = document.getElementById(tab+'-day-sel');
       if (sel) sel.value = latest;
+      return;
+    }
+    // Stale day: state has a day that's not in the available pool → snap to latest
+    if (st.day && daysArr.indexOf(st.day) === -1 && !st.month && !st.year && !st.from && !st.to) {
+      st.mode = 'day';
+      st.day  = latest;
+      var sel2 = document.getElementById(tab+'-day-sel');
+      if (sel2) sel2.value = latest;
     }
   }
-  applyTabDefault('sales',   daysS);
-  applyTabDefault('ads',     daysA);
-  applyTabDefault('traffic', daysT);
-  // Product Analysis uses sales days (most accurate TACOS) with ads-day fallback
-  applyTabDefault('prod',    daysS.length ? daysS : daysA);
+  applyTabDefaultLocal('sales',   daysS);
+  applyTabDefaultLocal('ads',     daysA);
+  applyTabDefaultLocal('traffic', daysT);
+  applyTabDefaultLocal('prod',    dProdPool);
 
   // After defaults, restore ALL dropdown values from state so re-render
   // doesn't revert any of them to the "Pick day" / "Pick month" placeholder.

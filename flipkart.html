@@ -224,6 +224,7 @@ function checkPW(){
   <button class="nav-tab" onclick="showPage('campaigns',this)">🎯 Campaigns</button>
   <button class="nav-tab" onclick="showPage('placement',this)">📍 Placement</button>
   <button class="nav-tab" onclick="showPage('stock',this)">📦 Stock</button>
+  <button class="nav-tab" onclick="showPage('doc',this)">⏱️ DoC</button>
   <button class="nav-tab" onclick="showPage('rankings',this)">🏆 Rankings</button>
   <button class="nav-tab" onclick="showPage('sp',this)">💰 SP Compliance</button>
   <button class="nav-tab" onclick="showPage('ratings',this)">⭐ Ratings</button>
@@ -997,6 +998,173 @@ function checkPW(){
 </div>
 
 
+<!-- ═══ DoC TAB ═══════════════════════════════════════════════════════════
+     Per-SKU Days-of-Cover deep dive with warehouse-level granularity.
+
+     Methodology (uses real per-warehouse sales from SOH file):
+       DRR (overall) = SOH file's sales_30d / 30
+       WH DRR        = WH-level sales_30d / 30 (real per-warehouse velocity)
+       WH DoC        = WH SOH ÷ WH DRR
+       SP            = hub.skus[*].sp
+
+     Potential loss (next 30 days, no inbound) per (SKU × WH):
+       stockout_days = max(0, 30 - WH_DoC)
+       loss          = stockout_days × WH_DRR × SP
+
+     UI layers:
+       • KPI strip
+       • Critical alerts (every WH-DoC < 10 row, sorted by potential loss)
+       • Per-SKU summary table with warehouse drill-down
+       • Charts (DoC distribution, top WHs with critical SKUs)
+       • Insights card -->
+<div class="page" id="page-doc">
+  <div class="filters">
+    <span class="filter-label">Brand</span>
+    <button class="fbtn active" id="doc-brand-all" onclick="setDocBrand('ALL',this)">All</button>
+    <button class="fbtn ba"     id="doc-brand-ba"  onclick="setDocBrand('BARE ANATOMY',this)">BA</button>
+    <button class="fbtn cap"    id="doc-brand-cap" onclick="setDocBrand('Chemist at Play',this)">CAP</button>
+    <button class="fbtn ss"     id="doc-brand-ss"  onclick="setDocBrand('SunScoop',this)">SS</button>
+    <div class="fsep"></div>
+    <span class="filter-label">Vertical</span>
+    <select class="fsel" id="doc-vertical-sel" onchange="setDocVertical()" style="min-width:160px">
+      <option value="ALL">All Verticals</option>
+    </select>
+    <div class="fsep"></div>
+    <span class="filter-label">Warehouse</span>
+    <select class="fsel" id="doc-wh-sel" onchange="setDocWarehouse()" style="min-width:180px">
+      <option value="ALL">All Warehouses</option>
+    </select>
+    <div class="fsep"></div>
+    <span class="filter-label">DoC Bucket</span>
+    <button class="fbtn active" id="doc-bk-all"      onclick="setDocBucket('ALL',this)">All</button>
+    <button class="fbtn"        id="doc-bk-cr"       onclick="setDocBucket('CRITICAL',this)" style="color:#ff5a5a">Critical &lt;10d</button>
+    <button class="fbtn"        id="doc-bk-low"      onclick="setDocBucket('LOW',this)" style="color:#ffaa3d">Low 10–30d</button>
+    <button class="fbtn"        id="doc-bk-healthy"  onclick="setDocBucket('HEALTHY',this)" style="color:#5fd98a">Healthy 30–60d</button>
+    <button class="fbtn"        id="doc-bk-over"     onclick="setDocBucket('OVER',this)" style="color:#6ab0ff">Overstock 60+d</button>
+  </div>
+  <div class="filters" style="margin-top:-10px;margin-bottom:14px">
+    <input type="text" id="doc-search" class="fsel" placeholder="Search SKU / name / range..." oninput="setDocSearch(this.value)" style="min-width:220px">
+    <div class="fsep"></div>
+    <span class="filter-label">Lifecycle</span>
+    <select class="fsel" id="doc-lifecycle-sel" onchange="setDocLifecycle()" style="min-width:120px">
+      <option value="ALL">All</option>
+    </select>
+    <div class="fsep"></div>
+    <span class="filter-label">Range</span>
+    <select class="fsel" id="doc-range-sel" onchange="setDocRange()" style="min-width:140px">
+      <option value="ALL">All Ranges</option>
+    </select>
+    <div class="fsep"></div>
+    <span class="filter-label">Show</span>
+    <button class="fbtn active" id="doc-show-all"  onclick="setDocShow('ALL',this)">All SKUs</button>
+    <button class="fbtn" id="doc-show-active"     onclick="setDocShow('ACTIVE',this)" style="color:#5fd98a">DRR &gt; 0</button>
+    <button class="fbtn" id="doc-show-atrisk"     onclick="setDocShow('ATRISK',this)" style="color:#f05252">At-risk (any WH &lt; 10d)</button>
+    <div class="fsep"></div>
+    <button class="fbtn" onclick="resetDocAll()" style="font-size:10px;padding:4px 10px;color:var(--accent)">⟲ Reset</button>
+    <div class="fsep"></div>
+    <span id="doc-window-lbl" style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace"></span>
+  </div>
+
+  <!-- KPI strip -->
+  <div class="stat-grid" id="doc-kpi" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr))"></div>
+
+  <!-- Charts -->
+  <div class="chart-grid" style="grid-template-columns:1fr 2fr;margin-bottom:14px">
+    <div class="chart-card">
+      <div class="chart-title">DoC Distribution · SKU count</div>
+      <div class="chart-wrap"><canvas id="ch-doc-dist"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Top Warehouses · SKUs with WH-DoC &lt; 10d</div>
+      <div class="chart-wrap" style="height:340px"><canvas id="ch-doc-wh-risk"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Critical alerts: every (SKU × WH) where WH-DoC < 10, sorted by potential loss -->
+  <div class="card" style="margin-bottom:18px;border-left:3px solid #ff5a5a">
+    <div class="card-hdr">
+      <span class="card-title">🚨 Critical · WH-DoC &lt; 10 days</span>
+      <span class="card-sub" id="doc-critical-sub"></span>
+      <button class="fbtn" onclick="exportDocCriticalCsv()" style="margin-left:auto;font-size:11px">⬇ CSV</button>
+    </div>
+    <table>
+      <thead><tr>
+        <th style="min-width:120px">SKU</th>
+        <th style="min-width:240px">Name</th>
+        <th>Brand</th>
+        <th style="min-width:140px">Warehouse</th>
+        <th class="num" title="SOH at this warehouse">WH SOH</th>
+        <th class="num" title="DRR allocated to this warehouse by SOH share">WH DRR</th>
+        <th class="num" title="Days of cover at this warehouse (WH SOH ÷ WH DRR)">WH DoC</th>
+        <th class="num" title="Selling Price (₹)">SP</th>
+        <th class="num" title="Lost revenue if no inbound in 30d = (30 − DoC) × WH DRR × SP">Lost ₹/30d</th>
+      </tr></thead>
+      <tbody id="doc-critical-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Per-SKU summary -->
+  <div class="card" style="margin-bottom:18px">
+    <div class="card-hdr">
+      <span class="card-title">📊 Per-SKU DoC Summary</span>
+      <span class="card-sub" id="doc-summary-sub"></span>
+      <button class="fbtn" onclick="exportDocSkuCsv()" style="margin-left:auto;font-size:11px">⬇ CSV</button>
+    </div>
+    <table>
+      <thead><tr>
+        <th style="min-width:120px;cursor:pointer" onclick="setDocSort('sku')">SKU</th>
+        <th style="min-width:240px;cursor:pointer" onclick="setDocSort('name')">Name</th>
+        <th style="cursor:pointer" onclick="setDocSort('brand')">Brand</th>
+        <th style="cursor:pointer" onclick="setDocSort('vertical')">Vertical</th>
+        <th class="num" style="cursor:pointer" onclick="setDocSort('soh')">Total SOH</th>
+        <th class="num" style="cursor:pointer" onclick="setDocSort('drr')" title="Daily Run Rate · sales_30d ÷ 30">DRR</th>
+        <th class="num" style="cursor:pointer" onclick="setDocSort('doc')" title="Overall Days of Cover · Total SOH ÷ DRR">DoC</th>
+        <th class="num" style="cursor:pointer" onclick="setDocSort('worstWhDoc')" title="Smallest DoC among warehouses with stock">Worst WH</th>
+        <th class="num" style="cursor:pointer" onclick="setDocSort('whCriticalCount')" title="Warehouses where WH-DoC &lt; 10">WH&lt;10</th>
+        <th class="num" style="cursor:pointer" onclick="setDocSort('whLowCount')" title="Warehouses where WH-DoC 10–30">WH&lt;30</th>
+        <th class="num" style="cursor:pointer" onclick="setDocSort('sp')">SP</th>
+        <th class="num" style="cursor:pointer" onclick="setDocSort('totalLoss')" title="Sum of potential loss across all critical warehouses">Loss ₹/30d</th>
+        <th style="min-width:70px">WHs</th>
+      </tr></thead>
+      <tbody id="doc-sku-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Drill-down: per-warehouse breakdown for selected SKU -->
+  <div class="card" id="doc-detail-card" style="display:none;margin-bottom:18px">
+    <div class="card-hdr">
+      <span class="card-title">🔍 <span id="doc-detail-title">SKU drill-down</span></span>
+      <span class="card-sub" id="doc-detail-meta"></span>
+      <button class="fbtn" onclick="closeDocDetail()" style="margin-left:auto;font-size:11px">✕ Close</button>
+    </div>
+    <div style="padding:12px">
+      <table>
+        <thead><tr>
+          <th>Warehouse</th>
+          <th class="num">WH SOH</th>
+          <th class="num">SOH share</th>
+          <th class="num" title="Sales 30D at this warehouse">WH 30D</th>
+          <th class="num">WH DRR</th>
+          <th class="num">WH DoC</th>
+          <th>Status</th>
+          <th class="num">Lost ₹/30d</th>
+        </tr></thead>
+        <tbody id="doc-detail-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Insights -->
+  <div class="card" style="margin-bottom:18px">
+    <div class="card-hdr">
+      <span class="card-title">💡 DoC Insights</span>
+      <span class="card-sub" id="doc-insights-sub"></span>
+    </div>
+    <div id="doc-insights" style="padding:12px"></div>
+  </div>
+</div>
+
+
 <!-- ═══ PRODUCT ANALYSIS TAB ═════════════════════════════════════════════ -->
 <!-- Deep per-SKU analysis with every key metric + Δ% vs a compared period.
      Compared period defaults to the natural previous window (day → prev day,
@@ -1192,6 +1360,13 @@ var H = {
   stock:   {brand:'ALL', warehouse:'ALL', docBucket:'ALL', search:'',
             lifecycle:'ALL', range:'ALL', live:'ALL', pipe:'ALL',
             sort:'soh', sortDesc:true, selectedSku:null},
+  // DoC tab state. Different bucket thresholds than Stock (Critical=<10d not <15d
+  // because DoC tab focuses on warehouse-level stockout risk where the
+  // replenishment lead time is the threshold). show='ATRISK' filters to SKUs
+  // with at least one warehouse below 10 days. selectedSku drives drill-down.
+  doc:     {brand:'ALL', vertical:'ALL', warehouse:'ALL', bucket:'ALL', search:'',
+            lifecycle:'ALL', range:'ALL', show:'ALL',
+            sort:'totalLoss', sortDesc:true, selectedSku:null},
 };
 
 // ── Formatters ──────────────────────────────────────────────────────────────
@@ -1520,10 +1695,6 @@ function setHubTime(tab, mode) {
   } else if (mode === 'custom' && from && to) {
     H[tab].mode = 'custom'; H[tab].from = from; H[tab].to = to; clearOthers('custom');
   }
-  // Refilter the Day dropdown for this tab so picking a Month reveals that
-  // month's days (UX requirement: cross-month filter logic).
-  // populateHubDateSelectors reads H[tab].month/year and filters Day options.
-  try { populateHubDateSelectors(); } catch(e) { console.error('populateHubDateSelectors:', e); }
   renderHubTab(tab);
 }
 
@@ -1659,42 +1830,6 @@ function sortHub(tab, col) {
 }
 
 // ── Populate Day / Month / Year dropdowns ──────────────────────────────────
-// Build the FULL day pool per tab, merging current period + ALL history.
-// Returns {sales:[...sortedDates], traffic:[...], ads:[...]} where each array
-// is sorted ascending and contains every YYYY-MM-DD on which that metric has
-// data. Cached on D._allDayPools so we rebuild only when D changes.
-function getAllDayPools() {
-  if (!D || !D.hub) return {sales:[], traffic:[], ads:[]};
-  if (D._allDayPools) return D._allDayPools;
-  var hub = D.hub;
-  // Sales: current hub.sales.daily + hub.history.sales_daily
-  var sSet = new Set();
-  if (hub.sales && hub.sales.daily) hub.sales.daily.forEach(function(d){ if (d && d.date) sSet.add(d.date); });
-  if (hub.history && hub.history.sales_daily) {
-    hub.history.sales_daily.forEach(function(d){ if (d && d.date) sSet.add(d.date); });
-  }
-  // Traffic: current hub.traffic.daily + hub.history.traffic_sku_daily aggregated by date
-  var tSet = new Set();
-  if (hub.traffic && hub.traffic.daily) hub.traffic.daily.forEach(function(d){ if (d && d.date) tSet.add(d.date); });
-  if (hub.history && hub.history.traffic_sku_daily) {
-    hub.history.traffic_sku_daily.forEach(function(r){ if (r && r.date) tSet.add(r.date); });
-  }
-  // Ads: hub.history.daily.all_days + hub.daily.days
-  var aSet = new Set();
-  if (hub.history && hub.history.daily && hub.history.daily.all_days) {
-    hub.history.daily.all_days.forEach(function(d){ if (d && d.date) aSet.add(d.date); });
-  }
-  if (hub.daily && hub.daily.days) {
-    hub.daily.days.forEach(function(d){ if (d && d.date) aSet.add(d.date); });
-  }
-  D._allDayPools = {
-    sales:   Array.from(sSet).sort(),
-    traffic: Array.from(tSet).sort(),
-    ads:     Array.from(aSet).sort(),
-  };
-  return D._allDayPools;
-}
-
 function populateHubDateSelectors() {
   if (!D || !D.hub) return;
   var hub = D.hub;
@@ -1713,72 +1848,52 @@ function populateHubDateSelectors() {
   var yearOpts = ['<option value="">Pick year</option>']
     .concat(years.map(function(y){ return '<option value="'+y+'">'+y+'</option>'; })).join('');
 
-  // FULL DAY POOLS (current + ALL history) — fixes the "can't pick April from Sales tab" bug.
-  // Day dropdown now offers every date on which the metric has any data, not just current month.
-  var pools = getAllDayPools();
-  var daysS = pools.sales.slice();
-  var daysT = pools.traffic.slice();
-  var daysA = pools.ads.slice();
-  if (!daysA.length) daysA = daysS;  // fallback if ads-daily history empty
-
+  // Days from daily data
+  var daysS = (hub.sales   && hub.sales.daily)   ? hub.sales.daily.map(function(d){return d.date;})   : [];
+  var daysT = (hub.traffic && hub.traffic.daily) ? hub.traffic.daily.map(function(d){return d.date;}) : [];
+  // For Ads day dropdown: merge hub.history.daily.all_days + hub.daily.days (ads daily data)
+  var daysA = [];
+  if (hub.history && hub.history.daily && hub.history.daily.all_days) {
+    daysA = hub.history.daily.all_days.map(function(d){return d.date;});
+  }
+  if (hub.daily && hub.daily.days) {
+    var seenA = new Set(daysA);
+    hub.daily.days.forEach(function(d){ if (!seenA.has(d.date)) daysA.push(d.date); });
+  }
+  daysA.sort();
+  if (!daysA.length) daysA = daysS;  // fallback to sales dates if no ads daily data
   function dayOpts(days) {
     return ['<option value="">Pick day</option>']
       .concat(days.slice().reverse().map(function(d){ return '<option value="'+d+'">'+fmtDate(d)+'</option>'; })).join('');
-  }
-
-  // If a Month/Year is selected on a tab, FILTER the Day dropdown to that month/year only.
-  // This implements the user's UX request: picking April should reveal April days, not show May.
-  function daysForTab(tab, fullDays) {
-    var st = H[tab] || {};
-    if (st.month) {
-      return fullDays.filter(function(d){ return d.slice(0,7) === st.month; });
-    }
-    if (st.year) {
-      return fullDays.filter(function(d){ return d.slice(0,4) === st.year; });
-    }
-    return fullDays;
   }
 
   ['sales','ads','traffic','prod'].forEach(function(tab){
     var mSel = document.getElementById(tab+'-month-sel'); if (mSel) mSel.innerHTML = monthOpts;
     var ySel = document.getElementById(tab+'-year-sel');  if (ySel) ySel.innerHTML = yearOpts;
   });
-  var dS = document.getElementById('sales-day-sel');   if (dS) dS.innerHTML = dayOpts(daysForTab('sales',   daysS));
-  var dT = document.getElementById('traffic-day-sel'); if (dT) dT.innerHTML = dayOpts(daysForTab('traffic', daysT));
-  var dA = document.getElementById('ads-day-sel');     if (dA) dA.innerHTML = dayOpts(daysForTab('ads',     daysA));
+  var dS = document.getElementById('sales-day-sel');   if (dS) dS.innerHTML = dayOpts(daysS);
+  var dT = document.getElementById('traffic-day-sel'); if (dT) dT.innerHTML = dayOpts(daysT);
+  var dA = document.getElementById('ads-day-sel');     if (dA) dA.innerHTML = dayOpts(daysA);
   // Prod tab day selector — prefer ads days (superset of sales) so every date with any data is pickable
-  var dProdPool = daysA.length ? daysA : daysS;
-  var dP = document.getElementById('prod-day-sel');    if (dP) dP.innerHTML = dayOpts(daysForTab('prod', dProdPool));
+  var dP = document.getElementById('prod-day-sel');    if (dP) dP.innerHTML = dayOpts(daysA.length ? daysA : daysS);
 
   // Set DEFAULT = latest day (with data) on each tab, unless user already picked something.
   // Keeps dashboard meaningful on load instead of blank "pick a day" state.
-  // ALSO: if H[tab].day is set but isn't in current dropdown options (e.g. window
-  // rolled into new month and stale state has yesterday's date), override to latest.
-  function applyTabDefaultLocal(tab, daysArr) {
+  function applyTabDefault(tab, daysArr) {
     if (!daysArr || !daysArr.length) return;
     var latest = daysArr[daysArr.length - 1];
-    var st = H[tab];
-    if (!st) return;
-    // No selection at all → set latest as default
-    if (!st.day && !st.month && !st.year && !st.from && !st.to) {
-      st.mode = 'day';
-      st.day  = latest;
+    if (!H[tab].day && !H[tab].month && !H[tab].year && !H[tab].from && !H[tab].to) {
+      H[tab].mode = 'day';
+      H[tab].day  = latest;
       var sel = document.getElementById(tab+'-day-sel');
       if (sel) sel.value = latest;
-      return;
-    }
-    // Stale day: state has a day that's not in the available pool → snap to latest
-    if (st.day && daysArr.indexOf(st.day) === -1 && !st.month && !st.year && !st.from && !st.to) {
-      st.mode = 'day';
-      st.day  = latest;
-      var sel2 = document.getElementById(tab+'-day-sel');
-      if (sel2) sel2.value = latest;
     }
   }
-  applyTabDefaultLocal('sales',   daysS);
-  applyTabDefaultLocal('ads',     daysA);
-  applyTabDefaultLocal('traffic', daysT);
-  applyTabDefaultLocal('prod',    dProdPool);
+  applyTabDefault('sales',   daysS);
+  applyTabDefault('ads',     daysA);
+  applyTabDefault('traffic', daysT);
+  // Product Analysis uses sales days (most accurate TACOS) with ads-day fallback
+  applyTabDefault('prod',    daysS.length ? daysS : daysA);
 
   // After defaults, restore ALL dropdown values from state so re-render
   // doesn't revert any of them to the "Pick day" / "Pick month" placeholder.
@@ -4805,6 +4920,7 @@ function showPage(name, btn) {
   if (name === 'campaigns' && D) safeRun(renderCampaigns, 'renderCampaigns');
   if (name === 'placement' && D) safeRun(renderPlacement, 'renderPlacement');
   if (name === 'stock'     && D) safeRun(renderStock,     'renderStock');
+  if (name === 'doc'       && D) safeRun(renderDoc,       'renderDoc');
   if (name === 'prod'      && D) safeRun(renderProd,      'renderProd');
 }
 
@@ -4838,6 +4954,7 @@ function renderAll(){
   safeRun(populateStockWarehouseSelector, 'populateStockWarehouseSelector');
   safeRun(populateStockMetadata, 'populateStockMetadata');
   safeRun(renderStock, 'renderStock');
+  safeRun(renderDoc, 'renderDoc');
   safeRun(renderProd, 'renderProd');
   // Re-render Overview now that tab data is ready (registry-driven analyses
   // need all the per-tab render functions to exist first)
@@ -5694,6 +5811,709 @@ function renderStockDocChart(rows) {
       }
     }
   });
+}
+
+// ══ DoC TAB ════════════════════════════════════════════════════════════
+// Per-SKU Days-of-Cover deep dive with warehouse-level granularity.
+//
+// METHODOLOGY
+// ───────────
+// • DRR (overall) = SOH file's sales_30d / 30 — matches Stock tab convention
+// • WH DRR        = per-warehouse sales_30d / 30 (REAL per-warehouse velocity
+//                   straight from the SOH CSV, not SOH-share allocation)
+// • WH DoC        = WH SOH ÷ WH DRR — true DoC for that warehouse
+// • Potential loss / 30d (per WH) = max(0, 30 − WH DoC) × WH DRR × SP
+//   (lost revenue if no inbound arrives in 30 days at this WH)
+
+// Build the master DoC dataset. Returns one entry per SKU containing overall
+// metrics + per-warehouse breakdown. Cached on D._docRows so repeat renders
+// are cheap; invalidated when D itself is reloaded.
+function buildDocRows() {
+  if (!D || !D.hub || !D.hub.soh || !D.hub.soh.by_sku) return [];
+  if (D._docRows) return D._docRows;
+
+  // SP lookup from hub.skus (definitive source for SP)
+  var spBySku = {};
+  (D.hub.skus || []).forEach(function(s){ if (s.sku) spBySku[s.sku] = +s.sp || 0; });
+
+  var rows = [];
+  D.hub.soh.by_sku.forEach(function(s){
+    var totalSoh   = +s.total_soh || 0;
+    var sales30d   = +s.sales_30d || 0;
+    var drrTotal   = sales30d / 30;
+    var sp         = spBySku[s.sku] || 0;
+    // Overall DoC. Infinite when there's stock but zero sales (overstock case).
+    var doc        = drrTotal > 0 ? totalSoh / drrTotal : (totalSoh > 0 ? Infinity : null);
+
+    // Per-warehouse: prefer real per-WH sales_30d when present (post-processor-patch).
+    // Falls back to SOH-share allocation for older fk_data.json that lacks
+    // per-WH sales fields — degrades gracefully so tab works pre-pipeline-run.
+    var warehouses = (s.warehouses || []).filter(function(w){
+      return (w.soh || 0) > 0 || (w.sales_30d || 0) > 0;
+    });
+    var hasRealPerWhSales = warehouses.some(function(w){ return w.sales_30d != null; });
+
+    var totalLoss = 0;
+    var whCriticalCount = 0, whLowCount = 0;
+    var worstWhDoc = Infinity;
+    var whDetails = warehouses.map(function(w){
+      var whSoh = +w.soh || 0;
+      var sohShare = totalSoh > 0 ? whSoh / totalSoh : 0;
+      var whDrr, whDoc;
+      if (hasRealPerWhSales) {
+        // Real per-warehouse DRR from SOH file's per-WH sales_30d column
+        var whSales30 = +w.sales_30d || 0;
+        whDrr = whSales30 / 30;
+        whDoc = whDrr > 0 ? whSoh / whDrr : (whSoh > 0 ? Infinity : null);
+      } else {
+        // FALLBACK (legacy fk_data.json without per-WH sales): allocate by SOH share
+        whDrr = drrTotal * sohShare;
+        whDoc = whDrr > 0 ? whSoh / whDrr : (whSoh > 0 ? Infinity : null);
+      }
+      // Days that would be unstocked in next 30d if no inbound.
+      var stockoutDays = (whDoc == null) ? 30 : Math.max(0, 30 - whDoc);
+      var loss = stockoutDays * whDrr * sp;
+      totalLoss += loss;
+      if (whDoc != null && isFinite(whDoc)) {
+        if (whDoc < 10) whCriticalCount++;
+        else if (whDoc < 30) whLowCount++;
+        if (whDoc < worstWhDoc) worstWhDoc = whDoc;
+      }
+      return {
+        warehouse: w.warehouse,
+        soh:       whSoh,
+        sohShare:  sohShare,
+        sales_30d: +w.sales_30d || 0,
+        drr:       whDrr,
+        doc:       whDoc,
+        loss:      loss,
+        bucket:    docBucket10(whDoc),
+      };
+    });
+    if (!isFinite(worstWhDoc)) worstWhDoc = null;
+
+    // Pull vertical / lifecycle / range from hub.skus (SOH file doesn't carry these)
+    var hubSku = (D.hub.skus || []).find(function(x){ return x.sku === s.sku; }) || {};
+
+    rows.push({
+      sku:        s.sku,
+      title:      s.title || '',
+      clean_name: s.clean_name || hubSku.clean_name || '',
+      brand:      s.brand || hubSku.brand || '',
+      vertical:   hubSku.vertical || '',
+      range:      s.range || hubSku.range || '',
+      lifecycle:  s.lifecycle || hubSku.lifecycle || '',
+      sp:         sp,
+      soh:        totalSoh,
+      sales_30d:  sales30d,
+      drr:        drrTotal,
+      doc:        doc,
+      bucket:     docBucket10(doc),
+      worstWhDoc: worstWhDoc,
+      whCount:    warehouses.length,
+      whCriticalCount: whCriticalCount,
+      whLowCount: whLowCount,
+      whDetails:  whDetails,
+      totalLoss:  totalLoss,
+      _hasRealPerWhSales: hasRealPerWhSales,
+    });
+  });
+
+  D._docRows = rows;
+  return rows;
+}
+
+// 10-day-threshold bucket (DoC tab's stricter cutoffs vs Stock tab's 15d).
+// CRITICAL <10  ·  LOW 10-30  ·  HEALTHY 30-60  ·  OVER 60+/∞
+function docBucket10(doc) {
+  if (doc == null) return 'OVER';   // SOH but no sales → effectively dead
+  if (!isFinite(doc)) return 'OVER';
+  if (doc < 10) return 'CRITICAL';
+  if (doc < 30) return 'LOW';
+  if (doc < 60) return 'HEALTHY';
+  return 'OVER';
+}
+
+function docColor10(bucket) {
+  return bucket === 'CRITICAL' ? '#ff5a5a'
+       : bucket === 'LOW'      ? '#ffaa3d'
+       : bucket === 'HEALTHY'  ? '#5fd98a'
+       : '#6ab0ff';
+}
+
+// ── State setters ──────────────────────────────────────────────────────
+function setDocBrand(v, btn) {
+  H.doc.brand = v;
+  ['all','ba','cap','ss'].forEach(function(k){
+    var el = document.getElementById('doc-brand-'+k); if (el) el.classList.remove('active');
+  });
+  if (btn) btn.classList.add('active');
+  populateDocWarehouses();
+  populateDocMetadata();
+  renderDoc();
+}
+function setDocVertical()   { var s = document.getElementById('doc-vertical-sel');  H.doc.vertical = s ? s.value : 'ALL'; renderDoc(); }
+function setDocWarehouse()  { var s = document.getElementById('doc-wh-sel');        H.doc.warehouse = s ? s.value : 'ALL'; renderDoc(); }
+function setDocBucket(v, btn) {
+  H.doc.bucket = v;
+  ['all','cr','low','healthy','over'].forEach(function(k){
+    var el = document.getElementById('doc-bk-'+k); if (el) el.classList.remove('active');
+  });
+  if (btn) btn.classList.add('active');
+  renderDoc();
+}
+function setDocSearch(v)    { H.doc.search = (v || '').toLowerCase(); renderDoc(); }
+function setDocLifecycle()  { var s = document.getElementById('doc-lifecycle-sel'); H.doc.lifecycle = s ? s.value : 'ALL'; renderDoc(); }
+function setDocRange()      { var s = document.getElementById('doc-range-sel');     H.doc.range = s ? s.value : 'ALL'; renderDoc(); }
+function setDocShow(v, btn) {
+  H.doc.show = v;
+  ['all','active','atrisk'].forEach(function(k){
+    var el = document.getElementById('doc-show-'+k); if (el) el.classList.remove('active');
+  });
+  if (btn) btn.classList.add('active');
+  renderDoc();
+}
+function setDocSort(field) {
+  if (H.doc.sort === field) H.doc.sortDesc = !H.doc.sortDesc;
+  else { H.doc.sort = field; H.doc.sortDesc = true; }
+  renderDoc();
+}
+function resetDocAll() {
+  H.doc.brand = 'ALL'; H.doc.vertical = 'ALL'; H.doc.warehouse = 'ALL';
+  H.doc.bucket = 'ALL'; H.doc.search = ''; H.doc.lifecycle = 'ALL';
+  H.doc.range = 'ALL'; H.doc.show = 'ALL'; H.doc.selectedSku = null;
+  ['doc-brand-all','doc-brand-ba','doc-brand-cap','doc-brand-ss',
+   'doc-bk-all','doc-bk-cr','doc-bk-low','doc-bk-healthy','doc-bk-over',
+   'doc-show-all','doc-show-active','doc-show-atrisk'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.classList.remove('active');
+  });
+  ['doc-brand-all','doc-bk-all','doc-show-all'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.classList.add('active');
+  });
+  ['doc-vertical-sel','doc-wh-sel','doc-lifecycle-sel','doc-range-sel'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.value = 'ALL';
+  });
+  var s = document.getElementById('doc-search'); if (s) s.value = '';
+  closeDocDetail();
+  renderDoc();
+}
+function showDocDetail(skuEncoded) {
+  H.doc.selectedSku = decodeURIComponent(skuEncoded);
+  renderDocDetail();
+}
+function closeDocDetail() {
+  H.doc.selectedSku = null;
+  var card = document.getElementById('doc-detail-card');
+  if (card) card.style.display = 'none';
+}
+
+// ── Selector populators ────────────────────────────────────────────────
+function populateDocWarehouses() {
+  var sel = document.getElementById('doc-wh-sel');
+  if (!sel || !D || !D.hub || !D.hub.soh) return;
+  var brand = H.doc.brand;
+  var counts = {};  // warehouse → total SOH (filtered by brand)
+  (D.hub.soh.by_warehouse || []).forEach(function(w){
+    if (brand !== 'ALL' && w.brand !== brand) return;
+    counts[w.warehouse] = (counts[w.warehouse] || 0) + (w.soh || 0);
+  });
+  var sorted = Object.keys(counts).sort(function(a,b){ return counts[b] - counts[a]; });
+  var cur = H.doc.warehouse;
+  var opts = ['<option value="ALL">All Warehouses</option>'];
+  sorted.forEach(function(w){
+    opts.push('<option value="'+escHtml(w)+'"'+(cur===w?' selected':'')+'>'+escHtml(w)+' ('+fmtUnits(counts[w])+')</option>');
+  });
+  sel.innerHTML = opts.join('');
+  if (cur !== 'ALL' && sorted.indexOf(cur) === -1) {
+    H.doc.warehouse = 'ALL';
+    sel.value = 'ALL';
+  }
+}
+function populateDocMetadata() {
+  if (!D || !D.hub) return;
+  var brand = H.doc.brand;
+  var verticals = {}, lifecycles = {}, ranges = {};
+  (D.hub.skus || []).forEach(function(s){
+    if (brand !== 'ALL' && s.brand !== brand) return;
+    if (s.vertical && s.vertical !== 'nan') verticals[s.vertical] = (verticals[s.vertical] || 0) + 1;
+    if (s.lifecycle) lifecycles[s.lifecycle] = (lifecycles[s.lifecycle] || 0) + 1;
+    if (s.range)     ranges[s.range]         = (ranges[s.range] || 0) + 1;
+  });
+  function fillSel(id, map, allLabel, current) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var opts = ['<option value="ALL">'+allLabel+'</option>'];
+    Object.keys(map).sort().forEach(function(k){
+      opts.push('<option value="'+escHtml(k)+'"'+(current===k?' selected':'')+'>'+escHtml(k)+' ('+map[k]+')</option>');
+    });
+    el.innerHTML = opts.join('');
+  }
+  fillSel('doc-vertical-sel',  verticals,  'All Verticals', H.doc.vertical);
+  fillSel('doc-lifecycle-sel', lifecycles, 'All',           H.doc.lifecycle);
+  fillSel('doc-range-sel',     ranges,     'All Ranges',    H.doc.range);
+}
+
+// ── Filter rows by current state ──────────────────────────────────────
+function filterDocRows(rows) {
+  var f = H.doc;
+  return rows.filter(function(r){
+    if (f.brand !== 'ALL' && r.brand !== f.brand) return false;
+    if (f.vertical !== 'ALL' && r.vertical !== f.vertical) return false;
+    if (f.lifecycle !== 'ALL' && r.lifecycle !== f.lifecycle) return false;
+    if (f.range !== 'ALL' && r.range !== f.range) return false;
+    if (f.bucket !== 'ALL' && r.bucket !== f.bucket) return false;
+    if (f.show === 'ACTIVE' && (!r.drr || r.drr <= 0)) return false;
+    if (f.show === 'ATRISK' && r.whCriticalCount === 0) return false;
+    if (f.warehouse !== 'ALL') {
+      // Keep only SKUs that have stock at this warehouse
+      var has = r.whDetails.some(function(w){ return w.warehouse === f.warehouse; });
+      if (!has) return false;
+    }
+    if (f.search) {
+      var q = f.search;
+      if (!((r.sku||'').toLowerCase().indexOf(q) >= 0 ||
+            (r.title||'').toLowerCase().indexOf(q) >= 0 ||
+            (r.clean_name||'').toLowerCase().indexOf(q) >= 0 ||
+            (r.range||'').toLowerCase().indexOf(q) >= 0)) return false;
+    }
+    return true;
+  });
+}
+
+// Format ∞ / null / number → "Xd" / "∞" / "—"
+function fmtDocV(d) {
+  if (d == null) return '—';
+  if (!isFinite(d)) return '∞';
+  if (d >= 999) return '999+d';
+  return d.toFixed(1) + 'd';
+}
+
+// ── Critical alerts table: every (SKU × WH) with WH-DoC < 10 ──────────
+function renderDocCritical(rows, whFilter) {
+  var body = document.getElementById('doc-critical-body');
+  var sub  = document.getElementById('doc-critical-sub');
+  if (!body) return;
+  var pairs = [];
+  rows.forEach(function(r){
+    r.whDetails.forEach(function(w){
+      if (w.bucket !== 'CRITICAL') return;
+      if (whFilter && whFilter !== 'ALL' && w.warehouse !== whFilter) return;
+      pairs.push({r: r, w: w});
+    });
+  });
+  pairs.sort(function(a,b){ return b.w.loss - a.w.loss; });
+  if (sub) sub.textContent = pairs.length + ' (SKU × WH) at risk · total potential loss ' +
+    fmtCr(pairs.reduce(function(a,p){ return a + p.w.loss; }, 0));
+  if (!pairs.length) {
+    body.innerHTML = '<tr><td colspan="9" style="padding:20px;text-align:center;color:var(--text3)">No critical (SKU × WH) combos in current filter — nothing under 10 days 🎉</td></tr>';
+    return;
+  }
+  var top = pairs.slice(0, 200);  // cap at 200 to keep DOM responsive
+  body.innerHTML = top.map(function(p){
+    var r = p.r, w = p.w;
+    var nameTip = escHtml(r.clean_name ? (r.clean_name + (r.title && r.title !== r.clean_name ? ' · FK: '+r.title : '')) : r.title || '');
+    var docCol = docColor10(w.bucket);
+    return '<tr style="cursor:pointer" onclick="showDocDetail(\''+encodeURIComponent(r.sku)+'\')" title="Click for full warehouse breakdown">' +
+      '<td style="font-family:Courier New,monospace;font-size:11px">'+escHtml(r.sku)+'</td>' +
+      '<td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+nameTip+'">'+escHtml(r.clean_name || r.title)+'</td>' +
+      '<td>'+brandPill(r.brand)+'</td>' +
+      '<td style="font-family:Courier New,monospace;font-size:11px">'+escHtml(w.warehouse)+'</td>' +
+      '<td class="num" style="font-weight:600">'+fmtUnits(w.soh)+'</td>' +
+      '<td class="num">'+(w.drr > 0 ? w.drr.toFixed(2) : '—')+'</td>' +
+      '<td class="num" style="color:'+docCol+';font-weight:700">'+fmtDocV(w.doc)+'</td>' +
+      '<td class="num">₹'+(r.sp ? r.sp.toLocaleString('en-IN') : '—')+'</td>' +
+      '<td class="num" style="color:#f05252;font-weight:700">'+fmtCr(w.loss)+'</td>' +
+      '</tr>';
+  }).join('') + (pairs.length > 200
+    ? '<tr><td colspan="9" style="padding:8px;text-align:center;color:var(--text3);font-size:11px">showing top 200 of '+pairs.length+' · refine filters to narrow further</td></tr>'
+    : '');
+}
+
+// ── Per-SKU summary table ─────────────────────────────────────────────
+function renderDocSku(rows) {
+  var body = document.getElementById('doc-sku-body');
+  var sub  = document.getElementById('doc-summary-sub');
+  if (!body) return;
+  // Sort
+  var f = H.doc;
+  rows.sort(function(a,b){
+    var av = a[f.sort], bv = b[f.sort];
+    // null/Infinity handling: in desc mode push them to the end
+    if (av == null) av = f.sortDesc ? -Infinity : Infinity;
+    if (bv == null) bv = f.sortDesc ? -Infinity : Infinity;
+    if (av === Infinity) av = f.sortDesc ? Number.MAX_VALUE : -Number.MAX_VALUE;
+    if (bv === Infinity) bv = f.sortDesc ? Number.MAX_VALUE : -Number.MAX_VALUE;
+    if (typeof av === 'string') av = av.toLowerCase();
+    if (typeof bv === 'string') bv = bv.toLowerCase();
+    if (av < bv) return f.sortDesc ? 1 : -1;
+    if (av > bv) return f.sortDesc ? -1 : 1;
+    return 0;
+  });
+  if (sub) sub.textContent = rows.length + ' SKUs · total loss ' +
+    fmtCr(rows.reduce(function(a,r){ return a + r.totalLoss; }, 0));
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="13" style="padding:20px;text-align:center;color:var(--text3)">No SKUs match filters</td></tr>';
+    return;
+  }
+  var shown = rows.slice(0, 500);
+  body.innerHTML = shown.map(function(r){
+    var nameTip = escHtml(r.clean_name ? (r.clean_name + (r.title && r.title !== r.clean_name ? ' · FK: '+r.title : '')) : r.title || '');
+    var docCol  = docColor10(r.bucket);
+    var worstCol= docColor10(docBucket10(r.worstWhDoc));
+    var critCol = r.whCriticalCount > 0 ? '#f05252' : 'var(--text3)';
+    var lifeBadge = r.lifecycle ? '<span style="font-size:9px;color:var(--text3);margin-left:4px">['+escHtml(r.lifecycle)+']</span>' : '';
+    return '<tr style="cursor:pointer" onclick="showDocDetail(\''+encodeURIComponent(r.sku)+'\')">' +
+      '<td style="font-family:Courier New,monospace;font-size:11px">'+escHtml(r.sku)+'</td>' +
+      '<td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+nameTip+'">'+escHtml(r.clean_name || r.title)+lifeBadge+'</td>' +
+      '<td>'+brandPill(r.brand)+'</td>' +
+      '<td style="font-size:10px;color:var(--text3);white-space:nowrap">'+escHtml(r.vertical || '—')+'</td>' +
+      '<td class="num" style="font-weight:600">'+fmtUnits(r.soh)+'</td>' +
+      '<td class="num">'+(r.drr > 0 ? r.drr.toFixed(2) : '—')+'</td>' +
+      '<td class="num" style="color:'+docCol+';font-weight:700">'+fmtDocV(r.doc)+'</td>' +
+      '<td class="num" style="color:'+worstCol+'">'+fmtDocV(r.worstWhDoc)+'</td>' +
+      '<td class="num" style="color:'+critCol+';font-weight:'+(r.whCriticalCount>0?'700':'400')+'">'+r.whCriticalCount+'</td>' +
+      '<td class="num" style="color:'+(r.whLowCount>0?'#f5a524':'var(--text3)')+'">'+r.whLowCount+'</td>' +
+      '<td class="num">₹'+(r.sp ? r.sp.toLocaleString('en-IN') : '—')+'</td>' +
+      '<td class="num" style="color:'+(r.totalLoss>0?'#f05252':'var(--text3)')+';font-weight:'+(r.totalLoss>0?'700':'400')+'">'+(r.totalLoss>0?fmtCr(r.totalLoss):'—')+'</td>' +
+      '<td class="num">'+r.whCount+'</td>' +
+      '</tr>';
+  }).join('') + (rows.length > 500
+    ? '<tr><td colspan="13" style="padding:8px;text-align:center;color:var(--text3);font-size:11px">showing first 500 of '+rows.length+' · refine filters to narrow further</td></tr>'
+    : '');
+}
+
+// ── Drill-down: per-warehouse breakdown for selected SKU ──────────────
+function renderDocDetail() {
+  var card = document.getElementById('doc-detail-card');
+  var sku  = H.doc.selectedSku;
+  if (!card || !sku) { if (card) card.style.display = 'none'; return; }
+  var rows = buildDocRows();
+  var r = rows.find(function(x){ return x.sku === sku; });
+  if (!r) { card.style.display = 'none'; return; }
+  var title = document.getElementById('doc-detail-title');
+  var meta  = document.getElementById('doc-detail-meta');
+  var body  = document.getElementById('doc-detail-body');
+  if (title) title.textContent = r.clean_name || r.title || sku;
+  if (meta) {
+    var parts = [];
+    parts.push('<span style="font-family:Courier New,monospace;font-size:10px;color:var(--text3)">'+escHtml(sku)+'</span>');
+    if (r.brand) parts.push(brandPill(r.brand));
+    if (r.vertical) parts.push('<span style="font-size:11px;color:var(--text2)">'+escHtml(r.vertical)+'</span>');
+    parts.push('Total SOH <b>'+fmtUnits(r.soh)+'</b>');
+    parts.push('DRR <b>'+(r.drr > 0 ? r.drr.toFixed(2) : '—')+'</b>');
+    parts.push('Overall DoC <b style="color:'+docColor10(r.bucket)+'">'+fmtDocV(r.doc)+'</b>');
+    parts.push('SP <b>₹'+(r.sp ? r.sp.toLocaleString('en-IN') : '—')+'</b>');
+    if (r.totalLoss > 0) parts.push('Loss/30d <b style="color:#f05252">'+fmtCr(r.totalLoss)+'</b>');
+    meta.innerHTML = parts.join(' · ');
+  }
+  // Warehouse rows sorted by WH-DoC ascending (riskiest first)
+  var whSorted = r.whDetails.slice().sort(function(a,b){
+    var ad = a.doc == null ? Infinity : (isFinite(a.doc) ? a.doc : Number.MAX_VALUE);
+    var bd = b.doc == null ? Infinity : (isFinite(b.doc) ? b.doc : Number.MAX_VALUE);
+    return ad - bd;
+  });
+  body.innerHTML = whSorted.map(function(w){
+    var docCol = docColor10(w.bucket);
+    var statusLbl = w.bucket === 'CRITICAL' ? '🔴 Critical'
+                  : w.bucket === 'LOW'      ? '🟠 Low'
+                  : w.bucket === 'HEALTHY'  ? '🟢 Healthy'
+                  : '🔵 Overstock';
+    return '<tr>' +
+      '<td style="font-family:Courier New,monospace;font-size:11px">'+escHtml(w.warehouse)+'</td>' +
+      '<td class="num" style="font-weight:600">'+fmtUnits(w.soh)+'</td>' +
+      '<td class="num">'+(w.sohShare * 100).toFixed(1)+'%</td>' +
+      '<td class="num">'+(w.sales_30d > 0 ? fmtUnits(w.sales_30d) : '—')+'</td>' +
+      '<td class="num">'+(w.drr > 0 ? w.drr.toFixed(2) : '—')+'</td>' +
+      '<td class="num" style="color:'+docCol+';font-weight:700">'+fmtDocV(w.doc)+'</td>' +
+      '<td style="color:'+docCol+'">'+statusLbl+'</td>' +
+      '<td class="num" style="color:'+(w.loss>0?'#f05252':'var(--text3)')+';font-weight:'+(w.loss>0?'700':'400')+'">'+(w.loss>0?fmtCr(w.loss):'—')+'</td>' +
+      '</tr>';
+  }).join('');
+  card.style.display = 'block';
+  setTimeout(function(){ card.scrollIntoView({behavior:'smooth', block:'nearest'}); }, 50);
+}
+
+// ── Charts ────────────────────────────────────────────────────────────
+var _chDocDist, _chDocWhRisk;
+function renderDocCharts(rows) {
+  // Distribution: count of SKUs per bucket (overall DoC)
+  var cvs1 = document.getElementById('ch-doc-dist');
+  if (cvs1) {
+    if (_chDocDist) { try { _chDocDist.destroy(); } catch(e){} }
+    var buckets = ['CRITICAL','LOW','HEALTHY','OVER'];
+    var labels  = ['<10d','10–30d','30–60d','60+ / ∞'];
+    var counts  = buckets.map(function(b){ return rows.filter(function(r){ return r.bucket === b; }).length; });
+    var sohSum  = buckets.map(function(b){ return rows.filter(function(r){ return r.bucket === b; }).reduce(function(s,r){ return s + (r.soh || 0); }, 0); });
+    _chDocDist = new Chart(cvs1.getContext('2d'), {
+      type: 'bar',
+      data: { labels: labels, datasets: [
+        { label:'SKUs', data: counts, backgroundColor: ['#ff5a5a','#ffaa3d','#5fd98a','#6ab0ff'], borderWidth: 0, yAxisID:'y' },
+        { label:'SOH', data: sohSum, type:'line', borderColor:'#fff', backgroundColor:'rgba(255,255,255,.1)', yAxisID:'y1', tension:0.3, pointRadius:4 },
+      ]},
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position:'bottom', labels: { color:'#8892a4', font:{size:10}, boxWidth:10 } } },
+        scales: {
+          x:  { ticks:{color:'#8892a4', font:{size:10}}, grid:{display:false} },
+          y:  { position:'left',  ticks:{color:'#4a5168', font:{size:10}}, grid:{color:'rgba(255,255,255,.05)'}, title:{display:true, text:'SKUs', color:'#8892a4', font:{size:10}} },
+          y1: { position:'right', ticks:{color:'#4a5168', font:{size:10}, callback:function(v){return fmtUnits(v);}}, grid:{display:false}, title:{display:true, text:'SOH', color:'#8892a4', font:{size:10}} },
+        }
+      }
+    });
+  }
+  // Top warehouses by # SKUs with WH-DoC < 10 (top 12)
+  var cvs2 = document.getElementById('ch-doc-wh-risk');
+  if (cvs2) {
+    if (_chDocWhRisk) { try { _chDocWhRisk.destroy(); } catch(e){} }
+    var whCount = {};   // warehouse → critical SKU count
+    var whLoss  = {};   // warehouse → total potential loss
+    rows.forEach(function(r){
+      r.whDetails.forEach(function(w){
+        if (w.bucket !== 'CRITICAL') return;
+        whCount[w.warehouse] = (whCount[w.warehouse] || 0) + 1;
+        whLoss[w.warehouse]  = (whLoss[w.warehouse]  || 0) + w.loss;
+      });
+    });
+    var top = Object.keys(whCount).map(function(w){
+      return { wh: w, count: whCount[w], loss: whLoss[w] };
+    }).sort(function(a,b){ return b.count - a.count; }).slice(0, 12);
+    _chDocWhRisk = new Chart(cvs2.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: top.map(function(x){ return x.wh; }),
+        datasets: [
+          { label:'Critical SKUs', data: top.map(function(x){ return x.count; }), backgroundColor:'#ff5a5a', borderWidth:0, yAxisID:'y' },
+          { label:'Loss (₹L)',     data: top.map(function(x){ return +(x.loss/1e5).toFixed(2); }), type:'line', borderColor:'#f5c842', backgroundColor:'rgba(245,200,66,.1)', yAxisID:'y1', tension:0.3, pointRadius:3 },
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: { legend: { position:'bottom', labels:{color:'#8892a4', font:{size:10}, boxWidth:10} },
+          tooltip: { mode:'index' } },
+        scales: {
+          x:  { ticks:{color:'#4a5168', font:{size:10}}, grid:{color:'rgba(255,255,255,.05)'}, title:{display:true, text:'Critical SKU count', color:'#8892a4', font:{size:10}} },
+          x1: { position:'top', ticks:{color:'#4a5168', font:{size:10}, callback:function(v){return '₹'+v+'L';}}, grid:{display:false} },
+          y:  { ticks:{color:'#8892a4', font:{size:10}}, grid:{display:false} },
+        }
+      }
+    });
+  }
+}
+
+// ── Insights card ─────────────────────────────────────────────────────
+function renderDocInsights(rows) {
+  var el  = document.getElementById('doc-insights');
+  var sub = document.getElementById('doc-insights-sub');
+  if (!el) return;
+  // Top 10 most at-risk SKUs by potential loss
+  var topLoss = rows.filter(function(r){ return r.totalLoss > 0; })
+    .sort(function(a,b){ return b.totalLoss - a.totalLoss; }).slice(0, 10);
+  // Brand breakdown
+  var byBrand = {};
+  rows.forEach(function(r){
+    var b = r.brand || '(Unknown)';
+    if (!byBrand[b]) byBrand[b] = { critical: 0, atRisk: 0, loss: 0, soh: 0 };
+    byBrand[b].soh += r.soh;
+    if (r.bucket === 'CRITICAL') byBrand[b].critical++;
+    if (r.whCriticalCount > 0)   byBrand[b].atRisk++;
+    byBrand[b].loss += r.totalLoss;
+  });
+  // Phantom stock: SOH > 100 but DRR == 0 (overstock cases that won't move)
+  var phantom = rows.filter(function(r){ return r.soh > 100 && (!r.drr || r.drr === 0); })
+    .sort(function(a,b){ return b.soh - a.soh; }).slice(0, 8);
+  // Concentration risk: SKU has all stock in 1 WH AND that WH is critical
+  var concentrated = rows.filter(function(r){
+    return r.whDetails.length === 1 && r.whDetails[0].bucket === 'CRITICAL' && r.totalLoss > 1000;
+  }).sort(function(a,b){ return b.totalLoss - a.totalLoss; }).slice(0, 8);
+
+  function rowItem(name, val, color, extra, sku) {
+    return '<div class="an-row" title="'+escHtml(sku||'')+'">'+
+      '<div class="an-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(name)+'</div>'+
+      '<span class="an-val" style="color:'+(color||'var(--text)')+';font-weight:700;white-space:nowrap">'+val+(extra?' <span style="color:var(--text3);font-weight:400;font-size:10px">'+extra+'</span>':'')+'</span>'+
+    '</div>';
+  }
+  function section(title, icon, color, html) {
+    return '<div style="margin-bottom:14px">'+
+      '<div style="font-size:11px;font-weight:700;color:'+color+';margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">'+icon+' '+title+'</div>'+
+      (html || '<div style="color:var(--text3);font-size:11px;padding:4px 0">—</div>')+'</div>';
+  }
+  var cols = [];
+  // Column 1: Top losses + Phantom
+  var c1 = '';
+  c1 += section('Top 10 Lost ₹/30d', '💸', '#f05252',
+    topLoss.map(function(r){
+      return rowItem(r.clean_name || r.title || r.sku, fmtCr(r.totalLoss), '#f05252',
+                     'DoC '+fmtDocV(r.doc)+' · '+r.whCriticalCount+' WH<10d', r.sku);
+    }).join(''));
+  c1 += section('Phantom Stock (SOH>100, no sales)', '🧊', '#6ab0ff',
+    phantom.map(function(r){
+      return rowItem(r.clean_name || r.title || r.sku, fmtUnits(r.soh)+' u', '#6ab0ff',
+                     '0 DRR · ₹'+(r.sp ? r.sp.toLocaleString('en-IN') : '—')+' SP', r.sku);
+    }).join(''));
+  cols.push('<div>'+c1+'</div>');
+  // Column 2: Brand summary + Concentration
+  var c2 = '';
+  var brandRows = Object.keys(byBrand).sort(function(a,b){ return byBrand[b].loss - byBrand[a].loss; })
+    .map(function(b){
+      var v = byBrand[b];
+      return '<div class="an-row">'+
+        '<div class="an-name">'+(b ? brandPill(b) : '<span style="color:var(--text3)">'+b+'</span>')+'</div>'+
+        '<span class="an-val" style="white-space:nowrap">'+
+          '<span style="color:#f05252;font-weight:700">'+fmtCr(v.loss)+'</span>'+
+          ' <span style="color:var(--text3);font-size:10px">'+v.atRisk+' at-risk · '+v.critical+' crit</span>'+
+        '</span></div>';
+    }).join('');
+  c2 += section('Brand Breakdown', '🎯', 'var(--accent)', brandRows);
+  c2 += section('Single-WH Concentration Risk', '⚠️', '#f5a524',
+    concentrated.map(function(r){
+      var w = r.whDetails[0];
+      return rowItem(r.clean_name || r.title || r.sku, fmtUnits(w.soh)+' u', '#f5a524',
+                     'only @ '+w.warehouse+' · DoC '+fmtDocV(w.doc), r.sku);
+    }).join(''));
+  cols.push('<div>'+c2+'</div>');
+  // Column 3: Methodology + summary stats
+  var totalCriticalSkus = rows.filter(function(r){ return r.whCriticalCount > 0; }).length;
+  var totalLoss = rows.reduce(function(s,r){ return s + r.totalLoss; }, 0);
+  var avgDoc = (function(){
+    var docs = rows.filter(function(r){ return r.doc != null && isFinite(r.doc); }).map(function(r){ return r.doc; });
+    if (!docs.length) return null;
+    return docs.reduce(function(a,b){ return a+b; }, 0) / docs.length;
+  })();
+  var c3 = '';
+  c3 += section('Summary', '📊', 'var(--accent)',
+    '<div class="an-row"><div class="an-name">SKUs at risk (any WH<10d)</div><span class="an-val" style="color:#f05252;font-weight:700">'+totalCriticalSkus+'</span></div>'+
+    '<div class="an-row"><div class="an-name">Total potential loss / 30d</div><span class="an-val" style="color:#f05252;font-weight:700">'+fmtCr(totalLoss)+'</span></div>'+
+    '<div class="an-row"><div class="an-name">Avg overall DoC</div><span class="an-val" style="font-weight:700">'+(avgDoc != null ? avgDoc.toFixed(0)+'d' : '—')+'</span></div>'+
+    '<div class="an-row"><div class="an-name">SKUs analyzed</div><span class="an-val">'+rows.length+'</span></div>'
+  );
+  c3 += section('Methodology', 'ℹ️', 'var(--text3)',
+    '<div style="font-size:11px;color:var(--text3);line-height:1.6;padding:4px 0">'+
+    '<b>DRR</b> = sales_30d ÷ 30 (SOH file)<br>'+
+    '<b>WH DRR</b> = WH sales_30d ÷ 30<br>'+
+    '<small style="color:var(--text3)">(real per-warehouse velocity from SOH file)</small><br>'+
+    '<b>WH DoC</b> = WH SOH ÷ WH DRR<br>'+
+    '<b>Loss/30d</b> = max(0, 30 − WH DoC) × WH DRR × SP'+
+    '</div>'
+  );
+  cols.push('<div>'+c3+'</div>');
+  el.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">'+cols.join('')+'</div>';
+  if (sub) {
+    var parts = [];
+    if (totalCriticalSkus) parts.push(totalCriticalSkus + ' at-risk');
+    if (totalLoss > 0) parts.push(fmtCr(totalLoss) + ' loss/30d');
+    if (phantom.length) parts.push(phantom.length + ' phantom');
+    sub.textContent = parts.join(' · ');
+  }
+}
+
+// ── KPI strip ─────────────────────────────────────────────────────────
+function renderDocKpis(rows) {
+  var el = document.getElementById('doc-kpi');
+  if (!el) return;
+  var totalSoh    = rows.reduce(function(s,r){ return s + r.soh; }, 0);
+  var atRisk      = rows.filter(function(r){ return r.whCriticalCount > 0; }).length;
+  var critOverall = rows.filter(function(r){ return r.bucket === 'CRITICAL'; }).length;
+  var totalLoss   = rows.reduce(function(s,r){ return s + r.totalLoss; }, 0);
+  var totalCritWh = rows.reduce(function(s,r){ return s + r.whCriticalCount; }, 0);
+  var phantomCount= rows.filter(function(r){ return r.soh > 100 && (!r.drr || r.drr === 0); }).length;
+  // Weighted avg DoC (by SOH) — gives "the inventory's average days of cover"
+  var num = 0, den = 0;
+  rows.forEach(function(r){
+    if (r.doc == null || !isFinite(r.doc)) return;
+    num += r.doc * r.soh;
+    den += r.soh;
+  });
+  var wAvgDoc = den > 0 ? num / den : null;
+  function tile(label, value, sub, color) {
+    return '<div class="stat-card"><div class="stat-label">'+label+'</div>'+
+           '<div class="stat-value" style="color:'+(color||'var(--text)')+'">'+value+'</div>'+
+           '<div class="stat-sub">'+(sub||'')+'</div></div>';
+  }
+  el.innerHTML = [
+    tile('SKUs at Risk', atRisk,             'any WH < 10 days',      atRisk > 0 ? '#f05252' : 'var(--text2)'),
+    tile('Critical (overall)', critOverall,  'overall DoC < 10d',     critOverall > 0 ? '#f05252' : 'var(--text2)'),
+    tile('WH×SKU Hot',  totalCritWh,         'WH-DoC < 10 combos',    totalCritWh > 0 ? '#ff5a5a' : 'var(--text2)'),
+    tile('Loss/30d',    fmtCr(totalLoss),    'if no inbound',         totalLoss > 0 ? '#f05252' : 'var(--text2)'),
+    tile('Total SOH',   fmtUnits(totalSoh),  rows.length+' SKUs',     'var(--accent)'),
+    tile('Wt Avg DoC',  wAvgDoc != null ? wAvgDoc.toFixed(0)+'d' : '—', 'SOH-weighted',  'var(--text2)'),
+    tile('Phantom',     phantomCount,        'SOH>100 · 0 DRR',       phantomCount > 0 ? '#6ab0ff' : 'var(--text2)'),
+  ].join('');
+}
+
+// ── CSV exports ───────────────────────────────────────────────────────
+function exportDocCriticalCsv() {
+  if (!D || !D.hub || !D.hub.soh) return;
+  var rows = filterDocRows(buildDocRows());
+  var lines = [['SKU','Clean Name','FK Title','Brand','Vertical','Range','Lifecycle','Warehouse','WH SOH','WH Sales 30D','WH DRR','WH DoC','SP','Lost/30d'].join(',')];
+  function q(v){ return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'; }
+  rows.forEach(function(r){
+    r.whDetails.forEach(function(w){
+      if (w.bucket !== 'CRITICAL') return;
+      lines.push([
+        q(r.sku), q(r.clean_name), q(r.title), q(r.brand), q(r.vertical),
+        q(r.range), q(r.lifecycle), q(w.warehouse),
+        w.soh, w.sales_30d || 0, w.drr.toFixed(3),
+        w.doc != null && isFinite(w.doc) ? w.doc.toFixed(2) : '',
+        r.sp, w.loss.toFixed(2)
+      ].join(','));
+    });
+  });
+  var blob = new Blob([lines.join('\n')], {type:'text/csv'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'fk_doc_critical_' + (D.hub.soh.date_snapshot || 'export') + '.csv';
+  a.click();
+}
+function exportDocSkuCsv() {
+  if (!D || !D.hub || !D.hub.soh) return;
+  var rows = filterDocRows(buildDocRows());
+  var lines = [['SKU','Clean Name','FK Title','Brand','Vertical','Range','Lifecycle','Total SOH','Sales 30D','DRR','Overall DoC','Worst WH DoC','WH<10','WH<30','SP','Total Loss/30d','WH Count','WH Split (wh:soh:doc|...)'].join(',')];
+  function q(v){ return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'; }
+  rows.forEach(function(r){
+    var split = r.whDetails.map(function(w){
+      return w.warehouse+':'+w.soh+':'+(w.doc != null && isFinite(w.doc) ? w.doc.toFixed(1) : '∞');
+    }).join('|');
+    lines.push([
+      q(r.sku), q(r.clean_name), q(r.title), q(r.brand), q(r.vertical),
+      q(r.range), q(r.lifecycle),
+      r.soh, r.sales_30d, r.drr.toFixed(3),
+      r.doc != null && isFinite(r.doc) ? r.doc.toFixed(2) : '',
+      r.worstWhDoc != null && isFinite(r.worstWhDoc) ? r.worstWhDoc.toFixed(2) : '',
+      r.whCriticalCount, r.whLowCount, r.sp, r.totalLoss.toFixed(2),
+      r.whCount, q(split)
+    ].join(','));
+  });
+  var blob = new Blob([lines.join('\n')], {type:'text/csv'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'fk_doc_sku_' + (D.hub.soh.date_snapshot || 'export') + '.csv';
+  a.click();
+}
+
+// ── Main render ───────────────────────────────────────────────────────
+function renderDoc() {
+  if (!D || !D.hub) return;
+  var sohData = D.hub.soh;
+  var lbl = document.getElementById('doc-window-lbl');
+  if (lbl) lbl.textContent = sohData ? ('snapshot ' + (sohData.date_snapshot || '—')) : '';
+  if (!sohData || !sohData.by_sku) {
+    document.getElementById('doc-kpi').innerHTML =
+      '<div class="stat-card" style="grid-column:1/-1"><div class="stat-label">NO SOH DATA</div>'+
+      '<div class="stat-value" style="font-size:12px;color:var(--text3)">Run FK_SOH_Downloader.py</div></div>';
+    document.getElementById('doc-critical-body').innerHTML = '';
+    document.getElementById('doc-sku-body').innerHTML = '';
+    return;
+  }
+  populateDocWarehouses();
+  populateDocMetadata();
+  var allRows = buildDocRows();
+  var rows = filterDocRows(allRows);
+  renderDocKpis(rows);
+  renderDocCharts(rows);
+  renderDocCritical(rows, H.doc.warehouse);
+  renderDocSku(rows);
+  renderDocInsights(rows);
+  if (H.doc.selectedSku) renderDocDetail();
 }
 
 // ══ PRODUCT ANALYSIS TAB ════════════════════════════════════════════════

@@ -1043,7 +1043,7 @@ function checkPW(){
     <button class="fbtn"        id="doc-bk-over"     onclick="setDocBucket('OVER',this)" style="color:#6ab0ff">Overstock 60+d</button>
   </div>
   <div class="filters" style="margin-top:-10px;margin-bottom:14px">
-    <input type="text" id="doc-search" class="fsel" placeholder="Search SKU / name / range..." oninput="setDocSearch(this.value)" style="min-width:220px">
+    <input type="text" id="doc-search" class="fsel" placeholder="Search SKU / FSN / name / range..." oninput="setDocSearch(this.value)" style="min-width:220px">
     <div class="fsep"></div>
     <span class="filter-label">Lifecycle</span>
     <select class="fsel" id="doc-lifecycle-sel" onchange="setDocLifecycle()" style="min-width:120px">
@@ -1090,11 +1090,12 @@ function checkPW(){
     <table>
       <thead><tr>
         <th style="min-width:120px">SKU</th>
+        <th style="min-width:140px">FSN</th>
         <th style="min-width:240px">Name</th>
         <th>Brand</th>
         <th style="min-width:140px">Warehouse</th>
         <th class="num" title="SOH at this warehouse">WH SOH</th>
-        <th class="num" title="DRR allocated to this warehouse by SOH share">WH DRR</th>
+        <th class="num" title="DRR at this warehouse — sales_30d ÷ 30 from SOH file">WH DRR</th>
         <th class="num" title="Days of cover at this warehouse (WH SOH ÷ WH DRR)">WH DoC</th>
         <th class="num" title="Selling Price (₹)">SP</th>
         <th class="num" title="Lost revenue if no inbound in 30d = (30 − DoC) × WH DRR × SP">Lost ₹/30d</th>
@@ -1113,6 +1114,7 @@ function checkPW(){
     <table>
       <thead><tr>
         <th style="min-width:120px;cursor:pointer" onclick="setDocSort('sku')">SKU</th>
+        <th style="min-width:140px;cursor:pointer" onclick="setDocSort('fsn')">FSN</th>
         <th style="min-width:240px;cursor:pointer" onclick="setDocSort('name')">Name</th>
         <th style="cursor:pointer" onclick="setDocSort('brand')">Brand</th>
         <th style="cursor:pointer" onclick="setDocSort('vertical')">Vertical</th>
@@ -5897,6 +5899,7 @@ function buildDocRows() {
 
     rows.push({
       sku:        s.sku,
+      fsn:        s.fsn || '',
       title:      s.title || '',
       clean_name: s.clean_name || hubSku.clean_name || '',
       brand:      s.brand || hubSku.brand || '',
@@ -6072,6 +6075,7 @@ function filterDocRows(rows) {
     if (f.search) {
       var q = f.search;
       if (!((r.sku||'').toLowerCase().indexOf(q) >= 0 ||
+            (r.fsn||'').toLowerCase().indexOf(q) >= 0 ||
             (r.title||'').toLowerCase().indexOf(q) >= 0 ||
             (r.clean_name||'').toLowerCase().indexOf(q) >= 0 ||
             (r.range||'').toLowerCase().indexOf(q) >= 0)) return false;
@@ -6105,7 +6109,7 @@ function renderDocCritical(rows, whFilter) {
   if (sub) sub.textContent = pairs.length + ' (SKU × WH) at risk · total potential loss ' +
     fmtCr(pairs.reduce(function(a,p){ return a + p.w.loss; }, 0));
   if (!pairs.length) {
-    body.innerHTML = '<tr><td colspan="9" style="padding:20px;text-align:center;color:var(--text3)">No critical (SKU × WH) combos in current filter — nothing under 10 days 🎉</td></tr>';
+    body.innerHTML = '<tr><td colspan="10" style="padding:20px;text-align:center;color:var(--text3)">No critical (SKU × WH) combos in current filter — nothing under 10 days 🎉</td></tr>';
     return;
   }
   var top = pairs.slice(0, 200);  // cap at 200 to keep DOM responsive
@@ -6115,6 +6119,7 @@ function renderDocCritical(rows, whFilter) {
     var docCol = docColor10(w.bucket);
     return '<tr style="cursor:pointer" onclick="showDocDetail(\''+encodeURIComponent(r.sku)+'\')" title="Click for full warehouse breakdown">' +
       '<td style="font-family:Courier New,monospace;font-size:11px">'+escHtml(r.sku)+'</td>' +
+      '<td style="font-family:Courier New,monospace;font-size:11px;color:var(--text3)">'+escHtml(r.fsn || '—')+'</td>' +
       '<td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+nameTip+'">'+escHtml(r.clean_name || r.title)+'</td>' +
       '<td>'+brandPill(r.brand)+'</td>' +
       '<td style="font-family:Courier New,monospace;font-size:11px">'+escHtml(w.warehouse)+'</td>' +
@@ -6125,7 +6130,7 @@ function renderDocCritical(rows, whFilter) {
       '<td class="num" style="color:#f05252;font-weight:700">'+fmtCr(w.loss)+'</td>' +
       '</tr>';
   }).join('') + (pairs.length > 200
-    ? '<tr><td colspan="9" style="padding:8px;text-align:center;color:var(--text3);font-size:11px">showing top 200 of '+pairs.length+' · refine filters to narrow further</td></tr>'
+    ? '<tr><td colspan="10" style="padding:8px;text-align:center;color:var(--text3);font-size:11px">showing top 200 of '+pairs.length+' · refine filters to narrow further</td></tr>'
     : '');
 }
 
@@ -6152,7 +6157,7 @@ function renderDocSku(rows) {
   if (sub) sub.textContent = rows.length + ' SKUs · total loss ' +
     fmtCr(rows.reduce(function(a,r){ return a + r.totalLoss; }, 0));
   if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="13" style="padding:20px;text-align:center;color:var(--text3)">No SKUs match filters</td></tr>';
+    body.innerHTML = '<tr><td colspan="14" style="padding:20px;text-align:center;color:var(--text3)">No SKUs match filters</td></tr>';
     return;
   }
   var shown = rows.slice(0, 500);
@@ -6164,6 +6169,7 @@ function renderDocSku(rows) {
     var lifeBadge = r.lifecycle ? '<span style="font-size:9px;color:var(--text3);margin-left:4px">['+escHtml(r.lifecycle)+']</span>' : '';
     return '<tr style="cursor:pointer" onclick="showDocDetail(\''+encodeURIComponent(r.sku)+'\')">' +
       '<td style="font-family:Courier New,monospace;font-size:11px">'+escHtml(r.sku)+'</td>' +
+      '<td style="font-family:Courier New,monospace;font-size:11px;color:var(--text3)">'+escHtml(r.fsn || '—')+'</td>' +
       '<td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+nameTip+'">'+escHtml(r.clean_name || r.title)+lifeBadge+'</td>' +
       '<td>'+brandPill(r.brand)+'</td>' +
       '<td style="font-size:10px;color:var(--text3);white-space:nowrap">'+escHtml(r.vertical || '—')+'</td>' +
@@ -6178,7 +6184,7 @@ function renderDocSku(rows) {
       '<td class="num">'+r.whCount+'</td>' +
       '</tr>';
   }).join('') + (rows.length > 500
-    ? '<tr><td colspan="13" style="padding:8px;text-align:center;color:var(--text3);font-size:11px">showing first 500 of '+rows.length+' · refine filters to narrow further</td></tr>'
+    ? '<tr><td colspan="14" style="padding:8px;text-align:center;color:var(--text3);font-size:11px">showing first 500 of '+rows.length+' · refine filters to narrow further</td></tr>'
     : '');
 }
 
@@ -6196,7 +6202,8 @@ function renderDocDetail() {
   if (title) title.textContent = r.clean_name || r.title || sku;
   if (meta) {
     var parts = [];
-    parts.push('<span style="font-family:Courier New,monospace;font-size:10px;color:var(--text3)">'+escHtml(sku)+'</span>');
+    parts.push('<span style="font-family:Courier New,monospace;font-size:10px;color:var(--text3)">SKU '+escHtml(sku)+'</span>');
+    if (r.fsn) parts.push('<span style="font-family:Courier New,monospace;font-size:10px;color:var(--text3)">FSN '+escHtml(r.fsn)+'</span>');
     if (r.brand) parts.push(brandPill(r.brand));
     if (r.vertical) parts.push('<span style="font-size:11px;color:var(--text2)">'+escHtml(r.vertical)+'</span>');
     parts.push('Total SOH <b>'+fmtUnits(r.soh)+'</b>');
@@ -6444,13 +6451,13 @@ function renderDocKpis(rows) {
 function exportDocCriticalCsv() {
   if (!D || !D.hub || !D.hub.soh) return;
   var rows = filterDocRows(buildDocRows());
-  var lines = [['SKU','Clean Name','FK Title','Brand','Vertical','Range','Lifecycle','Warehouse','WH SOH','WH Sales 30D','WH DRR','WH DoC','SP','Lost/30d'].join(',')];
+  var lines = [['SKU','FSN','Clean Name','FK Title','Brand','Vertical','Range','Lifecycle','Warehouse','WH SOH','WH Sales 30D','WH DRR','WH DoC','SP','Lost/30d'].join(',')];
   function q(v){ return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'; }
   rows.forEach(function(r){
     r.whDetails.forEach(function(w){
       if (w.bucket !== 'CRITICAL') return;
       lines.push([
-        q(r.sku), q(r.clean_name), q(r.title), q(r.brand), q(r.vertical),
+        q(r.sku), q(r.fsn), q(r.clean_name), q(r.title), q(r.brand), q(r.vertical),
         q(r.range), q(r.lifecycle), q(w.warehouse),
         w.soh, w.sales_30d || 0, w.drr.toFixed(3),
         w.doc != null && isFinite(w.doc) ? w.doc.toFixed(2) : '',
@@ -6467,14 +6474,14 @@ function exportDocCriticalCsv() {
 function exportDocSkuCsv() {
   if (!D || !D.hub || !D.hub.soh) return;
   var rows = filterDocRows(buildDocRows());
-  var lines = [['SKU','Clean Name','FK Title','Brand','Vertical','Range','Lifecycle','Total SOH','Sales 30D','DRR','Overall DoC','Worst WH DoC','WH<10','WH<30','SP','Total Loss/30d','WH Count','WH Split (wh:soh:doc|...)'].join(',')];
+  var lines = [['SKU','FSN','Clean Name','FK Title','Brand','Vertical','Range','Lifecycle','Total SOH','Sales 30D','DRR','Overall DoC','Worst WH DoC','WH<10','WH<30','SP','Total Loss/30d','WH Count','WH Split (wh:soh:doc|...)'].join(',')];
   function q(v){ return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'; }
   rows.forEach(function(r){
     var split = r.whDetails.map(function(w){
       return w.warehouse+':'+w.soh+':'+(w.doc != null && isFinite(w.doc) ? w.doc.toFixed(1) : '∞');
     }).join('|');
     lines.push([
-      q(r.sku), q(r.clean_name), q(r.title), q(r.brand), q(r.vertical),
+      q(r.sku), q(r.fsn), q(r.clean_name), q(r.title), q(r.brand), q(r.vertical),
       q(r.range), q(r.lifecycle),
       r.soh, r.sales_30d, r.drr.toFixed(3),
       r.doc != null && isFinite(r.doc) ? r.doc.toFixed(2) : '',

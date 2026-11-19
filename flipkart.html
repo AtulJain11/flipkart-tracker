@@ -407,6 +407,10 @@ function checkPW(){
   </div>
   <div id="rk-an" style="display:none;margin-bottom:12px"><div id="rk-an-c"></div></div>
   <div class="chart-grid" id="rk-charts"></div>
+  <div class="card" id="rk-why-card" style="margin-bottom:12px">
+    <div class="card-hdr"><span class="card-title">Why ranks dropped — last 14 days</span><span class="card-sub" id="rk-why-sub"></span></div>
+    <div id="rk-why"></div>
+  </div>
   <div class="card">
     <div class="card-hdr"><span class="card-title">All Products — Rank Tracker</span><span class="card-sub" id="rk-count"></span></div>
     <table><thead><tr><th style="min-width:260px">Product</th><th style="white-space:nowrap;width:1%">Size</th><th>Brand</th><th>Category</th><th>Vertical #</th><th>Sub Cat #</th><th>Super Cat #</th><th>7d Trend ▼</th><th>7d Trend Sub</th></tr></thead>
@@ -471,6 +475,10 @@ function checkPW(){
   <div class="chart-grid">
     <div class="chart-card"><div class="chart-title">Avg Rating by Brand</div><div class="chart-wrap"><canvas id="ch-rt-brand"></canvas></div></div>
     <div class="chart-card"><div class="chart-title">Rating Distribution</div><div class="chart-wrap"><canvas id="ch-rt-dist"></canvas></div></div>
+  </div>
+  <div class="card" id="rt-inflow-card" style="margin-bottom:12px">
+    <div class="card-hdr"><span class="card-title">New ratings per week — and 5★ needed for the next +0.1★</span><span class="card-sub" id="rt-inflow-sub"></span></div>
+    <div id="rt-inflow"></div>
   </div>
   <div class="card">
     <div class="card-hdr"><span class="card-title">All Products — Rating Tracker</span><span class="card-sub" id="rt-count"></span></div>
@@ -10055,6 +10063,180 @@ function moveAnalysisToOverview(tabId, renderFn) {
 function renderOverviewInsights() {}
 
 // ══ RANKINGS ════════════════════════════════════════════════════════
+// ══ WHY RANKS DROPPED + NEW RATINGS PER WEEK (added 18 Nov 2026) ════════════════════════════════════════════════
+// Why ranks dropped: a drop is the vertical rank getting worse by at least 3 places and 25% between two readings,
+// for products in their category's top 300.
+// Next to each drop, what changed for that product just before it: units sold and views a day (Seller Hub traffic
+// report), its selling price, ad spend a day on the campaigns it is in, and its stock (the inventory file of that day,
+// when one was saved). "Before" = the 7 days before the 3 days that lead up to the drop.
+var _WHY = null;
+function _wDay(s, n) {
+  var d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10);
+}
+function _whyIndex() {
+  var key = (D.generated || '') + '|' + ((D.hub && D.hub.generated) || '');
+  if (_WHY && _WHY.key === key) return _WHY;
+  var X = {key: key, sp: {}, tr: {}, ads: {}, camps: {}, soh: (D.hub && D.hub.soh_daily) || null};
+  (D.all_days || []).forEach(function (day) {
+    (day.products || []).forEach(function (p) {
+      if (p.pid && p.sp != null && p.sp !== '') (X.sp[p.pid] = X.sp[p.pid] || {})[day.date] = +p.sp;
+    });
+  });
+  var hub = D.hub || {}, H = hub.history || {};
+  var cut = _wDay(D.latest.date, -75);
+  function addTr(r) { if (r && r.sku && r.date >= cut) (X.tr[r.sku] = X.tr[r.sku] || {})[r.date] = {v: +r.views || 0, u: +r.sales || 0}; }
+  (H.traffic_sku_daily || []).forEach(addTr);
+  ((hub.traffic || {}).sku_daily || []).forEach(addTr);            // this month's, refreshed every run
+  function addCampDays(c) { if (!c || !c.id) return; var t = X.ads[c.id] = X.ads[c.id] || {}; Object.keys(c.days || {}).forEach(function (d) { if (d >= cut) t[d] = +(c.days[d].spend || 0); }); }
+  ((H.daily || {}).campaigns || []).forEach(addCampDays);
+  ((hub.daily || {}).campaigns || []).forEach(addCampDays);
+  function addSkus(cid, month, skus) { (skus || []).forEach(function (s) { var m = (X.camps[s] = X.camps[s] || {}); (m[month] = m[month] || {})[cid] = 1; }); }
+  ((H.fsn || {}).campaigns || []).forEach(function (c) { Object.keys(c.months || {}).forEach(function (m) { addSkus(c.id, m, (c.months[m] || {}).skus); }); });
+  var curMonth = (D.latest.date || '').slice(0, 7);
+  ((hub.fsn || {}).campaigns || []).forEach(function (c) { addSkus(c.id, curMonth, c.skus); });
+  _WHY = X; return X;
+}
+function _wAvg(get, from, to) {          // average of the days from..to (inclusive) that have a value
+  var s = 0, n = 0;
+  for (var d = from; d <= to; d = _wDay(d, 1)) { var v = get(d); if (v != null) { s += v; n++; } }
+  return n ? s / n : null;
+}
+function _wChg(a, b) { return (a != null && b) ? (a - b) / b : null; }
+function _wFmt(n) { return n == null ? '—' : n >= 100000 ? (n / 100000).toFixed(1) + 'L' : n >= 1000 ? (n / 1000).toFixed(1) + 'K' : String(Math.round(n)); }
+function _wCell(now, before, money, badIfDown) {
+  if (now == null && before == null) return '<span style="color:var(--text3)">—</span>';
+  var ch = _wChg(now, before), pct = ch == null ? '' : ' (' + (ch > 0 ? '+' : '') + Math.round(ch * 100) + '%)';
+  var bad = ch != null && (badIfDown ? ch <= -0.25 : ch >= 0.25);
+  var col = bad ? 'var(--red)' : (ch != null && Math.abs(ch) >= 0.25 ? 'var(--green)' : 'var(--text2)');
+  return '<span style="color:' + col + ';white-space:nowrap">' + (money ? '₹' : '') + _wFmt(before) + ' → ' + (money ? '₹' : '') + _wFmt(now) + pct + '</span>';
+}
+function _wStock(X, fsn, day, back) {     // the newest inventory snapshot from (day - back) to day
+  if (!X.soh || !X.soh.fsn || !X.soh.fsn[fsn]) return null;
+  var dates = X.soh.dates || [], best = null, lo = _wDay(day, -(back || 1));
+  X.soh.fsn[fsn].forEach(function (r) { var d = dates[r[0]]; if (d && d <= day && d >= lo && (!best || d > dates[best[0]])) best = r; });
+  return best ? {date: dates[best[0]], units: best[1], inStock: best[2], oosSelling: best[3], selling: best[4]} : null;
+}
+function renderRankWhy(prods) {
+  var box = document.getElementById('rk-why'); if (!box || !D || !D.rank_history) return;
+  var X = _whyIndex(), end = S.rk.date || D.latest.date, from = _wDay(end, -13);
+  var rows = [];
+  (prods || []).forEach(function (p) {
+    var h = getRankH(p.pid).filter(function (x) { return x.rank_v != null && x.date <= end; });
+    for (var i = 1; i < h.length; i++) {
+      var a = h[i - 1], b = h[i];
+      if (b.date < from) continue;
+      var drop = b.rank_v - a.rank_v;
+      if (a.rank_v > 300 || drop < 3 || drop < 0.25 * a.rank_v) continue;    // within the category's top 300
+      var d = b.date, r1 = _wDay(d, -3), r2 = _wDay(d, -1), b1 = _wDay(d, -10), b2 = _wDay(d, -4);
+      var tr = X.tr[p.sku] || {};
+      var uNow = _wAvg(function (x) { return tr[x] ? tr[x].u : null; }, r1, r2), uBef = _wAvg(function (x) { return tr[x] ? tr[x].u : null; }, b1, b2);
+      var vNow = _wAvg(function (x) { return tr[x] ? tr[x].v : null; }, r1, r2), vBef = _wAvg(function (x) { return tr[x] ? tr[x].v : null; }, b1, b2);
+      var sp = X.sp[p.pid] || {}, spNow = sp[d] != null ? sp[d] : null, spBef = sp[a.date] != null ? sp[a.date] : null;
+      var cm = (X.camps[p.sku] || {}), ids = Object.assign({}, cm[d.slice(0, 7)] || {}, cm[b1.slice(0, 7)] || {});
+      var spend = function (x) { var s = 0, any = false; Object.keys(ids).forEach(function (id) { var t = X.ads[id]; if (t && t[x] != null) { s += t[x]; any = true; } }); return any ? s : null; };
+      var nIds = Object.keys(ids).length;
+      var aNow = nIds ? _wAvg(spend, r1, r2) : null, aBef = nIds ? _wAvg(spend, b1, b2) : null;
+      var st = _wStock(X, p.pid, d), st0 = _wStock(X, p.pid, _wDay(d, -3), 7);   // that day; 3-10 days before
+      var newOos = st && (st.units <= 0 ||
+        (st0 ? st.oosSelling > st0.oosSelling && st.oosSelling >= Math.max(1, 0.3 * st.selling)
+             : st.oosSelling >= Math.max(2, 0.5 * st.selling)));
+      var cause = 'No clear cause in our data', cc = 'var(--text3)';
+      if (uBef && uNow != null && uNow >= 0.9 * uBef) { cause = 'Others sold more (ours held)'; cc = 'var(--text2)'; }
+      if (newOos) { cause = 'Stock-out'; cc = 'var(--red)'; }
+      else if (spNow != null && spBef && spNow > spBef * 1.02) { cause = 'Price up'; cc = 'var(--orange, #f0a030)'; }
+      else if (aBef && aNow != null && aNow < 0.7 * aBef) { cause = 'Ads cut'; cc = 'var(--yellow)'; }
+      else if (vBef && vNow != null && vNow < 0.75 * vBef) { cause = 'Fewer views'; cc = 'var(--yellow)'; }
+      else if (uBef && uNow != null && uNow < 0.75 * uBef) { cause = 'Fewer sales'; cc = 'var(--yellow)'; }
+      rows.push({p: p, d: d, a: a.rank_v, b: b.rank_v, drop: drop, cause: cause, cc: cc, uNow: uNow, uBef: uBef, vNow: vNow, vBef: vBef,
+                 spNow: spNow, spBef: spBef, aNow: aNow, aBef: aBef, nIds: nIds, st: st, st0: st0});
+    }
+  });
+  rows.sort(function (x, y) { return x.d < y.d ? 1 : x.d > y.d ? -1 : y.drop - x.drop; });
+  var sub = document.getElementById('rk-why-sub');
+  if (sub) sub.textContent = rows.length + ' drop' + (rows.length === 1 ? '' : 's') + ', ' + fmtDate(from) + ' – ' + fmtDate(end);
+  if (!rows.length) { box.innerHTML = '<div class="empty" style="padding:14px">No rank drops of 3+ places (and 25%+) within the top 300 in these 14 days.</div>'; return; }
+  var cnt = {}; rows.forEach(function (r) { cnt[r.cause] = (cnt[r.cause] || 0) + 1; });
+  var chips = Object.keys(cnt).sort(function (x, y) { return cnt[y] - cnt[x]; }).map(function (k) {
+    return '<span style="display:inline-block;margin:0 6px 6px 0;padding:2px 8px;border-radius:10px;border:1px solid rgba(255,255,255,.12);font-size:11px">' + k + ': <b>' + cnt[k] + '</b></span>';
+  }).join('');
+  box.innerHTML = '<div style="padding:10px 14px 0">' + chips + '</div>' +
+    '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th style="min-width:220px">Product</th><th>Vertical rank</th><th>Likely cause</th>' +
+    '<th>Units / day</th><th>Views / day</th><th>Selling price</th><th>Ad spend / day</th><th>Stock that day</th></tr></thead><tbody>' +
+    rows.map(function (r) {
+      var stock = !r.st ? '<span style="color:var(--text3)" title="No inventory file was saved that day">no file</span>' :
+        (r.st.units <= 0 ? '<span style="color:var(--red)">out of stock</span>' :
+          '<span style="color:' + (r.st.oosSelling ? 'var(--red)' : 'var(--text2)') + '" title="Warehouses that sold it in the last 30 days but had none in stock">' +
+          _wFmt(r.st.units) + ' units' + (r.st.selling ? ', OOS in ' + r.st.oosSelling + ' of ' + r.st.selling + ' selling FCs' +
+          (r.st0 ? ' (was ' + r.st0.oosSelling + ')' : '') : '') + '</span>');
+      return '<tr><td style="white-space:nowrap">' + fmtDate(r.d) + '</td>' +
+        '<td><a href="' + (r.p.url || '#') + '" target="_blank" title="' + pTooltip(r.p) + '">' + pName(r.p, 46) + '</a><br><span class="pid">' + (r.p.sku || r.p.pid) + '</span></td>' +
+        '<td style="white-space:nowrap">#' + r.a + ' → <b style="color:var(--red)">#' + r.b + '</b></td>' +
+        '<td><b style="color:' + r.cc + '">' + r.cause + '</b></td>' +
+        '<td>' + _wCell(r.uNow, r.uBef, false, true) + '</td>' +
+        '<td>' + _wCell(r.vNow, r.vBef, false, true) + '</td>' +
+        '<td>' + (r.spNow == null && r.spBef == null ? '<span style="color:var(--text3)">—</span>' :
+          '<span style="white-space:nowrap;color:' + (r.spNow > r.spBef ? 'var(--red)' : r.spNow < r.spBef ? 'var(--green)' : 'var(--text2)') + '">₹' + (r.spBef == null ? '—' : r.spBef) + ' → ₹' + (r.spNow == null ? '—' : r.spNow) + '</span>') + '</td>' +
+        '<td>' + (r.nIds ? _wCell(r.aNow, r.aBef, true, true) + '<br><span style="font-size:10px;color:var(--text3)">' + r.nIds + ' campaign' + (r.nIds === 1 ? '' : 's') + '</span>' : '<span style="color:var(--text3)">no campaign</span>') + '</td>' +
+        '<td>' + stock + '</td></tr>';
+    }).join('') + '</tbody></table></div>' +
+    '<div style="padding:8px 14px 12px;font-size:11px;color:var(--text3)">Arrows: the 7 days before → the 3 days before the drop (daily averages). Likely cause, first that fits: stock-out (none left, or newly out at 30%+ of the FCs that sell it) · price up 2%+ · ad spend −30%+ · views −25%+ · units −25%+ · else, if our units held (−10% or better), others sold more — the sales rank is relative. Products in their category’s top 300. Ad spend is all of the campaigns the product is in.</div>';
+}
+
+// New ratings per week: from the rating count Flipkart shows each day. 5★ needed for the next +0.1★: Flipkart shows
+// the average rounded to 0.1, so the exact one is anywhere in that 0.1 band - "≈" takes the middle of the band,
+// "at most" the bottom of it (then this many 5★ ratings are sure to lift it).
+function _rSpark(vals) {
+  var mx = Math.max.apply(null, vals.map(function (v) { return v || 0; }).concat([1])), w = 7, g = 2;
+  return '<svg width="' + (vals.length * (w + g)) + '" height="22" style="vertical-align:middle">' + vals.map(function (v, i) {
+    var hh = v == null ? 0 : Math.max(1, Math.round(20 * Math.max(0, v) / mx));
+    return '<rect x="' + (i * (w + g)) + '" y="' + (22 - hh) + '" width="' + w + '" height="' + hh + '" rx="1" fill="' + (i === vals.length - 1 ? 'var(--yellow)' : 'rgba(176,190,197,.55)') + '"><title>' + (v == null ? 'no data' : v + ' new ratings') + '</title></rect>';
+  }).join('') + '</svg>';
+}
+function renderRatingInflow(prods) {
+  var box = document.getElementById('rt-inflow'); if (!box || !D || !D.rating_history) return;
+  var end = S.rt.date || D.latest.date;
+  var rows = [];
+  (prods || []).forEach(function (p) {
+    var h = getRatingH(p.pid).filter(function (e) { return e.count != null && e.date <= end; });
+    if (h.length < 2) return;
+    function at(d) { for (var i = h.length - 1; i >= 0; i--) if (h[i].date <= d) return h[i]; return null; }
+    var pts = [0, 7, 14, 21, 28, 35, 42].map(function (k) { return at(_wDay(end, -k)); });
+    var weekly = [];
+    for (var k = 5; k >= 0; k--) weekly.push(pts[k] && pts[k + 1] && pts[k].date !== pts[k + 1].date ? Math.max(0, pts[k].count - pts[k + 1].count) : null);
+    var got = weekly.filter(function (v) { return v != null; });
+    var avg = got.length ? got.reduce(function (s, v) { return s + v; }, 0) / got.length : null;
+    var cur = h[h.length - 1], r = +cur.rating, n = +cur.count;
+    var est = null, most = null;
+    if (r && n && r < 4.95) {
+      var tgt = Math.round((r + 0.05) * 100) / 100;          // the average Flipkart rounds up to r + 0.1
+      est = Math.max(1, Math.ceil(n * (tgt - r) / (5 - tgt)));
+      most = Math.max(1, Math.ceil(n * (tgt - (r - 0.05)) / (5 - tgt)));
+    }
+    rows.push({p: p, r: r, n: n, weekly: weekly, last: weekly[weekly.length - 1], avg: avg, est: est, most: most,
+               weeks: est != null && avg ? est / avg : null});
+  });
+  rows.sort(function (a, b) {
+    var x = a.weeks == null ? 1e9 : a.weeks, y = b.weeks == null ? 1e9 : b.weeks; return x - y;
+  });
+  var sub = document.getElementById('rt-inflow-sub');
+  if (sub) sub.textContent = rows.length + ' products · quickest +0.1★ first';
+  if (!rows.length) { box.innerHTML = '<div class="empty" style="padding:14px">No rating history yet.</div>'; return; }
+  box.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th style="min-width:220px">Product</th><th>Rating</th><th>Ratings</th>' +
+    '<th>New ratings / week<br><span style="font-weight:400;font-size:10px">last 6 weeks</span></th><th>Last week</th><th>Avg / week</th>' +
+    '<th>5★ needed for +0.1★</th><th>Weeks*</th></tr></thead><tbody>' +
+    rows.map(function (x) {
+      return '<tr><td><a href="' + (x.p.url || '#') + '" target="_blank" title="' + pTooltip(x.p) + '">' + pName(x.p, 46) + '</a><br><span class="pid">' + (x.p.sku || x.p.pid) + '</span></td>' +
+        '<td><b>' + (x.r ? x.r.toFixed(1) : '—') + '★</b></td><td>' + _wFmt(x.n) + '</td>' +
+        '<td>' + _rSpark(x.weekly) + '</td>' +
+        '<td>' + (x.last == null ? '—' : x.last.toLocaleString('en-IN')) + '</td>' +
+        '<td>' + (x.avg == null ? '—' : Math.round(x.avg).toLocaleString('en-IN')) + '</td>' +
+        '<td style="white-space:nowrap">' + (x.est == null ? '<span style="color:var(--text3)">—</span>' :
+          '≈' + x.est.toLocaleString('en-IN') + ' <span style="color:var(--text3);font-size:10px">(at most ' + x.most.toLocaleString('en-IN') + ')</span>') + ' → ' + (x.r ? (x.r + 0.1).toFixed(1) : '') + '★</td>' +
+        '<td>' + (x.weeks == null ? '—' : x.weeks < 1 ? '<1' : x.weeks < 100 ? x.weeks.toFixed(x.weeks < 10 ? 1 : 0) : '100+') + '</td></tr>';
+    }).join('') + '</tbody></table></div>' +
+    '<div style="padding:8px 14px 12px;font-size:11px;color:var(--text3)">New ratings = the rise in Flipkart\'s rating count week by week (yellow bar: the last 7 days). Flipkart rounds the rating to 0.1, so the exact average is somewhere in that band: ≈ assumes the middle, "at most" the bottom. *Weeks = 5★ needed ÷ new ratings a week, if every new rating were 5★ — the fastest it could happen, not a forecast.</div>';
+}
+
 function renderRankings() {
   let prods = filteredProds('rk').filter(p=>p.rank_v!=null).sort((a,b)=>a.rank_v-b.rank_v);
   const cat = document.getElementById('rk-cat').value||'ALL';
@@ -10076,6 +10258,7 @@ function renderRankings() {
   if (search) filtered=filtered.filter(p=>(p.title||'').toLowerCase().includes(search)||(p.clean_name||'').toLowerCase().includes(search)||(p.pid||'').toLowerCase().includes(search)||(p.sku||'').toLowerCase().includes(search));
 
   document.getElementById('rk-count').textContent=`${filtered.length} products`;
+  try { renderRankWhy(filtered); } catch (e) { console.error('Why ranks dropped:', e); }
 
   // Trend charts — top 4 from FILTERED set (so category filter affects charts too)
   const top4 = filtered.slice(0,4);
@@ -10271,6 +10454,7 @@ function renderRatings() {
     <div class="stat-card"><div class="stat-label">Total Reviews</div><div class="stat-value">${Math.round(totalRev/1000)}K</div></div>
   `;
 
+  try { renderRatingInflow(prods); } catch (e) { console.error('New ratings per week:', e); }
   dChart('rt-brand');
   const brands=[['BARE ANATOMY','ba'],['Chemist at Play','cap'],['SunScoop','ss']];
   charts['rt-brand']=new Chart(document.getElementById('ch-rt-brand').getContext('2d'),{
